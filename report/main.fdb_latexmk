@@ -1,13 +1,13 @@
 # Fdb version 4
-["biber main"] 1768820558.55506 "main.bcf" "main.bbl" "main" 1768821047.60563 0
-  "main.bcf" 1768821047.41812 107804 08a83f953d23b23c0236f3ab5bdd8e50 "pdflatex"
+["biber main"] 1768821588.73625 "main.bcf" "main.bbl" "main" 1768821776.11929 0
+  "main.bcf" 1768821775.93513 107804 08a83f953d23b23c0236f3ab5bdd8e50 "pdflatex"
   "references.bib" 1768819008.71395 149 bef3e25b5f0fa0a63f9e6debaaa4330f ""
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1768821044.29872 "/Users/jonatanharaldsson/Library/CloudStorage/Dropbox/Utbildning/0_Hogskola/Pagaende_kurser/MSc_thesis/report/main.tex" "main.pdf" "main" 1768821047.60606 0
-  "/Users/jonatanharaldsson/Library/CloudStorage/Dropbox/Utbildning/0_Hogskola/Pagaende_kurser/MSc_thesis/report/main.tex" 1768821044.04083 1989 30abccf95ac6abb1d7c168fac38384f4 ""
+["pdflatex"] 1768821772.74461 "/Users/jonatanharaldsson/Library/CloudStorage/Dropbox/Utbildning/0_Hogskola/Pagaende_kurser/MSc_thesis/report/main.tex" "main.pdf" "main" 1768821776.1196 0
+  "/Users/jonatanharaldsson/Library/CloudStorage/Dropbox/Utbildning/0_Hogskola/Pagaende_kurser/MSc_thesis/report/main.tex" 1768821772.60541 2056 a9d1af14f7d7adc02a5c0cc4db1e590e ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-ec.enc" 1254269338 2375 baa924870cfb487815765f9094cf3728 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/ecrm1200.tfm" 1136768653 3584 f80ddd985bd00e29e9a6047ebd9d4781 ""
@@ -392,12 +392,16 @@
   "/usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1768814018 3345732 33a243b9216dbe3a4a72b6fd714ca002 ""
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
   "appendix.tex" 1768818904.56724 0 d41d8cd98f00b204e9800998ecf8427e ""
-  "main.aux" 1768821047.39529 905 87871cc38740ba8f68911e1eb7c441a7 "pdflatex"
-  "main.bbl" 1768820560.43222 1634 245be510f4209674c2f4783126cff0b9 "biber main"
-  "main.out" 1768821047.41288 103 9814c2d956916adb9290eca4e25c967a "pdflatex"
-  "main.run.xml" 1768821047.41921 2402 05765085d18e81025e591027ecbce8c4 "pdflatex"
-  "main.tex" 1768821044.04083 1989 30abccf95ac6abb1d7c168fac38384f4 ""
+  "introduction.tex" 1768821307.95097 0 d41d8cd98f00b204e9800998ecf8427e ""
+  "main.aux" 1768821775.92298 1215 a0921493f12e5eaca1970812cec7c46e "pdflatex"
+  "main.bbl" 1768821590.52543 1634 245be510f4209674c2f4783126cff0b9 "biber main"
+  "main.out" 1768821775.92792 327 6415988fea3c4e7bb0150e510315c49e "pdflatex"
+  "main.run.xml" 1768821775.94302 2402 05765085d18e81025e591027ecbce8c4 "pdflatex"
+  "main.tex" 1768821772.60541 2056 a9d1af14f7d7adc02a5c0cc4db1e590e ""
+  "method.tex" 1768821321.17735 0 d41d8cd98f00b204e9800998ecf8427e ""
   "preamble.tex" 1768820598.02872 3593 6a7334926f7c89580bbdc484dc149c92 ""
+  "results.tex" 1768821337.64423 0 d41d8cd98f00b204e9800998ecf8427e ""
+  "theory.tex" 1768821463.46912 0 d41d8cd98f00b204e9800998ecf8427e ""
   (generated)
   "main.aux"
   "main.bcf"
