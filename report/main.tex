@@ -1,0 +1,91 @@
+\documentclass[12pt,a4paper]{article}
+\input{preamble}
+
+
+\usetikzlibrary{external}
+\addbibresource{references.bib}
+\DefineBibliographyStrings{english}{%
+   url         = [Online] \adddot\addspace\ Available:,}
+
+\newcommand{\yexp}{\bm{y}_\mathrm{exp}}
+\newcommand{\param}{\bm{\theta}}
+\newcommand{\dx}{\,\mathrm{d}x}
+\newcommand{\figA}{\textcolor{myblue}{a}}
+\newcommand{\figB}{\textcolor{myblue}{b}}
+\newcommand{\sajt}{\textcolor{myblue}{\texttt{\textbackslash\ ref\{\}}}}
+\newcommand{\Eacc}{E_\textsf{T}^{(i)}}
+
+\newcommand{\eref}[1]{Eq.~(\ref{#1})}
+\newcommand{\tref}[1]{Tab.~(\ref{#1})}
+%\newcommand{\fref}[1][2]{Fig.~(\ref{#1}#2)}
+\newcommand{\fref}[2][]{Fig.~(\ref{#2}#1)}
+\newcommand{\subfref}[2]{Fig.~(\ref{#1}\textcolor{myblue}{#2})}
+\newcommand{\argmin}[1]{\underset{#1}{\arg\!\min}}
+\newcommand{\diag}[1]{\mathrm{diag}\!\left\{#1\right\}}
+\newcommand{\var}[1]{\mathbb{VAR}\!\left\{#1\right\}}
+\newcommand{\cov}[1]{\mathbb{COV}\!\left\{#1\right\}}
+\newcommand{\avg}[1]{\left\langle\ #1\right\rangle}
+
+
+%\markright{Jonatan Haraldsson}
+%\pagestyle{myheadings}
+\definecolor{myblue}{RGB}{0 ,0,197.5}
+
+
+
+
+
+\begin{document}
+
+
+% IMPORTANT: activate the custom styles
+
+% \end{titlepage}
+\begin{center}
+{\LARGE\bf \textsf{Thesis}}
+\end{center}
+{\small
+\begin{center}
+
+
+\end{center}}
+%\vspace{0.05cm} 
+{\small
+\begin{center}
+    \begin{minipage}{0.4\textwidth}
+        \centering
+        Jonatan Haraldsson \\
+        \texttt{\href{mailto:jonhara@chalmers.se}{jonhara@chalmers.se}}
+    \end{minipage}
+    \begin{minipage}{0.4\textwidth}
+        \centering
+        Jesper Noord \\
+        \texttt{\href{mailto:noord@chalmers.se}{noord@chalmers.se}}
+    \end{minipage}
+\end{center}
+}
+
+
+\section{Introduction}\newcommand{\shortsecnameintro}{Introduction}
+
+
+Here I cite\cite{test_ref}
+
+
+
+\newpage
+\thispagestyle{empty}
+% \selectlanguage{british}
+\printbibliography\
+% \selectlanguage{english}
+\newpage
+{\huge \textbf{Appendix}}
+\appendix
+\input{appendix}
+
+
+
+
+
+\end{document}
+
