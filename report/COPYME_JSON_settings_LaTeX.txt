@@ -1,0 +1,43 @@
+"latex-workshop.latex.tools": [
+    {
+        "name": "pdflatex",
+        "command": "pdflatex",
+        "args": [
+            "-interaction=nonstopmode",
+            "-synctex=1",
+            "-output-directory=out",
+            "%DOC%"
+        ]
+    },
+    {
+        "name": "biber",
+        "command": "biber",
+        "args": [
+            "out/%DOCFILE%"
+        ]
+    },
+    {
+        "name": "makeglossaries",
+        "command": "makeglossaries",
+        "args": [
+            "-d", "out",
+            "%DOCFILE%"
+        ]
+    }
+],
+"latex-workshop.latex.recipes": [
+    {
+        "name": "pdflatex → biber → makeglossaries → pdflatex ×2",
+        "tools": ["pdflatex", "biber", "makeglossaries", "pdflatex", "pdflatex"]
+    }
+],
+"latex-workshop.latex.outDir": "./out",
+"latex-workshop.latex.bibDirs": ["./", "./out"],
+"files.exclude": {
+    "**/out": true
+},
+"latex-workshop.latex.autoBuild.run": "onSave",
+"latex-workshop.latex.autoBuild.execute": "onSave"
+}
+
+
