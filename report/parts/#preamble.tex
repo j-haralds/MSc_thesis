@@ -72,49 +72,33 @@
 \usepackage[dvipsnames]{xcolor}
 \usetikzlibrary{calc}
 \definecolor{LightGray}{rgb}{0.95,0.95,0.95}
+
 \usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+
+\fancyhead[RO]{\nouppercase{\leftmark}}
+\fancyhead[LE]{\nouppercase{\rightmark}}
+\fancyfoot[RO,LE]{\thepage}
+
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[RO,LE]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
 
 \usepackage[acronym,toc]{glossaries}
 \makeglossaries
-
-
-\usepackage{xcolor}
 \definecolor{mydeepgrayblue}{HTML}{2F343F}
 
-% \pagecolor{mydeepgrayblue}
-% \color{white}
-
-
-
-
-% \usepackage{xcolor}
-%\definecolor{nightblue}{HTML}{0A0F1F}  % deep blue/gray
-%\pagecolor{nightblue}
-%\color{white}
 
 \usepackage{xcolor}
 \usepackage{soul}
 \sethlcolor{pink}
-%\definecolor{slatebluegray}{HTML}{1A2233}
+
 \definecolor{slatebluegrayD1}{HTML}{161D2D}
 \pagecolor{slatebluegrayD1}
 \color{white}
-
-
-% \usepackage{xcolor}
-% \definecolor{deepdarkslate}{HTML}{071417}
-
-% \pagecolor{deepdarkslate}
-% \color{white}
-
-
-% \usepackage{xcolor}
-% \definecolor{coalblue}{HTML}{11161E}
-% \pagecolor{coalblue}
-% \color{white}
-
-
-% \usepackage{xcolor}
-% \definecolor{darknavy}{HTML}{000B2F}
-% \pagecolor{darknavy}
-%\color{white}
