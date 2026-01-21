@@ -19,6 +19,65 @@
 
 \refsection{0}
   \datalist[entry]{none/global//global/global/global}
+    \entry{Asheri}{article}{}{}
+      \name{author}{5}{}{%
+        {{hash=393decc535a0fe8af9d37c581d77cdf5}{%
+           family={Asheri},
+           familyi={A\bibinitperiod},
+           given={Armin},
+           giveni={A\bibinitperiod}}}%
+        {{hash=b204bda70e81fdd8bbf23e7aae99275c}{%
+           family={Fathidoost},
+           familyi={F\bibinitperiod},
+           given={Mozhdeh},
+           giveni={M\bibinitperiod}}}%
+        {{hash=1b1a3a3a69a196531b751616bd8664c5}{%
+           family={Glavas},
+           familyi={G\bibinitperiod},
+           given={Vedran},
+           giveni={V\bibinitperiod}}}%
+        {{hash=99e1753964dc2a5cdd3f6c5c43339c83}{%
+           family={Rezaei},
+           familyi={R\bibinitperiod},
+           given={Shahed},
+           giveni={S\bibinitperiod}}}%
+        {{hash=ae6a2bb38d3adf32f414fb98beb50eaa}{%
+           family={Xu},
+           familyi={X\bibinitperiod},
+           given={Bai-Xiang},
+           giveni={B\bibinithyphendelim X\bibinitperiod}}}%
+      }
+      \strng{namehash}{3039eadf2e90417136b67ec5116bc628}
+      \strng{fullhash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{fullhashraw}{c83910ef643203b36be75b3627fb75e4}
+      \strng{bibnamehash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authorbibnamehash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authornamehash}{3039eadf2e90417136b67ec5116bc628}
+      \strng{authorfullhash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authorfullhashraw}{c83910ef643203b36be75b3627fb75e4}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{The battery cell performance is determined by electro-chemo-mechanical mechanisms on different length scales. Though there exist multi-field multiscale simulation frameworks, the high computation cost prevents their wide application. It is even more challenging when it comes to all-solid-state batteries where the influence of the interface damage and delamination between the solid electrolyte and cathode active material plays a critical role in cell performance and degradation. In this contribution, we propose a novel multiscale strategy based on large datasets and machine learning. Thereby a large dataset of simulations is obtained at the microscale for electrolyte-active material two-phase representative elements by employing a coupled chemo-mechanical model with varying materials and state variables. The data is then used to train a surrogate model based on a neural network. The surrogate model is capable of predicting the microscopic behavior with respect to the theories and thermodynamics law but much more efficient to access soon after it is trained sufficiently well. The surrogate model is then employed in the multi-field two-level framework to predict the cell performance, particularly the impact of interface damage on the capacity loss. By comparing it with the original multi-field two-level simulation results, the data-driven multiscale strategy is shown to be promising with high accuracy and efficiency, demonstrating the large potential of data-driven multiscale simulations for lithium-ion battery design.}
+      \field{issn}{0927-0256}
+      \field{journaltitle}{Computational Materials Science}
+      \field{title}{Data-driven multiscale simulation of solid-state batteries via machine learning}
+      \field{volume}{226}
+      \field{year}{2023}
+      \field{pages}{112186}
+      \range{pages}{1}
+      \verb{doi}
+      \verb https://doi.org/10.1016/j.commatsci.2023.112186
+      \endverb
+      \verb{urlraw}
+      \verb https://www.sciencedirect.com/science/article/pii/S0927025623001805
+      \endverb
+      \verb{url}
+      \verb https://www.sciencedirect.com/science/article/pii/S0927025623001805
+      \endverb
+      \keyw{Solid-state batteries,Machine learning,Multiscale,Damage,Delamination}
+    \endentry
     \entry{test_ref}{article}{}{}
       \name{author}{1}{}{%
         {{hash=5bfd354b6d996071141e0f198c745d70}{%
@@ -35,8 +94,8 @@
       \strng{authornamehash}{5bfd354b6d996071141e0f198c745d70}
       \strng{authorfullhash}{5bfd354b6d996071141e0f198c745d70}
       \strng{authorfullhashraw}{5bfd354b6d996071141e0f198c745d70}
-      \field{sortinit}{1}
-      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
       \field{journaltitle}{Chalmers}
