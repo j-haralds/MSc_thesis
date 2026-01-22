@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  22 JAN 2026 13:00
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  22 JAN 2026 13:19
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1700,18 +1700,11 @@ File: ursfs.fd 1998/03/24 rsfs font definition file (jk)
 )
 
 [2{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-ts1.enc}]
-Underfull \hbox (badness 10000) in paragraph at lines 63--68
+Underfull \hbox (badness 10000) in paragraph at lines 64--69
 
  []
 
 
-
-
-Package fancyhdr Warning: \headheight is too small (12.0pt): 
-(fancyhdr)                Make it at least 14.49998pt, for example:
-(fancyhdr)                \setlength{\headheight}{14.49998pt}.
-(fancyhdr)                You might also make \topmargin smaller:
-(fancyhdr)                \addtolength{\topmargin}{-2.49998pt}.
 
 [3] (out/main.acr
 
@@ -1725,7 +1718,7 @@ Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is usel
 
 
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
-(fancyhdr)                Please consider using the `twoside' option on input line 85.
+(fancyhdr)                Please consider using the `twoside' option on input line 86.
 
 [5
 
@@ -1738,7 +1731,7 @@ Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is usel
 
 
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
-(fancyhdr)                Please consider using the `twoside' option on input line 87.
+(fancyhdr)                Please consider using the `twoside' option on input line 88.
 
 [6
 
@@ -1835,7 +1828,7 @@ Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is usel
 [8
 
 ]
-runsystem(latexminted cleantemp  --timestamp 20260122130009 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
+runsystem(latexminted cleantemp  --timestamp 20260122131931 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
 
  (out/main.aux)
  ***********
@@ -1849,15 +1842,15 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 71892 strings out of 473190
- 1662730 string characters out of 5715800
- 2907573 words of memory out of 5000000
- 93985 multiletter control sequences out of 15000+600000
+ 72072 strings out of 473190
+ 1665238 string characters out of 5715800
+ 2908887 words of memory out of 5000000
+ 94165 multiletter control sequences out of 15000+600000
  624790 words of font info for 84 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  100i,12n,120p,2495b,1894s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmcsc10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmri12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmtt12.pfb>
-Output written on out/main.pdf (14 pages, 472167 bytes).
+Output written on out/main.pdf (14 pages, 472117 bytes).
 PDF statistics:
  309 PDF objects out of 1000 (max. 8388607)
  230 compressed objects within 3 object streams

@@ -1,23 +1,55 @@
-\newcommand{\dx}{\,\mathrm{d}x}
-\newcommand{\figA}{\textcolor{myblue}{a}}
-\newcommand{\figB}{\textcolor{myblue}{b}}
-\newcommand{\sajt}{\textcolor{myblue}{\texttt{\textbackslash\ ref\{\}}}}
-\newcommand{\LIP}{\mathrm{Li}^+}
 
-\newcommand{\eref}[1]{\textsc{Eq}.~\ref{#1}}
-\newcommand{\tref}[1]{\textsc{Tab}.~\ref{#1}}
-%\newcommand{\fref}[1][2]{Fig.~(\ref{#1}#2)}
-\newcommand{\fref}[2][]{\textsc{Fig}.~\ref{#2}#1}
-\newcommand{\subfref}[2]{\textsc{Fig}.~(\ref{#1}\textcolor{myblue}{#2})}
-\newcommand{\argmin}[1]{\underset{#1}{\arg\!\min}}
+% ----------- COMMANDS -----------------
+
+% Math
+\newcommand{\dx}{\,\mathrm{d}x}
 \newcommand{\diag}[1]{\mathrm{diag}\!\left\{#1\right\}}
 \newcommand{\var}[1]{\mathbb{VAR}\!\left\{#1\right\}}
 \newcommand{\cov}[1]{\mathbb{COV}\!\left\{#1\right\}}
 \newcommand{\avg}[1]{\left\langle\ #1\right\rangle}
+\newcommand{\argmin}[1]{\underset{#1}{\arg\!\min}}
 
 
+% Referring
+\newcommand{\figA}{\textcolor{myblue}{a}}
+\newcommand{\figB}{\textcolor{myblue}{b}}
+\newcommand{\sajt}{\textcolor{myblue}{\texttt{\textbackslash\ ref\{\}}}}
+\newcommand{\eref}[1]{\textsc{Eq}.~\ref{#1}}
+\newcommand{\tref}[1]{\textsc{Tab}.~\ref{#1}}
+\newcommand{\fref}[2][]{\textsc{Fig}.~\ref{#2}#1}
+\newcommand{\subfref}[2]{\textsc{Fig}.~(\ref{#1}\textcolor{myblue}{#2})}
+
+% Other
+\newcommand{\LIP}{\mathrm{Li}^+}
+
+
+% ----------- GLOSSARIES -----------------
+
+% NN related
 \newacronym{rmse}{RMSE}{root-mean-squared error}
 \newacronym{mse}{MSE}{mean squared error}
+\newacronym{nn}{NN}{neural network}
+\newacronym{pinn}{PINN}{physics-informed neural network}
+\newacronym{ml}{ML}{machine learning}
+\newacronym{relu}{ReLU}{rectified linear unit}
+
+
+% Batteries
+\newacronym{ev}{EV}{electric vehicle}
+\newacronym{li}{Li}{lithium}
+\newacronym[plural={LiBs},longplural={lithium-ion batteries}]{lib}{LiB}{lithium-ion battery}
+
+
+  % PDEs
+\newacronym{fe}{FE}{finite element}
+\newacronym{pde}{PDE}{partial differential equation}
+\newacronym{ode}{ODE}{ordinary differential equation}
+\newacronym{de}{DE}{differential equation}
+\newacronym{bc}{BC}{boundary condition}
+\newacronym{ic}{IC}{initial condition}
+
+
+% Other 
 \newacronym{mcmc}{MCMC}{Markov chain Monte Carlo}
 \newacronym{gp}{GP}{Gaußian process}
 \newacronym{ols}{OLS}{ordinary least squares}
@@ -25,15 +57,4 @@
 \newacronym{go}{GO}{global optimizers}
 \newacronym{bo}{BO}{Bayesian optimization}
 \newacronym{lcb}{LCB}{lower confidence bound}
-\newacronym{nn}{NN}{neural network}
 \newacronym{ci}{CI}{credible interval}
-\newacronym{pinn}{PINN}{physics-informed neural network}
-\newacronym{ev}{EV}{electric vehicle}
-\newacronym{li}{Li}{lithium}
-\newacronym{fe}{FE}{finite element}
-\newacronym{ml}{ML}{machine learning}
-\newacronym[
-  plural={LiBs},
-  longplural={lithium-ion batteries}
-]{lib}{LiB}{lithium-ion battery}
-
