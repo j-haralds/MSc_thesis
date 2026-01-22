@@ -12,6 +12,10 @@
 \glossentry{lib}{\glossaryentrynumbers{\relax 
 		\setentrycounter[]{page}\glsnumberformat{1}}}\glsgroupskip
 \glsgroupheading{N}\relax \glsresetentrylist %
+\glossentry{nca}{\glossaryentrynumbers{\relax 
+		\setentrycounter[]{page}\glsnumberformat{2}}}%
+\glossentry{nmc}{\glossaryentrynumbers{\relax 
+		\setentrycounter[]{page}\glsnumberformat{2}}}%
 \glossentry{nn}{\glossaryentrynumbers{\relax 
 		\setentrycounter[]{page}\glsnumberformat{1\delimN 2}}}\glsgroupskip
 \glsgroupheading{P}\relax \glsresetentrylist %
