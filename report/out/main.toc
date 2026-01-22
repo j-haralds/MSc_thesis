@@ -3,10 +3,11 @@
 \contentsline {chapter}{\numberline {1}Introduction}{1}{chapter.1}%
 \contentsline {section}{\numberline {1.1}Background}{1}{section.1.1}%
 \contentsline {section}{\numberline {1.2}Aim and Scope}{1}{section.1.2}%
-\contentsline {chapter}{\numberline {2}Theory}{3}{chapter.2}%
-\contentsline {section}{\numberline {2.1}Overview of Batteries}{3}{section.2.1}%
-\contentsline {section}{\numberline {2.2}Neural Networks}{3}{section.2.2}%
-\contentsline {chapter}{\numberline {3}Method}{5}{chapter.3}%
-\contentsline {chapter}{\numberline {4}Results and Discussion}{6}{chapter.4}%
-\contentsline {chapter}{\numberline {5}Conclusion}{7}{chapter.5}%
-\contentsline {chapter}{\numberline {A}Appendix A: Extra Stuff}{9}{appendix.A}%
+\contentsline {chapter}{\numberline {2}Theory}{2}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Overview of Batteries}{2}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Neural Networks}{2}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Physics Informed Neural Networks}{2}{section.2.3}%
+\contentsline {chapter}{\numberline {3}Method}{4}{chapter.3}%
+\contentsline {chapter}{\numberline {4}Results and Discussion}{5}{chapter.4}%
+\contentsline {chapter}{\numberline {5}Conclusion}{6}{chapter.5}%
+\contentsline {chapter}{\numberline {A}Appendix A: Extra Stuff}{8}{appendix.A}%

@@ -78,32 +78,6 @@
       \endverb
       \keyw{Solid-state batteries,Machine learning,Multiscale,Damage,Delamination}
     \endentry
-    \entry{test_ref}{article}{}{}
-      \name{author}{1}{}{%
-        {{hash=5bfd354b6d996071141e0f198c745d70}{%
-           family={Haraldsson},
-           familyi={H\bibinitperiod},
-           given={Jonatan},
-           giveni={J\bibinitperiod}}}%
-      }
-      \strng{namehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{fullhash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{fullhashraw}{5bfd354b6d996071141e0f198c745d70}
-      \strng{bibnamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorbibnamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authornamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorfullhash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorfullhashraw}{5bfd354b6d996071141e0f198c745d70}
-      \field{sortinit}{2}
-      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
-      \field{labelnamesource}{author}
-      \field{labeltitlesource}{title}
-      \field{journaltitle}{Chalmers}
-      \field{number}{1}
-      \field{title}{Msc Thesis}
-      \field{volume}{1}
-      \field{year}{2026}
-    \endentry
   \enddatalist
 \endrefsection
 \endinput

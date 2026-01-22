@@ -16,14 +16,18 @@
 \usepackage[parfill]{parskip}
 \parskip=12pt
 \usepackage{datetime2}
-\usepackage{xcolor}
-\definecolor{myblue}{RGB}{0 ,0,197.5}
+\usepackage[dvipsnames]{xcolor}
+%\definecolor{myblue}{RGB}{0 ,0,197.5}
 \usepackage{hyperref}
+\definecolor{myblue}{rgb}{0.,1.,1.}
+
 \hypersetup{
-    colorlinks,
-    citecolor={myblue!50!black},
-    urlcolor={myblue!80!black}
+    colorlinks=true,
+    linkcolor=myblue,
+    citecolor=myblue!50!black,
+    urlcolor=myblue!80!black
 }
+
 \usepackage{fontawesome}
 \usepackage[output-decimal-marker={.}]{siunitx}
 \DeclareSIUnit\parsec{pc}
