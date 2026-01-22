@@ -1,15 +1,18 @@
 [0] Config.pm:308> INFO - This is Biber 2.20
 [0] Config.pm:311> INFO - Logfile is 'out/main.blg'
-[49] biber-darwin:340> INFO - === Thu Jan 22, 2026, 18:29:05
-[64] Biber.pm:420> INFO - Reading 'out/main.bcf'
-[111] Biber.pm:994> INFO - Found 1 citekeys in bib section 0
-[119] Biber.pm:4463> INFO - Processing section 0
-[125] Biber.pm:4654> INFO - Looking for bibtex file 'parts/#references.bib' for section 0
-[130] bibtex.pm:1713> INFO - LaTeX decoding ...
-[133] bibtex.pm:1519> INFO - Found BibTeX data source 'parts/#references.bib'
-[167] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
-[167] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
-[167] Biber.pm:4283> INFO - Sorting list 'none/global//global/global/global' of type 'entry' with template 'none' and locale 'en-US'
-[167] Biber.pm:4289> INFO - No sort tailoring available for locale 'en-US'
-[173] bbl.pm:676> INFO - Writing 'out/main.bbl' with encoding 'UTF-8'
-[174] bbl.pm:779> INFO - Output to out/main.bbl
+[42] biber-darwin:340> INFO - === Thu Jan 22, 2026, 18:41:32
+[55] Biber.pm:420> INFO - Reading 'out/main.bcf'
+[100] Biber.pm:994> INFO - Found 2 citekeys in bib section 0
+[108] Biber.pm:4463> INFO - Processing section 0
+[116] Biber.pm:4654> INFO - Looking for bibtex file 'parts/#references.bib' for section 0
+[127] bibtex.pm:1713> INFO - LaTeX decoding ...
+[135] bibtex.pm:1519> INFO - Found BibTeX data source 'parts/#references.bib'
+[243] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
+[243] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
+[243] Biber.pm:4283> INFO - Sorting list 'none/global//global/global/global' of type 'entry' with template 'none' and locale 'en-US'
+[243] Biber.pm:4289> INFO - No sort tailoring available for locale 'en-US'
+[252] bbl.pm:676> INFO - Writing 'out/main.bbl' with encoding 'UTF-8'
+[254] bbl.pm:779> INFO - Output to out/main.bbl
+[254] Biber.pm:131> WARN - article entry 'Luo_et' (parts/#references.bib): Invalid format '2025/07/24' of date field 'date' - ignoring
+[254] Biber.pm:131> WARN - ISBN '1573-7462' in entry 'Luo_et' is invalid - run biber with '--validate_datamodel' for details.
+[254] Biber.pm:133> INFO - WARNINGS: 2

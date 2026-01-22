@@ -78,6 +78,81 @@
       \endverb
       \keyw{Solid-state batteries,Machine learning,Multiscale,Damage,Delamination}
     \endentry
+    \entry{Luo_et}{article}{}{}
+      \name{author}{8}{}{%
+        {{hash=f4a7cdc131d000a1935b3e6dbef21d5a}{%
+           family={Luo},
+           familyi={L\bibinitperiod},
+           given={Kuang},
+           giveni={K\bibinitperiod}}}%
+        {{hash=b6a71ced3ab2abdbe894043580e21444}{%
+           family={Zhao},
+           familyi={Z\bibinitperiod},
+           given={Jingshang},
+           giveni={J\bibinitperiod}}}%
+        {{hash=d30ca99445095a9235e5453d7e3ec67d}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Yingping},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=1208541730d5f66932fac14b71e1a73e}{%
+           family={Li},
+           familyi={L\bibinitperiod},
+           given={Jiayao},
+           giveni={J\bibinitperiod}}}%
+        {{hash=bbf3bb068ab21387252c55c0101499a4}{%
+           family={Wen},
+           familyi={W\bibinitperiod},
+           given={Junjie},
+           giveni={J\bibinitperiod}}}%
+        {{hash=387672cb8c8a1186c40e225d5390e399}{%
+           family={Liang},
+           familyi={L\bibinitperiod},
+           given={Jiong},
+           giveni={J\bibinitperiod}}}%
+        {{hash=5ceb14f6933663cac65ce86a7fdab1e9}{%
+           family={Soekmadji},
+           familyi={S\bibinitperiod},
+           given={Henry},
+           giveni={H\bibinitperiod}}}%
+        {{hash=25d544230e4f263430ab6c3f7c0f95d2}{%
+           family={Liao},
+           familyi={L\bibinitperiod},
+           given={Shaolin},
+           giveni={S\bibinitperiod}}}%
+      }
+      \strng{namehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{fullhash}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{fullhashraw}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{bibnamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authorbibnamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authornamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authorfullhash}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{authorfullhashraw}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{As AI for Science continues to grow, Physics-informed neural networks (PINNs) have emerged as a transformative approach within the realm of scientific computing and deep learning, offering a robust and flexible framework for solving partial differential equations (PDEs) and other complex physical systems. By embedding physical laws directly into the architecture of neural networks, PINNs enable the integration of domain-specific knowledge, ensuring that the models adhere to known physics while fitting available data. In this paper, we provide a comprehensive overview of the state-of-the-art advancements and applications of PINNs across a broad spectrum of PDE problems. In particular, focus is given on the PINN architectures, data resampling methods for PINN, loss and activation functions, feature embedding methods and so on. What's more, the potential future directions and the anticipated evolution of PINNs are also discussed. We aim to provide valuable insights into PINNs for PDE problems, with hope to encourage further exploration and research in this promising area.}
+      \field{isbn}{1573-7462}
+      \field{journaltitle}{Artificial Intelligence Review}
+      \field{number}{10}
+      \field{title}{Physics-informed neural networks for {PDE} problems: a comprehensive review}
+      \field{volume}{58}
+      \field{year}{2025}
+      \field{pages}{323}
+      \range{pages}{1}
+      \verb{doi}
+      \verb 10.1007/s10462-025-11322-7
+      \endverb
+      \verb{urlraw}
+      \verb https://doi.org/10.1007/s10462-025-11322-7
+      \endverb
+      \verb{url}
+      \verb https://doi.org/10.1007/s10462-025-11322-7
+      \endverb
+      \warn{\item article entry 'Luo_et' (parts/#references.bib): Invalid format '2025/07/24' of date field 'date' - ignoring}
+    \endentry
   \enddatalist
 \endrefsection
 \endinput

@@ -5,24 +5,23 @@
         \item Anode: Primarily graphite. Light-weight, high conductivity
         \item Cathode: \gls{li}-oxides commonly \gls{nmc} or \gls{nca}. 
         \item Electrolyte: Up to this point mainly liquid electrolytes, however, solid-state electrolyte are in development. 
-        \item Lithium: Why use \gls{li} in the first place? (Fun fact: \gls{li} was first discovered on Utö in the Stockholm archipelago) \gls{li}, the third lightest element on earth, has the among the lowest density out of all solids and it has a low ionization energy. With its low mass it uses less energy as it diffuses through the cell.  
+        \item Lithium: Why use \gls{li} in the first place? (Fun fact: \gls{li} was first discovered on Utö in the Stockholm archipelago) \gls{li}, the third lightest element, has the lowest density out of all solids and it also has a low ionization energy. With its low mass it uses less energy as it diffuses through the cell.  
     \end{itemize}
     \item The general working principle: charging and discharging. Potential negative effects that need to be considered. Heat development, or other factors affecting performance of the cell. Intercalation of $\LIP$ 
-    \item What equations are governing? (Thermodynamics, Mechanics, electric, chemical) 
+    \item What equations are governing? (Thermodynamics, Mechanics, electric, chemical). The \gls{dfn} seems to be the gold-standard when it comes to modeling (\href{https://docs.pybamm.org/en/stable/source/examples/notebooks/models/DFN.html}{DFN}). 
     \item The different scales: cell vs.\ module vs.\ pack. What can be inferred from the different scales? How does microscopic properties influence macroscopic ones and vice versa. 
-    \item 
 \end{itemize}
 
 \section{Neural Networks} 
 
 \begin{itemize}
     \item General overview of neural networks. Explain neurons, weights, bias, loss function, different types of NNs. RNN?? 
-    \item Motivate the use of \glspl{nn} w/ the Universal Approximation Theorem, i.e., the fact that a single layer perceptron \gls{nn} can achieve universallity. Put differently, any continuous function can be modelled to the desired degree of accuracy with a \gls{nn} (\href{https://en.wikipedia.org/wiki/Universal_approximation_theorem}{wiki-link}). 
+    \item Motivate the use of \glspl{nn} w/ the Universal Approximation Theorem, i.e., the fact that a single layer perceptron \gls{nn} can achieve universallity. Put differently, any continuous function can be modelled to the desired degree of accuracy with a \gls{nn} ({\href{https://en.wikipedia.org/wiki/Universal_approximation_theorem}{wiki-link}}). 
 \end{itemize}
 
 \section{Physics Informed Neural Networks}
 \begin{itemize}
-    \item Generally describe the setup we're dealing with \eref{eq:pde} to \ref{eq:bound}. \eref{eq:pde} describes the \gls{pde} residual, \eref{eq:init} the \gls{ic} and \eref{eq:bound} the \gls{bc}.
+    \item Generally describe the setup we're dealing with \eref{eq:pde} to \ref{eq:bound}. \eref{eq:pde} describes the \gls{pde} residual, \eref{eq:init} the \gls{ic} and \eref{eq:bound} the \gls{bc} \cite{Luo_et}.
     \item How to make NNs PINNs? Regularization term in the loss function that penalizes NN solutions that aren't physically viable. 
 \end{itemize}
 
