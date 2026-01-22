@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  21 JAN 2026 11:14
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  22 JAN 2026 10:25
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1765,20 +1765,29 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 [2]
 Chapter 2.
 (./parts/ch_theory.tex
-<figs/NN.pdf, id=158, 810.02625pt x 405.515pt>
+<figs/NN.pdf, id=161, 810.02625pt x 405.515pt>
 File: figs/NN.pdf Graphic file (type pdf)
 <use figs/NN.pdf>
-Package pdftex.def Info: figs/NN.pdf  used on input line 18.
+Package pdftex.def Info: figs/NN.pdf  used on input line 20.
 (pdftex.def)             Requested size: 327.7763pt x 164.09035pt.
-)
+
 
 
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
-(fancyhdr)                Please consider using the `twoside' option on input line 53.
+(fancyhdr)                Please consider using the `twoside' option on input line 24.
 
 [3
 
-{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-rm.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathsy.enc} <./figs/NN.pdf>]
+])
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 14.49998pt, for example:
+(fancyhdr)                \setlength{\headheight}{14.49998pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-2.49998pt}.
+
+[4{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-rm.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathsy.enc} <./figs/NN.pdf>]
 Chapter 3.
 (./parts/ch_method.tex)
 
@@ -1786,7 +1795,7 @@ Chapter 3.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 56.
 
-[4
+[5
 
 ]
 Chapter 4.
@@ -1796,7 +1805,7 @@ Chapter 4.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 60.
 
-[5
+[6
 
 ]
 Chapter 5.
@@ -1806,7 +1815,7 @@ Chapter 5.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 64.
 
-[6
+[7
 
 ]
 LaTeX Font Info:    Trying to load font information for T1+lmtt on input line 67.
@@ -1818,7 +1827,7 @@ File: t1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 69.
 
-[7
+[8
 
 ] (./parts/#appendix.tex
 Appendix A.
@@ -1832,10 +1841,10 @@ Package pdftex.def Info: figs/EN_Avancez_CH_black-eps-converted-to.pdf  used on 
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 76.
 
-[8
+[9
 
 ]
-runsystem(latexminted cleantemp  --timestamp 20260121111424 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
+runsystem(latexminted cleantemp  --timestamp 20260122102525 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
 
  (out/main.aux)
  ***********
@@ -1849,18 +1858,18 @@ Package logreq Info: Writing requests to 'main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 71852 strings out of 473190
- 1662179 string characters out of 5715800
- 2905256 words of memory out of 5000000
- 93948 multiletter control sequences out of 15000+600000
+ 71883 strings out of 473190
+ 1662583 string characters out of 5715800
+ 2905461 words of memory out of 5000000
+ 93978 multiletter control sequences out of 15000+600000
  624790 words of font info for 84 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  100i,11n,120p,2495b,1894s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmcsc10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmri12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmtt12.pfb>
-Output written on out/main.pdf (14 pages, 455503 bytes).
+Output written on out/main.pdf (15 pages, 456640 bytes).
 PDF statistics:
- 284 PDF objects out of 1000 (max. 8388607)
- 209 compressed objects within 3 object streams
- 35 named destinations out of 1000 (max. 500000)
+ 290 PDF objects out of 1000 (max. 8388607)
+ 214 compressed objects within 3 object streams
+ 36 named destinations out of 1000 (max. 500000)
  255 words of extra memory for PDF output out of 10000 (max. 10000000)
 
