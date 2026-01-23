@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  22 JAN 2026 18:41
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2026.1.19)  23 JAN 2026 13:14
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1662,7 +1662,7 @@ Package epstopdf Info: Source file: <figs/EN_Avancez_CH_black.eps>
 (epstopdf)             Command: <repstopdf --outfile=figs/EN_Avancez_CH_black-eps-converted-to.pdf figs/EN_Avancez_CH_black.eps>
 (epstopdf)             \includegraphics on input line 17.
 Package epstopdf Info: Output file is already uptodate.
-<figs/EN_Avancez_CH_black-eps-converted-to.pdf, id=91, 398.48875pt x 470.75874pt>
+<figs/EN_Avancez_CH_black-eps-converted-to.pdf, id=95, 398.48875pt x 470.75874pt>
 File: figs/EN_Avancez_CH_black-eps-converted-to.pdf Graphic file (type pdf)
 <use figs/EN_Avancez_CH_black-eps-converted-to.pdf>
 Package pdftex.def Info: figs/EN_Avancez_CH_black-eps-converted-to.pdf  used on input line 17.
@@ -1762,8 +1762,8 @@ Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is usel
 
 [2
 
-{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-rm.enc}]
-<figs/NN.pdf, id=181, 810.02625pt x 405.515pt>
+{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-rm.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathsy.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc}]
+<figs/NN.pdf, id=172, 810.02625pt x 405.515pt>
 File: figs/NN.pdf Graphic file (type pdf)
 <use figs/NN.pdf>
 Package pdftex.def Info: figs/NN.pdf  used on input line 47.
@@ -1777,7 +1777,16 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-2.49998pt}.
 
-[3{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc}{/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/lm/lm-mathsy.enc} <./figs/NN.pdf>]
+[3 <./figs/NN.pdf>]
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 14.49998pt, for example:
+(fancyhdr)                \setlength{\headheight}{14.49998pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-2.49998pt}.
+
+[4]
 Chapter 3.
 (./parts/ch_method.tex)
 
@@ -1785,7 +1794,7 @@ Chapter 3.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 56.
 
-[4
+[5
 
 ]
 Chapter 4.
@@ -1795,7 +1804,7 @@ Chapter 4.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 60.
 
-[5
+[6
 
 ]
 Chapter 5.
@@ -1805,7 +1814,7 @@ Chapter 5.
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 64.
 
-[6
+[7
 
 ]
 LaTeX Font Info:    Trying to load font information for T1+lmtt on input line 67.
@@ -1817,7 +1826,7 @@ File: t1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 69.
 
-[7
+[8
 
 ] (./parts/#appendix.tex
 Appendix A.
@@ -1831,10 +1840,10 @@ Package pdftex.def Info: figs/EN_Avancez_CH_black-eps-converted-to.pdf  used on 
 Package fancyhdr Warning: \fancyfoot's `E' option without twoside option is useless.
 (fancyhdr)                Please consider using the `twoside' option on input line 76.
 
-[8
+[9
 
 ]
-runsystem(latexminted cleantemp  --timestamp 20260122184136 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
+runsystem(latexminted cleantemp  --timestamp 20260123131430 FAD58DE7366495DB4650CFEFAC2FCD61)...executed safely (allowed).
 
  (out/main.aux)
  ***********
@@ -1842,24 +1851,24 @@ LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: 43E58F8A5B1D0FE73B8A38611E75E9A7;1551.
+(rerunfilecheck)             Checksum: 7652B1B231018F6CA72E242D8BECD083;1800.
 Package logreq Info: Writing requests to 'main.run.xml'.
 \openout1 = `main.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 72166 strings out of 473190
- 1666658 string characters out of 5715800
- 2910681 words of memory out of 5000000
- 94258 multiletter control sequences out of 15000+600000
- 624790 words of font info for 84 fonts, out of 8000000 for 9000
+ 72239 strings out of 473190
+ 1667778 string characters out of 5715800
+ 2913286 words of memory out of 5000000
+ 94328 multiletter control sequences out of 15000+600000
+ 627788 words of font info for 85 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  100i,11n,120p,2495b,1894s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmcsc10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmri12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmtt12.pfb>
-Output written on out/main.pdf (14 pages, 476269 bytes).
+</usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmcsc10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmi8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmr8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmri12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmsy8.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmtt12.pfb>
+Output written on out/main.pdf (15 pages, 493647 bytes).
 PDF statistics:
- 325 PDF objects out of 1000 (max. 8388607)
- 246 compressed objects within 3 object streams
- 39 named destinations out of 1000 (max. 500000)
- 263 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 329 PDF objects out of 1000 (max. 8388607)
+ 247 compressed objects within 3 object streams
+ 42 named destinations out of 1000 (max. 500000)
+ 271 words of extra memory for PDF output out of 10000 (max. 10000000)
 

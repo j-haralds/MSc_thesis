@@ -7,7 +7,7 @@
         \item Electrolyte: Up to this point mainly liquid electrolytes, however, solid-state electrolyte are in development. 
         \item Lithium: Why use \gls{li} in the first place? (Fun fact: \gls{li} was first discovered on Utö in the Stockholm archipelago) \gls{li}, the third lightest element, has the lowest density out of all solids and it also has a low ionization energy. With its low mass it uses less energy as it diffuses through the cell.  
     \end{itemize}
-    \item The general working principle: charging and discharging. Potential negative effects that need to be considered. Heat development, or other factors affecting performance of the cell. Intercalation of $\LIP$ 
+    \item The general working principle: charging and discharging. Potential negative effects that need to be considered. Heat development, or other factors affecting performance of the cell. Intercalation of $\LIP$ $\mathrm{Li}\rightarrow\LIP+e^-$
     \item What equations are governing? (Thermodynamics, Mechanics, electric, chemical). The \gls{dfn} seems to be the gold-standard when it comes to modeling (\href{https://docs.pybamm.org/en/stable/source/examples/notebooks/models/DFN.html}{DFN}). 
     \item The different scales: cell vs.\ module vs.\ pack. What can be inferred from the different scales? How does microscopic properties influence macroscopic ones and vice versa. 
 \end{itemize}
@@ -49,5 +49,8 @@ u(\bm{x},t)
     \label{NeuNet}
 \end{figure}
 
+\subsection{Pipeline for the Training Procedure}
+Following the suggested pipeline from Wang \etal, the initial step is to ensure inputs and outputs are within the same range through non-dimensionalization of the \gls{pde} system \cite{Expert}. Unevenly distributed values might: negatively influence the training process leading to unstable convergence, prevent the model from finding important correlations, it could also prevent vanishing gradient phenomenon through a more balanced initialization scheme. In practice, non-dimensionalization is done by reducing the system to a dimensionless version by first choosing some fundamental units or characteristics, and then scaling the remaining parameters such that all terms are dimensionless and of first order. \textcolor{cyan}{An example of non-dimensionalization for Navier-Stoke} $$\frac{\partial\bm{u}}{\partial t} + (\bm{u}\cdot\vec{\nabla})\bm{u}=-\frac{1}{\rho}\vec{\nabla}p+\nu\nabla^2\bm{u}\longmapsto
+\frac{\partial\bm{u}^*}{\partial t^*} + (\bm{u}^*\cdot\vec{\nabla}^*)\bm{u}^*=-\vec{\nabla}^*p^*+\frac{1}{\mathrm{Re}}{\nabla^*}^2\bm{u}^*,$$ where $\bm{u}^*=\bm{u}/U$, $\vec{\nabla}^*=L\vec{\nabla}$, $t^*=tU/L$, and $p^*=p/(\rho U^2)$
 
-Loss function, such as \gls{rmse}.
+The subsequent step is to design the \gls{nn} architecture that could represent the \gls{pde}. Wang \etal\ recommends using either \gls{ffe} or \gls{rwf} to accelerate the convergence \cite{Expert}. Lastly, the training procedure should contain loss balancing, casual training and/or curriculum training. 

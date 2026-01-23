@@ -19,31 +19,139 @@
 
 \refsection{0}
   \datalist[entry]{none/global//global/global/global}
-    \entry{test_ref}{article}{}{}
-      \name{author}{1}{}{%
-        {{hash=5bfd354b6d996071141e0f198c745d70}{%
-           family={Haraldsson},
-           familyi={H\bibinitperiod},
-           given={Jonatan},
-           giveni={J\bibinitperiod}}}%
+    \entry{Asheri}{article}{}{}
+      \name{author}{5}{}{%
+        {{hash=393decc535a0fe8af9d37c581d77cdf5}{%
+           family={Asheri},
+           familyi={A\bibinitperiod},
+           given={Armin},
+           giveni={A\bibinitperiod}}}%
+        {{hash=b204bda70e81fdd8bbf23e7aae99275c}{%
+           family={Fathidoost},
+           familyi={F\bibinitperiod},
+           given={Mozhdeh},
+           giveni={M\bibinitperiod}}}%
+        {{hash=1b1a3a3a69a196531b751616bd8664c5}{%
+           family={Glavas},
+           familyi={G\bibinitperiod},
+           given={Vedran},
+           giveni={V\bibinitperiod}}}%
+        {{hash=99e1753964dc2a5cdd3f6c5c43339c83}{%
+           family={Rezaei},
+           familyi={R\bibinitperiod},
+           given={Shahed},
+           giveni={S\bibinitperiod}}}%
+        {{hash=ae6a2bb38d3adf32f414fb98beb50eaa}{%
+           family={Xu},
+           familyi={X\bibinitperiod},
+           given={Bai-Xiang},
+           giveni={B\bibinithyphendelim X\bibinitperiod}}}%
       }
-      \strng{namehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{fullhash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{fullhashraw}{5bfd354b6d996071141e0f198c745d70}
-      \strng{bibnamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorbibnamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authornamehash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorfullhash}{5bfd354b6d996071141e0f198c745d70}
-      \strng{authorfullhashraw}{5bfd354b6d996071141e0f198c745d70}
+      \strng{namehash}{3039eadf2e90417136b67ec5116bc628}
+      \strng{fullhash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{fullhashraw}{c83910ef643203b36be75b3627fb75e4}
+      \strng{bibnamehash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authorbibnamehash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authornamehash}{3039eadf2e90417136b67ec5116bc628}
+      \strng{authorfullhash}{c83910ef643203b36be75b3627fb75e4}
+      \strng{authorfullhashraw}{c83910ef643203b36be75b3627fb75e4}
       \field{sortinit}{1}
       \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
       \field{labelnamesource}{author}
       \field{labeltitlesource}{title}
-      \field{journaltitle}{Chalmers}
-      \field{number}{1}
-      \field{title}{Msc Thesis}
-      \field{volume}{1}
-      \field{year}{2026}
+      \field{abstract}{The battery cell performance is determined by electro-chemo-mechanical mechanisms on different length scales. Though there exist multi-field multiscale simulation frameworks, the high computation cost prevents their wide application. It is even more challenging when it comes to all-solid-state batteries where the influence of the interface damage and delamination between the solid electrolyte and cathode active material plays a critical role in cell performance and degradation. In this contribution, we propose a novel multiscale strategy based on large datasets and machine learning. Thereby a large dataset of simulations is obtained at the microscale for electrolyte-active material two-phase representative elements by employing a coupled chemo-mechanical model with varying materials and state variables. The data is then used to train a surrogate model based on a neural network. The surrogate model is capable of predicting the microscopic behavior with respect to the theories and thermodynamics law but much more efficient to access soon after it is trained sufficiently well. The surrogate model is then employed in the multi-field two-level framework to predict the cell performance, particularly the impact of interface damage on the capacity loss. By comparing it with the original multi-field two-level simulation results, the data-driven multiscale strategy is shown to be promising with high accuracy and efficiency, demonstrating the large potential of data-driven multiscale simulations for lithium-ion battery design.}
+      \field{issn}{0927-0256}
+      \field{journaltitle}{Computational Materials Science}
+      \field{title}{Data-driven multiscale simulation of solid-state batteries via machine learning}
+      \field{volume}{226}
+      \field{year}{2023}
+      \field{pages}{112186}
+      \range{pages}{1}
+      \verb{doi}
+      \verb https://doi.org/10.1016/j.commatsci.2023.112186
+      \endverb
+      \verb{urlraw}
+      \verb https://www.sciencedirect.com/science/article/pii/S0927025623001805
+      \endverb
+      \verb{url}
+      \verb https://www.sciencedirect.com/science/article/pii/S0927025623001805
+      \endverb
+      \keyw{Solid-state batteries,Machine learning,Multiscale,Damage,Delamination}
+    \endentry
+    \entry{Luo_et}{article}{}{}
+      \name{author}{8}{}{%
+        {{hash=f4a7cdc131d000a1935b3e6dbef21d5a}{%
+           family={Luo},
+           familyi={L\bibinitperiod},
+           given={Kuang},
+           giveni={K\bibinitperiod}}}%
+        {{hash=b6a71ced3ab2abdbe894043580e21444}{%
+           family={Zhao},
+           familyi={Z\bibinitperiod},
+           given={Jingshang},
+           giveni={J\bibinitperiod}}}%
+        {{hash=d30ca99445095a9235e5453d7e3ec67d}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Yingping},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=1208541730d5f66932fac14b71e1a73e}{%
+           family={Li},
+           familyi={L\bibinitperiod},
+           given={Jiayao},
+           giveni={J\bibinitperiod}}}%
+        {{hash=bbf3bb068ab21387252c55c0101499a4}{%
+           family={Wen},
+           familyi={W\bibinitperiod},
+           given={Junjie},
+           giveni={J\bibinitperiod}}}%
+        {{hash=387672cb8c8a1186c40e225d5390e399}{%
+           family={Liang},
+           familyi={L\bibinitperiod},
+           given={Jiong},
+           giveni={J\bibinitperiod}}}%
+        {{hash=5ceb14f6933663cac65ce86a7fdab1e9}{%
+           family={Soekmadji},
+           familyi={S\bibinitperiod},
+           given={Henry},
+           giveni={H\bibinitperiod}}}%
+        {{hash=25d544230e4f263430ab6c3f7c0f95d2}{%
+           family={Liao},
+           familyi={L\bibinitperiod},
+           given={Shaolin},
+           giveni={S\bibinitperiod}}}%
+      }
+      \strng{namehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{fullhash}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{fullhashraw}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{bibnamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authorbibnamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authornamehash}{5f0e3243218e6297551ffd35df262274}
+      \strng{authorfullhash}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \strng{authorfullhashraw}{24df6fc63aa2d970ea8c8a5ef90f7450}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{abstract}{As AI for Science continues to grow, Physics-informed neural networks (PINNs) have emerged as a transformative approach within the realm of scientific computing and deep learning, offering a robust and flexible framework for solving partial differential equations (PDEs) and other complex physical systems. By embedding physical laws directly into the architecture of neural networks, PINNs enable the integration of domain-specific knowledge, ensuring that the models adhere to known physics while fitting available data. In this paper, we provide a comprehensive overview of the state-of-the-art advancements and applications of PINNs across a broad spectrum of PDE problems. In particular, focus is given on the PINN architectures, data resampling methods for PINN, loss and activation functions, feature embedding methods and so on. What's more, the potential future directions and the anticipated evolution of PINNs are also discussed. We aim to provide valuable insights into PINNs for PDE problems, with hope to encourage further exploration and research in this promising area.}
+      \field{isbn}{1573-7462}
+      \field{journaltitle}{Artificial Intelligence Review}
+      \field{number}{10}
+      \field{title}{Physics-informed neural networks for {PDE} problems: a comprehensive review}
+      \field{volume}{58}
+      \field{year}{2025}
+      \field{pages}{323}
+      \range{pages}{1}
+      \verb{doi}
+      \verb 10.1007/s10462-025-11322-7
+      \endverb
+      \verb{urlraw}
+      \verb https://doi.org/10.1007/s10462-025-11322-7
+      \endverb
+      \verb{url}
+      \verb https://doi.org/10.1007/s10462-025-11322-7
+      \endverb
+      \warn{\item article entry 'Luo_et' (parts/#references.bib): Invalid format '2025/07/24' of date field 'date' - ignoring}
     \endentry
   \enddatalist
 \endrefsection

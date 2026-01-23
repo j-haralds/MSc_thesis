@@ -153,6 +153,55 @@
       \endverb
       \warn{\item article entry 'Luo_et' (parts/#references.bib): Invalid format '2025/07/24' of date field 'date' - ignoring}
     \endentry
+    \entry{Expert}{misc}{}{}
+      \name{author}{4}{}{%
+        {{hash=15db674b3efc6848f40514aa0034717a}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Sifan},
+           giveni={S\bibinitperiod}}}%
+        {{hash=a3e2e25bd681c86b4f52eff42c3197ff}{%
+           family={Sankaran},
+           familyi={S\bibinitperiod},
+           given={Shyam},
+           giveni={S\bibinitperiod}}}%
+        {{hash=750f950ac7e7c6eb92db4793d9c16a0d}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Hanwen},
+           giveni={H\bibinitperiod}}}%
+        {{hash=197d71332633e07aa578718628fdc405}{%
+           family={Perdikaris},
+           familyi={P\bibinitperiod},
+           given={Paris},
+           giveni={P\bibinitperiod}}}%
+      }
+      \strng{namehash}{ef1ca3afbde4b19c973486cc8a12bc89}
+      \strng{fullhash}{1b49b5b93e091647434d31cd34f2625e}
+      \strng{fullhashraw}{1b49b5b93e091647434d31cd34f2625e}
+      \strng{bibnamehash}{1b49b5b93e091647434d31cd34f2625e}
+      \strng{authorbibnamehash}{1b49b5b93e091647434d31cd34f2625e}
+      \strng{authornamehash}{ef1ca3afbde4b19c973486cc8a12bc89}
+      \strng{authorfullhash}{1b49b5b93e091647434d31cd34f2625e}
+      \strng{authorfullhashraw}{1b49b5b93e091647434d31cd34f2625e}
+      \field{sortinit}{3}
+      \field{sortinithash}{ad6fe7482ffbd7b9f99c9e8b5dccd3d7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{eprintclass}{cs.LG}
+      \field{eprinttype}{arXiv}
+      \field{title}{An Expert's Guide to Training Physics-informed Neural Networks}
+      \field{year}{2023}
+      \verb{eprint}
+      \verb 2308.08468
+      \endverb
+      \verb{urlraw}
+      \verb https://arxiv.org/abs/2308.08468
+      \endverb
+      \verb{url}
+      \verb https://arxiv.org/abs/2308.08468
+      \endverb
+    \endentry
   \enddatalist
 \endrefsection
 \endinput
