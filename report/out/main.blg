@@ -1,18 +1,5 @@
 [0] Config.pm:308> INFO - This is Biber 2.20
 [0] Config.pm:311> INFO - Logfile is 'out/main.blg'
-[54] biber-darwin:340> INFO - === Sun Jan 25, 2026, 12:03:14
-[107] Biber.pm:420> INFO - Reading 'out/main.bcf'
-[156] Biber.pm:994> INFO - Found 3 citekeys in bib section 0
-[164] Biber.pm:4463> INFO - Processing section 0
-[188] Biber.pm:4654> INFO - Looking for bibtex file 'parts/#references.bib' for section 0
-[209] bibtex.pm:1713> INFO - LaTeX decoding ...
-[216] bibtex.pm:1519> INFO - Found BibTeX data source 'parts/#references.bib'
-[338] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
-[338] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
-[338] Biber.pm:4283> INFO - Sorting list 'none/global//global/global/global' of type 'entry' with template 'none' and locale 'en-US'
-[338] Biber.pm:4289> INFO - No sort tailoring available for locale 'en-US'
-[348] bbl.pm:676> INFO - Writing 'out/main.bbl' with encoding 'UTF-8'
-[350] bbl.pm:779> INFO - Output to out/main.bbl
-[350] Biber.pm:131> WARN - article entry 'Luo_et' (parts/#references.bib): Invalid format '2025/07/24' of date field 'date' - ignoring
-[350] Biber.pm:131> WARN - ISBN '1573-7462' in entry 'Luo_et' is invalid - run biber with '--validate_datamodel' for details.
-[350] Biber.pm:133> INFO - WARNINGS: 2
+[40] biber-darwin:340> INFO - === Mon Jan 26, 2026, 11:29:27
+[153] Utils.pm:410> ERROR - Cannot find 'out/main.bcf'!
+[155] Biber.pm:136> INFO - ERRORS: 1
