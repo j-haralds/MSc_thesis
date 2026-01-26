@@ -1,2 +1,4 @@
 venv/
 program/.venv/
+program/venv/
+program/__pycache__/
