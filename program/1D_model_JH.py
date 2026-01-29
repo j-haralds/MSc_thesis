@@ -2,6 +2,8 @@
 
 # run it: python3 1D_model_JH.py
 
+# source .venv/bin/activate
+
 
 # import matplotlib.pyplot as plt
 # import pybamm 
@@ -36,7 +38,8 @@
 
 
 import pybamm
-
+import plot_settings
+plot_settings.apply()
 # load model
 model = pybamm.lithium_ion.SPMe()
 
@@ -46,3 +49,5 @@ simulation = pybamm.Simulation(model)
 simulation.solve([0, 3600])  # time interval in seconds
 
 simulation.plot()
+
+
