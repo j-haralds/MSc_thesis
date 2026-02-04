@@ -15,6 +15,9 @@ geometry = model.default_geometry
 param = model.default_parameter_values
 param.process_geometry(geometry)
 param.process_model(model)
+def my_current(t):
+    return pybamm.sine(t / 3600 * 2 * pybamm.pi) * 1.5 + 2.5  # A
+param["Current function [A]"] = my_current
 
 # set mesh
 var = pybamm.standard_spatial_vars
