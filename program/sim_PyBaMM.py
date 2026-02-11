@@ -36,7 +36,7 @@ def simulate(I0):
 def get_voltage(I):
     solution, model = simulate(I)
     npc = solution.observe(model.variables['Battery voltage [V]'])
-    t_ = np.linspace(0,solution['Time [s]'].entries[-1],100)
+    t_ = np.linspace(0,solution['Time [s]'].entries[-1],1000)
     return t_,npc(t_)
 
 
