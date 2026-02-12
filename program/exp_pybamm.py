@@ -76,8 +76,8 @@ def random_pulse_sequence(
 
 
 def generate_data(
-    horizon_t=3600.0, dt=1.0, model=None, params_name="Default",
-    c_min=0.2, c_max=0.5, pulse_dur_s_range=(30, 300), rest_dur_s_range=(0, 120)
+    horizon_t=7200.0, dt=1.0, model=None, params_name="Default",
+    c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500)
 ):
     """
     Generate synthetic dataset:
