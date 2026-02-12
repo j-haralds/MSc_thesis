@@ -29,49 +29,48 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
         I (np.ndarray): current [A] (discharge positive)
     """
     if model is None:
-        model = pybamm.lithium_ion.DFN()
+        model = pybamm.lithium_ion.SPM()
 
     params = pybamm.ParameterValues(params_name)
     experiment = build_pulse_experiment(pulses, period_s=period_s)
     sim = pybamm.Simulation(model, parameter_values=params, experiment=experiment)
 
     sol = sim.solve()
+    t = sol.t
 
-    # t = sol.t
+    # Voltage variable name can differ by PyBaMM version; try a few
+    voltage_keys = [
+        "Terminal voltage [V]",
+        "Voltage [V]",
+        "Measured voltage [V]",
+    ]
+    V = None
+    for k in voltage_keys:
+        try:
+            V = sol[k].entries
+            break
+        except KeyError:
+            continue
+    if V is None:
+        available = list(sol.variables.keys())
 
-    # # Voltage variable name can differ by PyBaMM version; try a few
-    # voltage_keys = [
-    #     "Terminal voltage [V]",
-    #     "Voltage [V]",
-    #     "Measured voltage [V]",
-    # ]
-    # V = None
-    # for k in voltage_keys:
-    #     try:
-    #         V = sol[k].entries
-    #         break
-    #     except KeyError:
-    #         continue
-    # if V is None:
-    #     available = list(sol.variables.keys())
+    # Current key
+    current_keys = [
+        "Current [A]",
+        "Total current density [A.m-2]",
+    ]
+    I = None
+    for k in current_keys:
+        try:
+            I = sol[k].entries
+            break
+        except KeyError:
+            continue
+    if I is None:
+        # If not present, we can reconstruct sign from pulses if needed; for now raise.
+        available = list(sol.variables.keys())
 
-    # # Current key
-    # current_keys = [
-    #     "Current [A]",
-    #     "Total current density [A.m-2]",
-    # ]
-    # I = None
-    # for k in current_keys:
-    #     try:
-    #         I = sol[k].entries
-    #         break
-    #     except KeyError:
-    #         continue
-    # if I is None:
-    #     # If not present, we can reconstruct sign from pulses if needed; for now raise.
-    #     available = list(sol.variables.keys())
-
-    return sol, model
+    return t, V, I
 
 
 # =========================
@@ -107,15 +106,15 @@ def random_pulse_sequence(
     return pulses
 
 
-# def resample_to_fixed_grid(t, x, t_eval):
-#     """
-#     Resample x(t) onto t_eval using linear interpolation.
-#     - Clamps values beyond last simulation time to the last simulated value.
-#     - If t_eval starts before t[0], clamp to x[0].
-#     """
-#     x_res = np.interp(t_eval, t, x, left=x[0], right=x[-1])
-#     # print(x_res.shape)
-#     return x_res
+def resample_to_fixed_grid(t, x, t_eval):
+    """
+    Resample x(t) onto t_eval using linear interpolation.
+    - Clamps values beyond last simulation time to the last simulated value.
+    - If t_eval starts before t[0], clamp to x[0].
+    """
+    x_res = np.interp(t_eval, t, x, left=x[0], right=x[-1])
+    # print(x_res.shape)
+    return x_res
 
 def generate_data(
     horizon_t=3600.0, dt=1.0, model=None, params_name="Chen2020",
@@ -139,17 +138,13 @@ def generate_data(
         )
 
     # Run PyBaMM simulation
-    sol, model = run_simulation(
+    t, V, I = run_simulation(
         pulses, model=model, params_name=params_name, period_s=dt
     )
 
-    V = sol.observe(model.variables['Battery voltage [V]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-
     # Resample voltage and current to fixed grid
-    # V_res = resample_to_fixed_grid(t, V, t_eval)
-    # I_res = resample_to_fixed_grid(t, I, t_eval)
+    V_res = resample_to_fixed_grid(t, V, t_eval)
+    I_res = resample_to_fixed_grid(t, I, t_eval)
 
     # currents.append(I_res)
     # voltages.append(V_res)
@@ -157,7 +152,7 @@ def generate_data(
     # X = np.stack(currents, axis=0)    # shape: (n_samples, N)
     # y = np.stack(voltages, axis=0)    # shape: (n_samples, N)
 
-    return t_, t_eval, I(t_), V(t_)
+    return t, t_eval, I_res, V_res
 
 
 def get_values():

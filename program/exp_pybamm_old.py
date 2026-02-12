@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import pybamm
 
 
-
 # =========================
 # 0) Configuration
 # =========================
@@ -110,100 +109,6 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
 
 
 # =========================
-# 1b) sim_pybamm-like API
-# =========================
-def simulate_pulses(pulses,
-                    model=None,
-                    params_name="Chen2020",
-                    period_s=1.0):
-    """
-    Similar interface to sim_pybamm.simulate_variable_current,
-    but driven by a pulse sequence.
-
-    pulses: list of (c_rate, dur_s, rest_s)
-    Returns:
-        solution, model
-    """
-    if model is None:
-        model = pybamm.lithium_ion.SPM()
-
-    params = pybamm.ParameterValues(params_name)
-    experiment = build_pulse_experiment(pulses, period_s=period_s)
-    sim = pybamm.Simulation(model,
-                            parameter_values=params,
-                            experiment=experiment)
-
-    solution = sim.solve()
-    return solution, model
-
-
-def get_voltage_pulses(pulses,
-                       model=None,
-                       params_name="Chen2020",
-                       period_s=1.0):
-    """
-    Return time and terminal voltage for a pulse experiment.
-    Same idea as get_voltage in sim_PyBaMM.
-    """
-    solution, model = simulate_pulses(
-        pulses,
-        model=model,
-        params_name=params_name,
-        period_s=period_s,
-    )
-
-    voltage_keys = [
-        "Terminal voltage [V]",
-        "Voltage [V]",
-        "Measured voltage [V]",
-    ]
-
-    V = None
-    for k in voltage_keys:
-        if k in solution.variables:
-            V = solution[k].entries
-            break
-
-    if V is None:
-        raise KeyError("No voltage variable found in solution.")
-
-    t = solution["Time [s]"].entries
-    return t, V
-
-
-def get_current_pulses(pulses,
-                       model=None,
-                       params_name="Chen2020",
-                       period_s=1.0):
-    """
-    Return time and current for a pulse experiment.
-    """
-    solution, model = simulate_pulses(
-        pulses,
-        model=model,
-        params_name=params_name,
-        period_s=period_s,
-    )
-
-    current_keys = [
-        "Current [A]",
-        "Total current density [A.m-2]",
-    ]
-
-    I = None
-    for k in current_keys:
-        if k in solution.variables:
-            I = solution[k].entries
-            break
-
-    if I is None:
-        raise KeyError("No current variable found in solution.")
-
-    t = solution["Time [s]"].entries
-    return t, I
-
-
-# =========================
 # 2) Dataset generation
 # =========================
 def random_pulse_sequence(
@@ -232,21 +137,6 @@ def random_pulse_sequence(
             rest = 0
         pulses.append((c, dur, rest))
         elapsed += dur + rest
-    return pulses
-
-
-def make_manual_pulse_sequence():
-    """
-    Example deterministic pulse sequence.
-    Modify this to mimic current_profile in sim_PyBaMM.
-    Returns list of (c_rate, dur_s, rest_s).
-    """
-    pulses = [
-        (2.0, 600, 0),   # 2C for 600 s
-        (0.0, 1, 0),     # dummy step (not used, but keeps structure simple)
-        (0.5, 600, 0),   # 0.5C for 600 s
-        (1.0, 600, 0),   # 1C for 600 s
-    ]
     return pulses
 
 
@@ -334,13 +224,6 @@ def generate_dataset(
 # =========================
 def main():
     print("Generating synthetic dataset with PyBaMM ...")
-    # Example manual pulse usage (sim_pybamm-style)
-    pulses = make_manual_pulse_sequence()
-    t_ex, V_ex = get_voltage_pulses(pulses,
-                                    model=MODEL,
-                                    params_name=PARAM_SET_NAME,
-                                    period_s=PERIOD_S)
-
     t_eval, X, Xc, y = generate_dataset(
         n_samples=N_SAMPLES,
         horizon_s=HORIZON_S,
@@ -364,16 +247,6 @@ def main():
     ax2.plot(t_eval, y[0], label="Voltage [V]")
     ax2.set_title("Voltage Profile")
     ax2.set_xlabel("Time [s]")
-    plt.tight_layout()
-    plt.show()
-
-
-    # Plot manual pulse experiment voltage
-    plt.figure(figsize=(6, 4))
-    plt.plot(t_ex, V_ex)
-    plt.title("Manual Pulse Voltage (sim_pybamm-style)")
-    plt.xlabel("Time [s]")
-    plt.ylabel("Voltage [V]")
     plt.tight_layout()
     plt.show()
 
