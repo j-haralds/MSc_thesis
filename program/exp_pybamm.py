@@ -90,6 +90,7 @@ def generate_data(
     t_eval = np.arange(0, horizon_t, dt)
 
     rng = np.random.default_rng(1337)
+    rng = None
 
     pulses = random_pulse_sequence(
             horizon_s=horizon_t, c_min=c_min, c_max=c_max,
