@@ -64,7 +64,7 @@ def get_voltage(I):
 
 def get_volt_variable(I):
     solution, model = simulate_variable_current(I)
-    V = solution.observe(model.variables['Battery open-circuit voltage [V]'])
+    V = solution.observe(model.variables['Battery voltage [V]'])
     It = solution.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0,solution['Time [s]'].entries[-1],1000)
     return t_,V(t_), It(t_)
