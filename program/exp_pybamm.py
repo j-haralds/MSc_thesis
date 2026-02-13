@@ -103,15 +103,20 @@ def generate_data(
     )
 
     V = sol.observe(model.variables['Battery voltage [V]'])
+    ocv = sol.observe(model.variables['Open circuit voltage [V]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
 
-    return t_, t_eval, I(t_), V(t_)
+    return t_, t_eval, I(t_), V(t_), ocv(t_)
 
 
 def get_values():
-    t, t_eval, I, V = generate_data()
+    t, t_eval, I, V, ocv = generate_data()
     return t, t_eval, I, V
+
+def get_ocv():
+    t, t_eval, I, V, ocv = generate_data()
+    return ocv
 
 # =========================
 # 4) Main: run & visualize
