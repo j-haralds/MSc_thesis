@@ -19,8 +19,23 @@ Notes:
 - Simulation may terminate early due to cutoffs; we clamp the tail in resampling.
 """
 
+
 import numpy as np
 import matplotlib.pyplot as plt
+
+# LaTeX font
+plt.style.use('default')
+plt.rc('text', usetex = True)
+plt.rcParams['mathtext.fontset'] = 'cm'
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['text.latex.preamble'] = r'\usepackage{amsmath}'
+
+font_size = 16
+plt.rcParams['font.size'] = font_size
+plt.rcParams['xtick.direction'] = 'in'
+plt.rcParams['ytick.direction'] = 'in'
+plt.rcParams['xtick.top'] = True
+plt.rcParams['ytick.right'] = True
 
 import pybamm
 from sklearn.model_selection import train_test_split
@@ -34,7 +49,7 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 # =========================
 # 0) Configuration
 # =========================
-RANDOM_SEED = 7
+RANDOM_SEED = 1337
 np.random.seed(RANDOM_SEED)
 
 # Simulation horizon and sampling
@@ -86,7 +101,7 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
     if model is None:
         model = pybamm.lithium_ion.SPM()
 
-    params = pybamm.ParameterValues(params_name)
+    params = model.default_parameter_values
     experiment = build_pulse_experiment(pulses, period_s=period_s)
     sim = pybamm.Simulation(model, parameter_values=params, experiment=experiment)
 
@@ -179,15 +194,8 @@ def resample_to_fixed_grid(t, x, t_eval):
 
 
 def generate_dataset(
-    n_samples=500,
-    horizon_s=1800.0,
-    period_s=1.0,
-    model=None,
-    params_name="Chen2020",
-    c_min=0.5,
-    c_max=2.5,
-    pulse_dur_s_range=(30, 300),
-    rest_dur_s_range=(0, 120),
+    n_samples=500, horizon_s=7200.0, period_s=1.0, model=None, params_name="Default",
+    c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500)
 ):
     """
     Generate synthetic dataset:
@@ -313,16 +321,29 @@ def main():
 
     # Plot a random held-out example
     idx = np.random.randint(0, X_test.shape[0])
-    plt.figure(figsize=(10, 5))
-    plt.plot(t_eval, y_test[idx], label="PyBaMM (true)", lw=2)
-    plt.plot(t_eval, y_pred[idx], label="MLP (pred)", lw=2, alpha=0.85)
+    plt.figure(figsize=(9, 4))
+    plt.plot(t_eval, y_test[idx], label="PyBaMM (true)", lw=2, color="tab:red", ls='--')
+    plt.plot(t_eval, y_pred[idx], label="MLP (pred)", lw=2, color="tab:blue")
     plt.xlabel("Time [s]")
     plt.ylabel("Terminal voltage [V]")
     plt.title("Voltage profile prediction (test example)")
     plt.legend()
-    plt.grid(alpha=0.3)
+    #plt.grid(alpha=0.3)
     plt.tight_layout()
+    plt.savefig('NN_pred_V.pdf', bbox_inches='tight')
     plt.show()
+
+    # f, ax = plt.subplots(2,1,figsize=(9,6.5), gridspec_kw={'height_ratios': [.5, 1]}, sharex=True)
+    # ax[0].plot(X_test[idx], label='Input $I(t)$', color='black')
+    # ax[1].plot(y_test[idx], label='True $V(t)$', color='tab:red', linestyle='dashed')
+    # ax[1].plot(y_pred[idx], label='Predicted $V(t)$', color='tab:blue')
+    # ax[1].legend()
+    # ax[0].legend()
+    # ax[1].set_xlabel('Time step')
+    # ax[0].set_ylabel('Current [A]')
+    # ax[1].set_ylabel('Voltage [V]')
+    # plt.savefig('NN_pred_I.pdf', bbox_inches='tight')
+    # plt.show()
 
 
 if __name__ == "__main__":
