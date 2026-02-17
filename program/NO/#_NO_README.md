@@ -7,3 +7,5 @@ Included a basic example w/ an FNO predicting the derivative of a sinusoid
 A basic FNO taking $I(t)$ as input and outputting $V(t)$
 
 ### Version 2
+
+Trying a basic FNO on a concentration profile

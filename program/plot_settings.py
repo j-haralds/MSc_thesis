@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-
+import numpy as np
 
 def apply():
     # LaTeX font
@@ -15,3 +15,10 @@ def apply():
     plt.rcParams['ytick.direction'] = 'in'
     plt.rcParams['xtick.top'] = True
     plt.rcParams['ytick.right'] = True
+
+
+def grid_gen(xlim, ylim, size=50):
+    x = np.linspace(xlim[0], xlim[1], size)
+    y = np.linspace(ylim[0], ylim[1], size)
+    X, Y = np.meshgrid(x, y)
+    return X, Y
