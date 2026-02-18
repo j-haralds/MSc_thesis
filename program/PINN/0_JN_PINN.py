@@ -29,6 +29,31 @@ V_test  = V[:split]
 I_train = I[split:]
 V_train = V[split:]
 
+# =========================
+# Normalize (like sklearn StandardScaler)
+# =========================
+
+# reshape to (samples, 1000)
+I_train = I_train.reshape(I_train.shape[0], -1)
+V_train = V_train.reshape(V_train.shape[0], -1)
+I_test  = I_test.reshape(I_test.shape[0], -1)
+V_test  = V_test.reshape(V_test.shape[0], -1)
+
+# compute statistics from TRAIN set only
+I_mean = I_train.mean(axis=0, keepdims=True)
+I_std  = I_train.std(axis=0, keepdims=True) + 1e-8
+
+V_mean = V_train.mean(axis=0, keepdims=True)
+V_std  = V_train.std(axis=0, keepdims=True) + 1e-8
+
+# normalize
+I_train = (I_train - I_mean) / I_std
+I_test  = (I_test  - I_mean) / I_std
+
+V_train = (V_train - V_mean) / V_std
+V_test  = (V_test  - V_mean) / V_std
+
+
 # Convert to PyTorch tensors
 train_dataset = TensorDataset(
     torch.tensor(I_train, dtype=torch.float32),
@@ -102,10 +127,10 @@ model, history = training(epochs=50)
 # =========================
 
 test = 0
-i = I_test[test]
-v = V_test[test]
+i = I_test[test].reshape(1, -1)
+v = V_test[test].reshape(1, -1)
 
-i_tensor = torch.tensor(i, dtype=torch.float32).squeeze(0).unsqueeze(0)
+i_tensor = torch.tensor(i, dtype=torch.float32)
 
 with torch.no_grad():
     y_pred = model(i_tensor)
@@ -117,9 +142,16 @@ f, ax = plt.subplots(2,1,figsize=(9,6.5),
 f.subplots_adjust(hspace=0.05)
 
 ax[0].plot(i.ravel(), label='Input $I(t)$', color='black')
-ax[1].plot(v.ravel(), label='True $V(t)$',
+
+# de-normalize prediction
+y_pred_np = y_pred.detach().numpy()
+y_pred_np = y_pred_np * V_std + V_mean
+
+v_true_np = v * V_std + V_mean
+
+ax[1].plot(v_true_np.ravel(), label='True $V(t)$',
            color='tab:red', linestyle='dashed')
-ax[1].plot(y_pred.detach().numpy().ravel(),
+ax[1].plot(y_pred_np.ravel(),
            label='Predicted $V(t)$',
            color='tab:blue')
 
