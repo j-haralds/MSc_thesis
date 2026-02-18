@@ -29,7 +29,15 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
         I (np.ndarray): current [A] (discharge positive)
     """
     if model is None:
+        model = pybamm.lithium_ion.SPM()
+    elif model == 'SPM':
+        model = pybamm.lithium_ion.SPM()
+    elif model == 'DFN':
         model = pybamm.lithium_ion.DFN()
+    elif model == 'SPMe':
+        model = pybamm.lithium_ion.SPMe()
+    else:
+        raise ValueError(f"Unknown model: {model}")
 
     # params = pybamm.ParameterValues(params_name)
     params = model.default_parameter_values
@@ -117,7 +125,7 @@ def get_Bvolt():
 
 def get_ocv():
     sol, model, t_eval = generate_data()
-    ocv = sol.observe(model.variables['Open circuit voltage [V]'])
+    ocv = sol.observe(model.variables['Battery open-circuit voltage [V]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
     return t_, t_eval, I(t_), ocv(t_)
@@ -166,6 +174,15 @@ def get_Dpc_xavg():
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
     dpc = ppc(t_) - npc(t_)
     return t_, t_eval, I(t_), dpc
+
+
+def get_values(param,model=None):
+    sol, model, t_eval = generate_data()
+    vals = sol.observe(model.variables[param])
+    I = sol.observe(model.variables['Current variable [A]'])
+    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
+
+    return t_, t_eval, I(t_), vals(t_)
 
 
 

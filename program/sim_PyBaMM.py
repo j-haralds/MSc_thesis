@@ -36,7 +36,7 @@ def simulate_variable_current(I0):
     model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
     def my_current(t,i0=I0):
-        return current_profile(t,i0)
+        return I0#current_profile(t,i0)
     
     param["Current function [A]"] = my_current
     param["Nominal cell capacity [A.h]"] = 1.
