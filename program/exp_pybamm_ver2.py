@@ -113,31 +113,62 @@ def get_Bvolt():
     V = sol.observe(model.variables['Battery voltage [V]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I, V
+    return t_, t_eval, I(t_), V(t_)
 
 def get_ocv():
     sol, model, t_eval = generate_data()
     ocv = sol.observe(model.variables['Open circuit voltage [V]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I, ocv
+    return t_, t_eval, I(t_), ocv(t_)
 
-def get_npc():
+def get_npc_full():
     sol, model, t_eval = generate_data()
     npc = sol.observe(model.variables['Negative particle concentration [mol.m-3]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
     print('Concentration profile shape (r, x, t)')
-    return t_, t_eval, I, npc
+    return t_, t_eval, I(t_), npc(t_)
 
 
-def get_ppc():
+def get_ppc_full():
     sol, model, t_eval = generate_data()
     ppc = sol.observe(model.variables['Positive particle concentration [mol.m-3]'])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
     print('Concentration profile shape (r, x, t)')
-    return t_, t_eval, I, ppc
+    return t_, t_eval, I(t_), ppc(t_)
+
+
+
+def get_npc_xavg():
+    sol, model, t_eval = generate_data()
+    npc = sol.observe(model.variables['X-averaged negative particle concentration [mol.m-3]'])
+    I = sol.observe(model.variables['Current variable [A]'])
+    r_n = sol.observe(model.variables['r_n [m]'])
+    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
+    return t_, t_eval, I(t_), npc(t_)
+
+
+def get_ppc_xavg():
+    sol, model, t_eval = generate_data()
+    ppc = sol.observe(model.variables['X-averaged positive particle concentration [mol.m-3]'])
+    I = sol.observe(model.variables['Current variable [A]'])
+    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
+    return t_, t_eval, I(t_), ppc(t_)
+
+
+def get_Dpc_xavg():
+    sol, model, t_eval = generate_data()
+    ppc = sol.observe(model.variables['X-averaged positive particle concentration [mol.m-3]'])
+    npc = sol.observe(model.variables['X-averaged negative particle concentration [mol.m-3]'])
+    I = sol.observe(model.variables['Current variable [A]'])
+    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
+    dpc = ppc(t_) - npc(t_)
+    return t_, t_eval, I(t_), dpc
+
+
+
 
 # =========================
 # 4) Main: run & visualize

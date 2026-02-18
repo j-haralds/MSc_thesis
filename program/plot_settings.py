@@ -17,8 +17,10 @@ def apply():
     plt.rcParams['ytick.right'] = True
 
 
-def grid_gen(xlim, ylim, size=50):
-    x = np.linspace(xlim[0], xlim[1], size)
-    y = np.linspace(ylim[0], ylim[1], size)
+def grid_gen(xlim, ylim, size):  
+    x_size =  size[0]; y_size = size[1]
+
+    x = np.linspace(xlim[0], xlim[1], int(x_size))
+    y = np.linspace(ylim[0], ylim[1], int(y_size))
     X, Y = np.meshgrid(x, y)
     return X, Y
