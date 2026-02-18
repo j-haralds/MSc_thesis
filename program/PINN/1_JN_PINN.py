@@ -1,5 +1,6 @@
 import sys
 import time
+from sklearn.discriminant_analysis import StandardScaler
 import torch
 import numpy as np
 import torch.nn as nn
@@ -39,19 +40,13 @@ V_train = V_train.reshape(V_train.shape[0], -1)
 I_test  = I_test.reshape(I_test.shape[0], -1)
 V_test  = V_test.reshape(V_test.shape[0], -1)
 
-# compute statistics from TRAIN set only
-I_mean = I_train.mean(axis=0, keepdims=True)
-I_std  = I_train.std(axis=0, keepdims=True) + 1e-8
-
-V_mean = V_train.mean(axis=0, keepdims=True)
-V_std  = V_train.std(axis=0, keepdims=True) + 1e-8
-
-# normalize
-I_train = (I_train - I_mean) / I_std
-I_test  = (I_test  - I_mean) / I_std
-
-V_train = (V_train - V_mean) / V_std
-V_test  = (V_test  - V_mean) / V_std
+# Normalize (from train set only)
+scaler_I = StandardScaler()
+scaler_V = StandardScaler()
+I_train = scaler_I.fit_transform(I_train)
+V_train = scaler_V.fit_transform(V_train)
+I_test = scaler_I.transform(I_test)
+V_test = scaler_V.transform(V_test)
 
 
 # Convert to PyTorch tensors
@@ -85,9 +80,6 @@ def training(epochs=50, tol=2.5e-4):
     history = {'loss': []}
     
     for epoch in range(epochs):
-        loss_sum = 0
-        nb = 0
-        start_b = time.perf_counter()
 
         for u_batch, y_batch in loader:
             # reshape: [B,1,1000] → [B,1000]
@@ -102,20 +94,15 @@ def training(epochs=50, tol=2.5e-4):
             loss.backward()
             optimizer.step()
 
-            loss_sum += loss.item()
-            nb += 1
+        
 
-        end_b = time.perf_counter()
-        avg_loss = loss_sum / nb
-        ETA = (end_b-start_b)*(epochs-epoch-1)
+        history['loss'].append(loss.item())
 
-        history['loss'].append(avg_loss)
-
-        if avg_loss < tol:
-            print(f'Epoch {epoch+1} avg loss: {avg_loss:.5f} - Early stopping')
+        if loss.item() < tol:
+            print(f'Epoch {epoch+1} loss: {loss.item():.5f} - Early stopping')
             break
 
-        print(f'Epoch {epoch+1} avg loss: {avg_loss:.5f} ETA: {int(ETA//60)}:{int(ETA%60):02d}')
+        print(f'Epoch {epoch+1} loss: {loss.item():.5f}')
 
     return model, history
 
@@ -126,42 +113,35 @@ model, history = training(epochs=50)
 # Test on real PyBaMM test data
 # =========================
 
-test = 0
-i = I_test[test].reshape(1, -1)
-v = V_test[test].reshape(1, -1)
+test = 1
+i = I_test[test].reshape(1, -1)  # [1,1000]
+v = V_test[test].reshape(1, -1)  # [1,1000]
 
 i_tensor = torch.tensor(i, dtype=torch.float32)
 
 with torch.no_grad():
     y_pred = model(i_tensor)
 
+# Inverse transform to original scale
+i = scaler_I.inverse_transform(i)
+v = scaler_V.inverse_transform(v)
+y_pred = scaler_V.inverse_transform(y_pred.numpy())
+
 # Plot
-f, ax = plt.subplots(2,1,figsize=(9,6.5),
-                     gridspec_kw={'height_ratios': [.5, 1]},
-                     sharex=True)
-f.subplots_adjust(hspace=0.05)
+f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15,4))
 
-ax[0].plot(i.ravel(), label='Input $I(t)$', color='black')
+ax1.plot(i.ravel(), label='Input $I(t)$', color='black')
+ax2.plot(v.ravel(), label='True $V(t)$', color='tab:red', linestyle='dashed')
+ax2.plot(y_pred.ravel(), label='Predicted $V(t)$', color='tab:blue')
 
-# de-normalize prediction
-y_pred_np = y_pred.detach().numpy()
-y_pred_np = y_pred_np * V_std + V_mean
+ax2.legend()
+ax1.legend()
+ax2.set_xlabel('Time step')
+ax1.set_ylabel('Current [A]')
+ax2.set_ylabel('Voltage [V]')
 
-v_true_np = v * V_std + V_mean
-
-ax[1].plot(v_true_np.ravel(), label='True $V(t)$',
-           color='tab:red', linestyle='dashed')
-ax[1].plot(y_pred_np.ravel(),
-           label='Predicted $V(t)$',
-           color='tab:blue')
-
-ax[1].legend()
-ax[0].legend()
-ax[1].set_xlabel('Time step')
-ax[0].set_ylabel('Current [A]')
-ax[1].set_ylabel('Voltage [V]')
-
-plt.figure()
-plt.plot(history['loss'])
-plt.title("Training Loss")
+ax3.plot(history['loss'])
+ax3.set_xlabel('Epoch')
+ax3.set_ylabel('Loss')  
+plt.tight_layout()
 plt.show()
