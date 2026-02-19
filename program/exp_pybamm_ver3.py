@@ -46,7 +46,7 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
 
     sol = sim.solve()
 
-    return sol, model
+    return sol, model, params
 
 
 # =========================
@@ -84,7 +84,7 @@ def random_pulse_sequence(
 
 
 def generate_data(
-    horizon_t=7200.0, dt=1.0, model=None, params_name="Default",
+    horizon_t=4 * 3600, dt=1.0, model=None, params_name="Default",
     c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500), RNG = True
 ):
     """
@@ -108,74 +108,14 @@ def generate_data(
         )
 
     # Run PyBaMM simulation
-    sol, model = run_simulation(
+    sol, model,param = run_simulation(
         pulses, model=model, params_name=params_name, period_s=dt
     )
 
 
 
     #return t_, t_eval, I(t_), V(t_), ocv(t_)
-    return sol, model, t_eval
-
-
-def get_Bvolt():
-    sol, model, t_eval = generate_data()
-    V = sol.observe(model.variables['Battery voltage [V]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I(t_), V(t_)
-
-def get_ocv():
-    sol, model, t_eval = generate_data()
-    ocv = sol.observe(model.variables['Battery open-circuit voltage [V]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I(t_), ocv(t_)
-
-def get_npc_full():
-    sol, model, t_eval = generate_data()
-    npc = sol.observe(model.variables['Negative particle concentration [mol.m-3]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    print('Concentration profile shape (r, x, t)')
-    return t_, t_eval, I(t_), npc(t_)
-
-
-def get_ppc_full():
-    sol, model, t_eval = generate_data()
-    ppc = sol.observe(model.variables['Positive particle concentration [mol.m-3]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    print('Concentration profile shape (r, x, t)')
-    return t_, t_eval, I(t_), ppc(t_)
-
-
-
-def get_npc_xavg():
-    sol, model, t_eval = generate_data()
-    npc = sol.observe(model.variables['X-averaged negative particle concentration [mol.m-3]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    r_n = sol.observe(model.variables['r_n [m]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I(t_), npc(t_)
-
-
-def get_ppc_xavg():
-    sol, model, t_eval = generate_data()
-    ppc = sol.observe(model.variables['X-averaged positive particle concentration [mol.m-3]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    return t_, t_eval, I(t_), ppc(t_)
-
-
-def get_Dpc_xavg():
-    sol, model, t_eval = generate_data()
-    ppc = sol.observe(model.variables['X-averaged positive particle concentration [mol.m-3]'])
-    npc = sol.observe(model.variables['X-averaged negative particle concentration [mol.m-3]'])
-    I = sol.observe(model.variables['Current variable [A]'])
-    t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
-    dpc = ppc(t_) - npc(t_)
-    return t_, t_eval, I(t_), dpc
+    return sol, model, t_eval, param
 
 
 def get_values(param,model=None, RNG = False):

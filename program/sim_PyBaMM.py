@@ -3,13 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def simulate(I0):
-    model = pybamm.lithium_ion.DFN()
+    model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
     def my_current(t, I0=I0):
         return I0
-    
-    param["Current function [A]"] = my_current
-    param["Nominal cell capacity [A.h]"] = 2.
 
     param.process_model(model)
     geometry = model.default_geometry
@@ -22,7 +19,7 @@ def simulate(I0):
     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
     solution = solver.solve(model, t_eval)
 
-    return solution,model
+    return solution,model,param
 
 
 def current_profile(t, I0):
@@ -37,9 +34,11 @@ def simulate_variable_current(I0):
     param = model.default_parameter_values
     def my_current(t,i0=I0):
         return I0#current_profile(t,i0)
-    
     param["Current function [A]"] = my_current
-    param["Nominal cell capacity [A.h]"] = 1.
+    # param['Electrode width [m]'] = 20 * 1e-6
+    # param['Negative electrode width [m]'] = 20 * 1e-6
+    # param['Negative particle radius [m]'] = 10 * 1e-6
+    # param['Positive particle radius [m]'] = 10 * 1e-6
 
     param.process_model(model)
     geometry = model.default_geometry
