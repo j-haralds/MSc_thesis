@@ -85,7 +85,7 @@ def random_pulse_sequence(
 
 def generate_data(
     horizon_t=7200.0, dt=1.0, model=None, params_name="Default",
-    c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500)
+    c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500), RNG = True
 ):
     """
     Generate synthetic dataset:
@@ -97,8 +97,10 @@ def generate_data(
 
     t_eval = np.arange(0, horizon_t, dt)
 
-    rng = np.random.default_rng(1337)
-    rng = None
+    if RNG:
+        rng = np.random.default_rng(1337)
+    else:
+        rng = None
 
     pulses = random_pulse_sequence(
             horizon_s=horizon_t, c_min=c_min, c_max=c_max,
@@ -176,8 +178,8 @@ def get_Dpc_xavg():
     return t_, t_eval, I(t_), dpc
 
 
-def get_values(param,model=None):
-    sol, model, t_eval = generate_data()
+def get_values(param,model=None, RNG = True):
+    sol, model, t_eval = generate_data(RNG=RNG, model=model)
     vals = sol.observe(model.variables[param])
     I = sol.observe(model.variables['Current variable [A]'])
     t_ = np.linspace(0, sol['Time [s]'].entries[-1], 1000)
