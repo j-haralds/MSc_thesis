@@ -10,13 +10,18 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import DataLoader, TensorDataset
 
-
+ # Robust path: directory where this file lives
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.append(str(BASE_DIR))  # allow import from program/
+print(f"Current working directory: {BASE_DIR}")
+import plot_settings
+plot_settings.apply()
 # -----------------------------
 # 0) Load data
 # -----------------------------
-BASE_DIR = Path.cwd()
-I = np.load(BASE_DIR.parent / 'program/NO/data_NO/I.npz')['arr_0']   # [N,1,1000]
-V = np.load(BASE_DIR.parent / 'program/NO/data_NO/V.npz')['arr_0']   # [N,1,1000]
+
+I = np.load(BASE_DIR / 'NO/data_NO/I.npz')['arr_0']   # [N,1,1000]
+V = np.load(BASE_DIR / 'NO/data_NO/V.npz')['arr_0']   # [N,1,1000]
 
 # Ensure shapes [N, T]
 I = I.reshape(I.shape[0], -1)
@@ -98,17 +103,18 @@ def data_loss(V_pred, V_true):
 # ---- ECM physics (discrete residual) ----
 # You MUST set these to match your ECM / data generation:
 ECM = {
-    "R0": 0.01,     # Ohmic resistance [Ohm]
-    "R1": 0.01,     # RC resistance [Ohm]
-    "C1": 2000.0,   # RC capacitance [F]
-    "Q": 3600.0,    # Capacity [A*s] (e.g. 1Ah = 3600 As)
+    "R0": 0.15,     # Ohmic resistance [Ohm]
+    "R1": 0.5,     # RC resistance [Ohm]
+    "C1": 800.0,   # RC capacitance [F]
+    "Q": 2448.0,    # Capacity [A*s] (e.g. 1Ah = 3600 As)
     "dt": 1.0,      # Sampling period [s] (your data looks like 1s)
     "z0": 1.0       # Initial SOC (or treat as learnable later)
 }
 
-# Example OCV polynomial coefficients (highest power first).
-# Replace with your true OCV(SOC) fit.
-VOC_COEFFS = torch.tensor([0.0, 0.0, 0.0, 4.0], dtype=torch.float32)  # ~ constant 4V
+# Highest power first
+VOC_COEFFS = torch.tensor([3.15845444e+02, -1.55679646e+03, 3.16018260e+03, -3.32336545e+03,
+  1.78576170e+03, -2.79658643e+02, -1.95143832e+02, 1.14747786e+02,
+ -2.33669284e+01, 2.01423200e+00, 3.63176026e+00], dtype=torch.float32)
 
 def voc_poly(z, coeffs):
     # z: [B, T] in [0,1]
@@ -145,7 +151,7 @@ def physics_loss_ecm(V_pred, I_seq):
 
     # cumulative sum over time
     z = z0 - (dt / Q) * torch.cumsum(I, dim=1)
-    # optional clamp (softly) to keep within [0,1] without hard kinks:
+    # optional clamp (softly) to keep within [0,1]
     z = torch.clamp(z, 0.0, 1.0)
 
     Voc = voc_poly(z, VOC_COEFFS)  # [B, T]
@@ -170,7 +176,7 @@ def physics_loss_ecm(V_pred, I_seq):
 # -----------------------------
 # 4) Training
 # -----------------------------
-def training(epochs=200, tol=2.5e-4, lambda_phys=1.0):
+def training(epochs=200, tol=2.5e-4, lambda_data=0, lambda_phys=1.0):
     history = {'loss': [], 'data_loss': [], 'phys_loss': []}
 
     for epoch in range(epochs):
@@ -186,7 +192,7 @@ def training(epochs=200, tol=2.5e-4, lambda_phys=1.0):
             d_loss = data_loss(V_pred, V_batch)
             p_loss = physics_loss_ecm(V_pred, I_batch)
 
-            loss = d_loss + lambda_phys * p_loss
+            loss = lambda_data * d_loss + lambda_phys * p_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -198,15 +204,16 @@ def training(epochs=200, tol=2.5e-4, lambda_phys=1.0):
         history['data_loss'].append(d_loss.item())
         history['phys_loss'].append(p_loss.item())
 
-        if last_loss < tol:
-            print(f'Epoch {epoch+1} loss: {last_loss:.6f} - Early stopping')
-            break
+        # if last_loss < tol:
+        #     print(f'Epoch {epoch+1} loss: {last_loss:.6f} - Early stopping')
+        #     break
 
+        # print(f"Epoch {epoch+1} | total: {last_loss:.6f} | data: {d_loss.item():.6f}")
         print(f"Epoch {epoch+1} | total: {last_loss:.6f} | data: {d_loss.item():.6f} | phys: {p_loss.item():.6f}")
 
     return model, history
 
-model, history = training(epochs=15, lambda_phys=0.1)  # start small (0.01–0.1), then increase
+model, history = training(epochs=20, lambda_phys=0.1)  # start small (0.01–0.1), then increase
 
 # -----------------------------
 # 5) Test + Plot
@@ -229,24 +236,28 @@ v_phys = scaler_V.inverse_transform(v_s.squeeze(-1))
 y_phys = scaler_V.inverse_transform(y_pred_s.squeeze(-1))
 
 # Plot
-f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
+f, axes = plt.subplots(2, 2, figsize=(10, 7))
 
+ax1, ax2, ax3, ax4 = axes.flatten()
 ax1.plot(i_phys.ravel(), label='Input $I(t)$', color='black')
 ax2.plot(v_phys.ravel(), label='True $V(t)$', color='tab:red', linestyle='dashed')
 ax2.plot(y_phys.ravel(), label='Predicted $V(t)$', color='tab:blue')
 
-ax2.legend()
-ax1.legend()
+ax2.legend(fontsize=12)
+ax1.legend(fontsize=12)
 ax2.set_xlabel('Time step')
 ax1.set_ylabel('Current [A]')
 ax2.set_ylabel('Voltage [V]')
 
 ax3.plot(history['loss'], label='total')
 ax3.plot(history['data_loss'], label='data')
-ax3.plot(history['phys_loss'], label='phys')
+ax4.plot(history['phys_loss'], label='phys')
 ax3.set_xlabel('Epoch')
 ax3.set_ylabel('Loss')
-ax3.legend()
+ax3.legend(fontsize=12)
+ax4.set_xlabel('Epoch')
+ax4.set_ylabel('Physics Loss')
 
 plt.tight_layout()
+plt.savefig(BASE_DIR / 'PENN_ECM/figs/1_JN_PINN_ECM_lamd0.pdf')
 plt.show()
