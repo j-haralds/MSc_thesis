@@ -112,9 +112,9 @@ ECM = {
 }
 
 # Highest power first
-VOC_COEFFS = torch.tensor([3.15845444e+02, -1.55679646e+03, 3.16018260e+03, -3.32336545e+03,
-  1.78576170e+03, -2.79658643e+02, -1.95143832e+02, 1.14747786e+02,
- -2.33669284e+01, 2.01423200e+00, 3.63176026e+00], dtype=torch.float32)
+VOC_COEFFS = torch.tensor([-1.14891765e+03,  6.44025200e+03, -1.55588683e+04,  2.11860429e+04,
+ -1.78633530e+04,  9.66208361e+03, -3.36907238e+03,  7.44974570e+02,
+ -1.00279728e+02,  7.54862624e+00,  3.44092384e+00], dtype=torch.float32)
 
 def voc_poly(z, coeffs):
     # z: [B, T] in [0,1]
@@ -176,7 +176,7 @@ def physics_loss_ecm(V_pred, I_seq):
 # -----------------------------
 # 4) Training
 # -----------------------------
-def training(epochs=200, tol=2.5e-4, lambda_data=0, lambda_phys=1.0):
+def training(epochs=200, tol=2.5e-4, lambda_data=1.0, lambda_phys=1.0):
     history = {'loss': [], 'data_loss': [], 'phys_loss': []}
 
     for epoch in range(epochs):
@@ -190,7 +190,7 @@ def training(epochs=200, tol=2.5e-4, lambda_data=0, lambda_phys=1.0):
             V_pred = model(I_batch)
 
             d_loss = data_loss(V_pred, V_batch)
-            p_loss = physics_loss_ecm(V_pred, I_batch)
+            p_loss = physics_loss_ecm(V_pred, I_batch) * 1e3  # scale physics loss to be on a similar order of magnitude as data loss
 
             loss = lambda_data * d_loss + lambda_phys * p_loss
 
@@ -236,7 +236,7 @@ v_phys = scaler_V.inverse_transform(v_s.squeeze(-1))
 y_phys = scaler_V.inverse_transform(y_pred_s.squeeze(-1))
 
 # Plot
-f, axes = plt.subplots(2, 2, figsize=(10, 7))
+f, axes = plt.subplots(2, 2, figsize=(8, 6))
 
 ax1, ax2, ax3, ax4 = axes.flatten()
 ax1.plot(i_phys.ravel(), label='Input $I(t)$', color='black')
@@ -246,6 +246,7 @@ ax2.plot(y_phys.ravel(), label='Predicted $V(t)$', color='tab:blue')
 ax2.legend(fontsize=12)
 ax1.legend(fontsize=12)
 ax2.set_xlabel('Time step')
+ax1.set_xlabel('Time step')
 ax1.set_ylabel('Current [A]')
 ax2.set_ylabel('Voltage [V]')
 
@@ -259,5 +260,5 @@ ax4.set_xlabel('Epoch')
 ax4.set_ylabel('Physics Loss')
 
 plt.tight_layout()
-plt.savefig(BASE_DIR / 'PENN_ECM/figs/1_JN_PINN_ECM_lamd0.pdf')
+plt.savefig(BASE_DIR / 'PENN_ECM/figs/1_JN_PINN_ECM_nya_coeffs2.pdf')
 plt.show()
