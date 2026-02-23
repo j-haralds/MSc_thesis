@@ -84,7 +84,7 @@ def random_pulse_sequence(
 
 
 def generate_data(
-    horizon_t=4 * 3600, dt=1.0, model=None, params_name="Default",
+    horizon_t=2.5 * 3600, dt=1.0, model=None, params_name="Default",
     c_min=0.7, c_max=0.8, pulse_dur_s_range=(100, 500), rest_dur_s_range=(100, 500), RNG = True
 ):
     """
