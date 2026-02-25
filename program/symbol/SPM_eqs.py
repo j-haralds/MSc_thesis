@@ -65,6 +65,15 @@ def exchange_current_dens(cn,cp,params, kn=2e-5,kp=6e-7):
 
 
 
+def exchange_current_dens_np(cn,cp,params, kn=2e-5,kp=6e-7):
+    ce = params['Initial concentration in electrolyte [mol.m-3]']
+    cn_max = params['Maximum concentration in negative electrode [mol.m-3]']
+    cp_max = params['Maximum concentration in positive electrode [mol.m-3]']
+    jn0 = kn * np.sqrt(ce * cn * (cn_max-cn)) 
+    jp0 = kp * np.sqrt(ce * cp * (cp_max-cp))
+    return jn0, jp0 
+
+
 def eta_r(i,cp,cn, params, K = [0.05,0.2]):
     Ln = params['Negative electrode thickness [m]']
     Lp = params['Positive electrode thickness [m]']
@@ -88,6 +97,29 @@ def eta_r(i,cp,cn, params, K = [0.05,0.2]):
     e = R*T/F *( (1/alpha_p) * torch.arcsinh(i / (2 * ap * A *Lp*jp0)) - (1/alpha_n) * torch.arcsinh(-i / (2 * an * A *Ln*jn0)))
     return e #(2 * R * T / F) * (np.arcsinh(jn/jn0) -  np.arcsinh(jp/(jp0)))
 
+def eta_r_np(i,cp,cn, params, K = [0.05,0.2]):
+    Ln = params['Negative electrode thickness [m]']
+    Lp = params['Positive electrode thickness [m]']
+    A = params['Electrode height [m]'] * params['Electrode width [m]']
+    Rk = params['Negative particle radius [m]']
+    en = params['Negative electrode active material volume fraction']
+    ep = params['Positive electrode active material volume fraction']
+    ap = 3 * ep / Rk
+    an = 3 * en / Rk
+    T = params['Initial temperature [K]']
+    
+    R = sc.R
+    F = sc.physical_constants['Faraday constant'][0]
+    jn0,jp0  = exchange_current_dens_np(cn,cp,params)
+
+    #i_app = i / A
+    #jn = i_app / Ln
+    #jp = i_app / Lp
+    alpha_p = 0.5
+    alpha_n = 0.5
+    e = R*T/F *( (1/alpha_p) * np.arcsinh(i / (2 * ap * A *Lp*jp0)) - (1/alpha_n) * np.arcsinh(-i / (2 * an * A *Ln*jn0)))
+    return e #(2 * R * T / F) * (np.arcsinh(jn/jn0) -  np.arcsinh(jp/(jp0)))
+
 # def eta_r(i,cp,cn, params,K = [0.05,0.2]):
 #     Ln = params['Negative electrode thickness [m]']
 #     Lp = params['Positive electrode thickness [m]']
@@ -108,4 +140,9 @@ def eta_r(i,cp,cn, params, K = [0.05,0.2]):
 def V_terminal(I,cp,cn, params, K = [0.05,0.2]):
     U = OCV(cn,cp)
     eta = eta_r(I,cp,cn,params=params, K=K)
+    return U - eta
+
+def V_terminal_np(I,cp,cn, params, K = [0.05,0.2]):
+    U = OCV(cn,cp)
+    eta = eta_r_np(I,cp,cn,params=params, K=K)
     return U - eta

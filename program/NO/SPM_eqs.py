@@ -28,8 +28,8 @@ def OCP(c_n, c_p,n_fit = n_fit,p_fit= p_fit):
     cn: surface concentration in the negative electrode non-normalized
     cp: surface concentration in the positive electrode non-normalized
     '''
-    Cn = c_n / c_n[...,0]
-    Cp = c_p / c_p[...,0]
+    Cn = c_n #/ c_n[...,0]
+    Cp = c_p #/ c_p[...,0]
 
     ocp_N = 0
     ocp_P = 0
