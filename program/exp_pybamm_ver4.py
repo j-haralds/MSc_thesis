@@ -5,13 +5,18 @@ import pybamm
 # =========================
 # 1) Experiment helpers
 # =========================
-def build_pulse_experiment(pulses, period_s=1.0):
+def build_pulse_experiment(pulses, period_s=1.0, init_rest_s=1.0):
     """
     Build a PyBaMM Experiment from a list of pulses.
     pulses: list[(c_rate, dur_s, rest_s)]
     period_s: output sampling period for PyBaMM experiment.
     """
     steps = []
+
+        # ---- Add initial zero-current rest ----
+    if init_rest_s > 0:
+        steps.append(f"Rest for {int(init_rest_s)} seconds")
+
     for c_rate, dur_s, rest_s in pulses:
         steps.append(f"Discharge at {c_rate}C for {int(dur_s)} seconds")
         if rest_s and rest_s > 0:
@@ -54,7 +59,7 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
 # 2) Dataset generation
 # =========================
 def random_pulse_sequence(
-    horizon_s=3600.0,
+    horizon_s=3600.0-1,
     c_min=0.5,
     c_max=2.5,
     pulse_dur_s_range=(300, 500),
@@ -85,7 +90,7 @@ def random_pulse_sequence(
 
 
 def generate_data(
-    horizon_t=1 * 3600, dt=1.0, model=None, params_name="Default",
+    horizon_t=1 * 3600-1, dt=1.0, model=None, params_name="Default",
     c_min=0.25, c_max=1, pulse_dur_s_range=(500, 1000), rest_dur_s_range=(500, 1000), RNG = True
 ):
     """
