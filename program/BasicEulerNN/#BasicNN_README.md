@@ -7,7 +7,7 @@ Data from SPM
 # Versions and experimental log
 
 ## Version 1
-Input i_k out V
-Input c_k output c_dot_k
+Input I_t, c_t output c_dot_t
 
-## Version 2
+## Version 1.1
+Input I_t, I_dot_t output c_dot_t
