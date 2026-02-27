@@ -42,13 +42,13 @@ def GP_process(alpha, X,y,X_test):
 
 def gen_current(t):
     sig = 0.1
-    l = 250
+    l = 500
     alpha = [l, sig]
     t_0 = np.arange(0,7) * 600
-    i0 = np.ones_like(t_0)
+    i0 = np.ones(len(t_0))
     i0 [0] = 0
-    i0[1] = 1#i0[1] = np.random.choice([0.25, 0.75])
-    i0[2:] = np.random.uniform(sig * 3,1 - 3 * sig,size=5)
+    i0[1] = np.random.uniform(0.3,.7)
+    i0[2:] = np.random.uniform(sig * 2,1 - 2 * sig,size=5)
 
     
     mu, cov, gp_model = GP_process(alpha, t_0.reshape(-1,1), i0.reshape(-1,1), t.reshape(-1,1))
@@ -57,7 +57,7 @@ def gen_current(t):
     I_int = np.trapezoid(sample, t,dx=3.6)
     #sample = sample * 3600 / I_int
 
-    return sample,i0
+    return sample
     
 
 
