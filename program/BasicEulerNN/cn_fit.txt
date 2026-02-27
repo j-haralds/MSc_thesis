@@ -1,0 +1,9 @@
+dI * (a[0] + a[2]/ (a[1] + t))
+With a pulse to positive current 
+a = [-8.28163424e-05  8.82505181e-01 -1.06028271e-03]
+
+
+
+
+
+

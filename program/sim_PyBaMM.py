@@ -1,16 +1,21 @@
 import pybamm
 import numpy as np
 import matplotlib.pyplot as plt
+import sklearn.gaussian_process as gp
+import scipy.stats as stats
 
-def simulate(I0):
+def simulate_DC(I0):
     model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
-    def my_current(t, I0=I0):
+    def my_DC_current(t, I0=I0):
         return I0
 
     param.process_model(model)
     geometry = model.default_geometry
     param.process_geometry(geometry)
+    param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
+    param['Current function [A]'] = my_DC_current
+
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
@@ -22,36 +27,59 @@ def simulate(I0):
     return solution,model,param
 
 
-def current_profile(t, I0):
-    times =    np.array([0, 600, 601, 1200, 1201, 1800, 1801, 2400])
-    currents = np.array([2.,  2.,   0,    0  ,0.5 , 0.5,  1.,     1.]) * I0  
+
+
+def GP_process(alpha, X,y,X_test):
+    kernel_GP = gp.kernels.RBF(length_scale=alpha[0]) * gp.kernels.ConstantKernel(constant_value=alpha[1])
+    gp_model = gp.GaussianProcessRegressor(kernel=kernel_GP,optimizer=None,normalize_y=False)
+
+    gp_model.fit(X, y)
+
+    gp_mu, gp_cov = gp_model.predict(X_test, return_cov=True)
+
+    return gp_mu, gp_cov, gp_model
+
+
+def gen_current(t):
+    alpha = [250, 0.25]
+    t_0 = np.arange(0,7) * 600
+    mu, cov, gp_model = GP_process(alpha, t_0.reshape(-1,1), np.random.uniform(0,1,7).reshape(-1,1), t.reshape(-1,1))
+    sample = stats.multivariate_normal.rvs(mean=mu, cov=cov)
+    sample = np.clip(sample, 0, 1)
+    I_int = np.trapezoid(sample, t,dx=3.6)
+    sample = sample * 3600 / I_int
+    print('here',np.trapezoid(sample,t,dx=3.6))
+    return sample
+    
+
+
+def current_profile(t):
+    times =    np.linspace(0, 3600, 1000)  
+    currents = gen_current(times)
     return pybamm.Interpolant(times, currents, pybamm.t)
 
 
 
-def simulate_variable_current(I0):
+def simulate_GRF():
     model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
-    def my_current(t,i0=I0):
-        return I0#current_profile(t,i0)
+    def my_current(t):
+        return current_profile(t)
     param["Current function [A]"] = my_current
-    # param['Electrode width [m]'] = 20 * 1e-6
-    # param['Negative electrode width [m]'] = 20 * 1e-6
-    # param['Negative particle radius [m]'] = 10 * 1e-6
-    # param['Positive particle radius [m]'] = 10 * 1e-6
 
     param.process_model(model)
     geometry = model.default_geometry
     param.process_geometry(geometry)
+    param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
-    t_eval = np.linspace(0,3600 / I0,100)
+    t_eval = np.linspace(0,3600)
 
     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
     solution = solver.solve(model, t_eval)
 
-    return solution,model
+    return solution,model, param
 
 
 def get_voltage(I):
@@ -88,3 +116,6 @@ def get_discharge_capacity_II(I):
     npc = solution.observe(model.variables['Discharge capacity [A.h]'])
     t_ = np.linspace(0,solution['Time [s]'].entries[-1],1000)
     return t_,npc(t_), solution['Time [s]'].entries
+
+
+
