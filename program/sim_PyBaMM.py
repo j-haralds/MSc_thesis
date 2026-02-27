@@ -19,7 +19,7 @@ def simulate_DC(I0):
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
-    t_eval = np.linspace(0,3600 / I0,100)
+    t_eval = np.linspace(0,3600 ,1000)
 
     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
     solution = solver.solve(model, t_eval)
@@ -45,16 +45,19 @@ def gen_current(t):
     l = 250
     alpha = [l, sig]
     t_0 = np.arange(0,7) * 600
-    i0 = np.zeros_like(t_0)
-    i0[1] = 0.5#i0[1] = np.random.choice([0.25, 0.75])
+    i0 = np.ones_like(t_0)
+    i0 [0] = 0
+    i0[1] = 1#i0[1] = np.random.choice([0.25, 0.75])
     i0[2:] = np.random.uniform(sig * 3,1 - 3 * sig,size=5)
+
+    
     mu, cov, gp_model = GP_process(alpha, t_0.reshape(-1,1), i0.reshape(-1,1), t.reshape(-1,1))
     sample = stats.multivariate_normal.rvs(mean=mu, cov=cov)
     sample = np.clip(sample, 0, 1)
     I_int = np.trapezoid(sample, t,dx=3.6)
-    sample = sample * 3600 / I_int
+    #sample = sample * 3600 / I_int
 
-    return sample
+    return sample,i0
     
 
 
@@ -79,7 +82,7 @@ def simulate_GRF():
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
-    t_eval = np.linspace(0,3600)
+    t_eval = np.linspace(0,3600,1000)
 
     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
     solution = solver.solve(model, t_eval)
@@ -121,8 +124,3 @@ def get_discharge_capacity_II(I):
     npc = solution.observe(model.variables['Discharge capacity [A.h]'])
     t_ = np.linspace(0,solution['Time [s]'].entries[-1],1000)
     return t_,npc(t_), solution['Time [s]'].entries
-
-
-
-plt.plot(gen_current(np.linspace(0,3600,1000)))
-plt.show()
