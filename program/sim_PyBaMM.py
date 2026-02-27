@@ -7,8 +7,8 @@ import scipy.stats as stats
 def simulate_DC(I0):
     model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
-    def my_DC_current(t, I0=I0):
-        return I0
+    def my_DC_current(I0=I0):
+        return pybamm.Scalar(I0)
 
     param.process_model(model)
     geometry = model.default_geometry
@@ -26,7 +26,19 @@ def simulate_DC(I0):
 
     return solution,model,param
 
+def simulate_DC1(I0):
+    model = pybamm.lithium_ion.SPM()
+    param = model.default_parameter_values
 
+    param["Nominal cell capacity [A.h]"] = 1.0
+    param["Current function [A]"] = I0
+
+    sim = pybamm.Simulation(model, parameter_values=param)
+
+    t_eval = np.linspace(0, 3600, 1000)
+    solution = sim.solve(t_eval)
+
+    return solution, model, param
 
 
 def GP_process(alpha, X,y,X_test):
