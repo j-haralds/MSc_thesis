@@ -26,7 +26,7 @@ def simulate_DC(I0):
 
     return solution,model,param
 
-def simulate_DC1(I0):
+def simulate_DC1(I0, T, T_horizon):
     model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
 
@@ -35,7 +35,7 @@ def simulate_DC1(I0):
 
     sim = pybamm.Simulation(model, parameter_values=param)
 
-    t_eval = np.linspace(0, 3600, 1000)
+    t_eval = np.linspace(0, T_horizon, T)
     solution = sim.solve(t_eval)
 
     return solution, model, param
