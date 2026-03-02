@@ -30,7 +30,7 @@ def simulate_DC1(I0, T, T_horizon):
     model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
 
-    param["Nominal cell capacity [A.h]"] = 1.0
+    param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
     param["Current function [A]"] = I0
 
     sim = pybamm.Simulation(model, parameter_values=param)
@@ -80,7 +80,7 @@ def current_profile(t):
 
 
 
-def simulate_GRF():
+def simulate_GRF(T, T_horizon):
     model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
     def my_current(t):
@@ -94,7 +94,7 @@ def simulate_GRF():
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
-    t_eval = np.linspace(0,3600,1000)
+    t_eval = np.linspace(0,T_horizon,T)
 
     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
     solution = solver.solve(model, t_eval)

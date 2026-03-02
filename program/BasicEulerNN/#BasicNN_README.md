@@ -18,5 +18,8 @@ K unroll + physics loss
 ## Version 2
 K unroll
 
-## Version 3
-Constant I
+## Version 4
+Basic working for constant currents. One-step training. Predict on initial condition and roll out
+
+## Version 4.1
+Time independent
