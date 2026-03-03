@@ -22,4 +22,16 @@ K unroll
 Basic working for constant currents. One-step training. Predict on initial condition and roll out
 
 ## Version 4.1
-Time independent
+Uses 'physical' time T_horizon /(T-1), otherwise wrong units in Euler forward
+Valid mask 
+Consistent scaling
+Time independent training (B*T, 4)
+
+### Cons
+- Normal training large integration drift, but decreasing train loss
+- Rollout loss (on its own, not good), increasing train loss
+- Combining the two does not work
+
+### Pros
+- It works for constant currents (predicts equally bad on GRF when trained on DC, but less noisy)
+- Works for pulses (normal training + rollout)
