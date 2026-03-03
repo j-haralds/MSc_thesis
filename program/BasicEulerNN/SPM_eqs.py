@@ -12,7 +12,7 @@ def pol_fit(c,V_ocv):
     coefs = np.polyfit(c, V_ocv, 10)
     return np.poly1d(coefs)
 
-sol, model,params = sim_PyBaMM.simulate_DC1(1, T=1000, T_horizon=3600*2)
+sol, model,params = sim_PyBaMM.simulate_DC(0.1)
 t = np.linspace(0,sol['Time [s]'].entries[-1],1000)
 ocp_p = sol.observe(model.variables['X-averaged positive electrode open-circuit potential [V]'])(t)
 ocp_n = sol.observe(model.variables['X-averaged negative electrode open-circuit potential [V]'])(t)
@@ -21,8 +21,8 @@ cp = sol.observe(model.variables['X-averaged positive particle concentration [mo
 cn_max = params['Maximum concentration in negative electrode [mol.m-3]']
 cp_max = params['Maximum concentration in positive electrode [mol.m-3]']
 
-n_fit = pol_fit(cn/cn_max, ocp_n)
-p_fit = pol_fit(cp/cp_max, ocp_p)
+n_fit = pol_fit(cn/cn[0], ocp_n)
+p_fit = pol_fit(cp/cp[0], ocp_p)
 
 def OCP(c_n, c_p,n_fit = n_fit,p_fit= p_fit):
     '''Calculate the open circuit poential from the surface concentrations.
@@ -30,16 +30,13 @@ def OCP(c_n, c_p,n_fit = n_fit,p_fit= p_fit):
     cn: surface concentration in the negative electrode non-normalized
     cp: surface concentration in the positive electrode non-normalized
     '''
-    Cn = c_n / cn_max
-    Cp = c_p / cp_max
+    Cn = c_n / cn[0]
+    Cp = c_p / cp[0]
 
-    ocp_N = 0
-    ocp_P = 0
+    ocp_N = n_fit(Cn)
+    ocp_P = p_fit(Cp)
 
-    for coef_n,coef_p in zip(n_fit.coefficients,p_fit.coefficients):
-        ocp_N += coef_n * Cn ** n_fit.order
-        ocp_P += coef_p * Cp ** p_fit.order
-
+    
 
     return ocp_P, ocp_N
 
@@ -111,3 +108,4 @@ def V_terminal(I,cp,cn, params, K = [0.05,0.2]):
     U = OCV(cn,cp)
     eta = eta_r(I,cp,cn,params=params, K=K)
     return U - eta
+
