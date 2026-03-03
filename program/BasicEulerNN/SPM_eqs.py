@@ -21,8 +21,8 @@ cp = sol.observe(model.variables['X-averaged positive particle concentration [mo
 cn_max = params['Maximum concentration in negative electrode [mol.m-3]']
 cp_max = params['Maximum concentration in positive electrode [mol.m-3]']
 
-n_fit = pol_fit(cn/cn[0], ocp_n)
-p_fit = pol_fit(cp/cp[0], ocp_p)
+n_fit = pol_fit(cn/cn_max, ocp_n)
+p_fit = pol_fit(cp/cp_max, ocp_p)
 
 def OCP(c_n, c_p,n_fit = n_fit,p_fit= p_fit):
     '''Calculate the open circuit poential from the surface concentrations.
@@ -30,8 +30,8 @@ def OCP(c_n, c_p,n_fit = n_fit,p_fit= p_fit):
     cn: surface concentration in the negative electrode non-normalized
     cp: surface concentration in the positive electrode non-normalized
     '''
-    Cn = c_n / cn[0]
-    Cp = c_p / cp[0]
+    Cn = c_n / cn_max
+    Cp = c_p / cp_max
 
     ocp_N = n_fit(Cn)
     ocp_P = p_fit(Cp)
