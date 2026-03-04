@@ -81,7 +81,7 @@ def current_profile(t):
 
 
 def simulate_GRF(T, T_horizon):
-    model = pybamm.lithium_ion.DFN()
+    model = pybamm.lithium_ion.SPM()
     param = model.default_parameter_values
     def my_current(t):
         return current_profile(t)
