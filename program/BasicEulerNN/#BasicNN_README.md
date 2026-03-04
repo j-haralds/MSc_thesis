@@ -49,6 +49,7 @@ Time independent training (B*T, 4)
 ## Version 5
 W.o. rollout loss, only one step training.
 - 100 eps: MSE=0.1909, max relative cn error 0.015. 
+Needs to have the same T in the data as in model, to obtain the same DT
 
 ## Version 5.1
 Physics loss
