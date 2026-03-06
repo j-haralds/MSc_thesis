@@ -87,22 +87,14 @@ def eta_r(i,cp,cn, params, K = [0.05,0.2]):
     e = R*T/F *( (1/alpha_p) * np.arcsinh(i / (2 * ap * A *Lp*jp0)) - (1/alpha_n) * np.arcsinh(-i / (2 * an * A *Ln*jn0)))
     return e #(2 * R * T / F) * (np.arcsinh(jn/jn0) -  np.arcsinh(jp/(jp0)))
 
-# def eta_r(i,cp,cn, params,K = [0.05,0.2]):
-#     Ln = params['Negative electrode thickness [m]']
-#     Lp = params['Positive electrode thickness [m]']
-    
-#     A = params['Electrode width [m]'] * params['Electrode height [m]']
-#     T = params['Initial temperature [K]']
-    
-#     R = sc.R
-#     F = sc.physical_constants['Faraday constant'][0]
-#     jp0 = exchange_current_dens(cp,k = 'p',K=K)
-#     jn0 = exchange_current_dens(cn,k = 'n',K=K)
 
-#     i_app = i / A
-#     jn = i_app / Ln
-#     jp = -i_app / Lp
-#     return 2 * R * T / F * (np.arcsinh(jn/jn0) -  np.arcsinh(jp/(jp0)))
+def Gibbs_am(cn,cp,param = params):
+    
+    jn0,np0 = exchange_current_dens(cn,cp,params)
+
+    jn = 2*F * jn0 * np.sinh(F * eta_r(1,cp,cn,params) / (2*R*T))
+
+
 
 def V_terminal(I,cp,cn, params, K = [0.05,0.2]):
     U = OCV(cn,cp)
