@@ -54,6 +54,7 @@ def GP_process(alpha, X,y,X_test):
 
 def gen_current(t):
     l = 500
+    sig = 0.075
     alpha = [l, sig]
     t_0 = np.arange(0,7) * 600
     i0 = np.ones(len(t_0))
