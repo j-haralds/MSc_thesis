@@ -53,3 +53,6 @@ Needs to have the same T in the data as in model, to obtain the same DT
 
 ## Version 5.1
 Physics loss
+
+## Version 6
+Input I_t, states xi. Output xi_dot. Ready for encoding
