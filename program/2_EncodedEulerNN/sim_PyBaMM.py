@@ -32,7 +32,7 @@ def simulate_DC1(I0, T, T_horizon):
 
     param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
     param["Current function [A]"] = I0
-    param['Contact resistance [Ohm]'] = pybamm.Scalar(0.5)
+    param['Contact resistance [Ohm]'] = pybamm.Scalar(10.0)
 
     sim = pybamm.Simulation(model, parameter_values=param)
 
