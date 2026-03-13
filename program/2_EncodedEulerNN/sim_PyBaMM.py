@@ -74,7 +74,7 @@ def gen_current(t):
     
 
 
-def current_profile(t):
+def current_profile(t): 
     times =    np.linspace(0, 3600, 1000)  
     currents = gen_current(times)
     return pybamm.Interpolant(times, currents, pybamm.t)
