@@ -27,11 +27,14 @@ def simulate_DC(I0):
     return solution,model,param
 
 def simulate_DC1(I0, T, T_horizon):
-    model = pybamm.lithium_ion.SPM()
+    model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
 
     param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
     param["Current function [A]"] = I0
+
+    # ---
+    param['Contact resistance [Ohm]'] = 0.1
 
     sim = pybamm.Simulation(model, parameter_values=param)
 
