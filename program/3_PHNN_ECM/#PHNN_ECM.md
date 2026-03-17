@@ -35,5 +35,9 @@ It still needs to train on DT though
 C1 is time dependent
 
 ## Version 4.1
-Constant C1 from
-Implicit Euler
+Constant C1 from dH_dq calculation instead of autograd
+Implicit Euler - Halvt fungerande
+
+## Version 5
+Added RC branch q1 and q2, instead of Q
+
