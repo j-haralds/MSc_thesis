@@ -30,11 +30,16 @@ def simulate_DC1(I0, T, T_horizon):
     model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
 
-    param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
-    param["Current function [A]"] = I0
+    # param = pybamm.ParameterValues("Chen2020_composite")
+
+    # for key in param.items():
+    #     print(key)
+
+    #param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
+    #param["Current function [A]"] = I0
 
     # ---
-    param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
+    #param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
 
     sim = pybamm.Simulation(model, parameter_values=param)
 
