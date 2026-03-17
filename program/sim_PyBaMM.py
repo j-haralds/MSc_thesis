@@ -5,7 +5,7 @@ import sklearn.gaussian_process as gp
 import scipy.stats as stats
 
 def simulate_DC(I0):
-    model = pybamm.lithium_ion.SPM()
+    model = pybamm.lithium_ion.DFN()
     param = model.default_parameter_values
     def my_DC_current(I0=I0):
         return pybamm.Scalar(I0)
@@ -34,7 +34,7 @@ def simulate_DC1(I0, T, T_horizon):
     param["Current function [A]"] = I0
 
     # ---
-    param['Contact resistance [Ohm]'] = 0.1
+    param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
 
     sim = pybamm.Simulation(model, parameter_values=param)
 
@@ -139,3 +139,6 @@ def get_discharge_capacity_II(I):
     npc = solution.observe(model.variables['Discharge capacity [A.h]'])
     t_ = np.linspace(0,solution['Time [s]'].entries[-1],1000)
     return t_,npc(t_), solution['Time [s]'].entries
+
+
+s, m, p = simulate_DC1(0.5, 1000, 3600)
