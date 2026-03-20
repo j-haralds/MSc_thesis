@@ -34,7 +34,13 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
         I (np.ndarray): current [A] (discharge positive)
     """
     if model is None:
-        model = pybamm.lithium_ion.SPM()
+        model = pybamm.lithium_ion.DFN(
+    options={
+        "SEI": "none",
+        "lithium plating": "none",
+        "particle mechanics": "none",
+    }
+)
     elif model == 'SPM':
         model = pybamm.lithium_ion.SPM()
     elif model == 'DFN':

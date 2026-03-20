@@ -1,0 +1,2 @@
+Model name,Number of parameters,Number of epochs,Train time,Data loss,Metric,Physics loss
+Data dt=0.1,17410,4,72.83714645789587,0.43516043573617935,mse,0

@@ -5,7 +5,12 @@ import sklearn.gaussian_process as gp
 import scipy.stats as stats
 
 def simulate_DC(I0):
-    model = pybamm.lithium_ion.DFN()
+    model = pybamm.lithium_ion.DFN(options={
+        "SEI": "none",
+        "lithium plating": "none",
+        "particle mechanics": "none",
+    }
+)
     param = model.default_parameter_values
     def my_DC_current(I0=I0):
         return pybamm.Scalar(I0)
@@ -27,16 +32,31 @@ def simulate_DC(I0):
     return solution,model,param
 
 def simulate_DC1(I0, T, T_horizon):
-    model = pybamm.lithium_ion.DFN()
+    model = pybamm.lithium_ion.DFN(options={
+        "SEI": "none",
+        "lithium plating": "none",
+        "particle mechanics": "none",
+    }
+)
     param = model.default_parameter_values
+    param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
+
+
 
     # param = pybamm.ParameterValues("Chen2020_composite")
 
     # for key in param.items():
     #     print(key)
 
-    #param["Nominal cell capacity [A.h]"] = pybamm.Scalar(1.0)
-    #param["Current function [A]"] = I0
+    param["Current function [A]"] = I0
+    param['SEI kinetic rate constant [m.s-1]'] = pybamm.Scalar(0.0)
+    param['SEI reaction exchange current density [A.m-2]'] = pybamm.Scalar(0.0)
+    param['SEI solvent diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
+    param['SEI lithium interstitial diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
+    param['SEI resistivity'] = pybamm.Scalar(0.0)
+    param['Initial SEI thickness [m]'] = pybamm.Scalar(0.0)
+    param['Negative electrode double-layer capacity [F.m-2]'] = pybamm.Scalar(0.0)
+    param['Positive electrode double-layer capacity [F.m-2]'] = pybamm.Scalar(0.0)  
 
     # ---
     #param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
@@ -89,7 +109,13 @@ def current_profile(t):
 
 
 def simulate_GRF(T, T_horizon):
-    model = pybamm.lithium_ion.DFN()
+    model = pybamm.lithium_ion.DFN(
+    options={
+        "SEI": "none",
+        "lithium plating": "none",
+        "particle mechanics": "none",
+    }
+)
     param = model.default_parameter_values
     def my_current(t):
         return current_profile(t)
@@ -98,7 +124,7 @@ def simulate_GRF(T, T_horizon):
     param.process_model(model)
     geometry = model.default_geometry
     param.process_geometry(geometry)
-    param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
+    param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.5)
     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
     disc.process_model(model)
