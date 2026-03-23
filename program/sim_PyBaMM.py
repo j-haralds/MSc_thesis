@@ -48,7 +48,7 @@ def simulate_DC1(I0, T, T_horizon):
     # for key in param.items():
     #     print(key)
 
-    param["Current function [A]"] = I0
+    param["Current function [A]"] = I0 
     param['SEI kinetic rate constant [m.s-1]'] = pybamm.Scalar(0.0)
     param['SEI reaction exchange current density [A.m-2]'] = pybamm.Scalar(0.0)
     param['SEI solvent diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
