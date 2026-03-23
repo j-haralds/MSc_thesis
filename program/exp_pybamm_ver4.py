@@ -34,25 +34,35 @@ def run_simulation(pulses, model=None, params_name="Chen2020", period_s=1.0):
         I (np.ndarray): current [A] (discharge positive)
     """
     if model is None:
-        model = pybamm.lithium_ion.DFN(
-    options={
-        "SEI": "none",
-        "lithium plating": "none",
-        "particle mechanics": "none",
-    }
-)
+        model = pybamm.lithium_ion.DFN(options={"SEI": "none",
+                                                "lithium plating": "none",
+                                                "particle mechanics": "none",})
     elif model == 'SPM':
-        model = pybamm.lithium_ion.SPM()
+        model = pybamm.lithium_ion.SPM(options={"SEI": "none",
+                                                "lithium plating": "none",
+                                                "particle mechanics": "none",})
     elif model == 'DFN':
-        model = pybamm.lithium_ion.DFN()
+        model = pybamm.lithium_ion.DFN(options={"SEI": "none",
+                                                "lithium plating": "none",
+                                                "particle mechanics": "none",})
     elif model == 'SPMe':
-        model = pybamm.lithium_ion.SPMe()
+        model = pybamm.lithium_ion.SPMe(options={"SEI": "none",
+                                                "lithium plating": "none",
+                                                "particle mechanics": "none",})
     else:
         raise ValueError(f"Unknown model: {model}")
 
     # params = pybamm.ParameterValues(params_name)
     params = model.default_parameter_values
     params['Nominal cell capacity [A.h]'] = pybamm.Scalar(1.0)  # Set capacity to 1 Ah for easier C-rate calculations
+    params['SEI kinetic rate constant [m.s-1]'] = pybamm.Scalar(0.0)
+    params['SEI reaction exchange current density [A.m-2]'] = pybamm.Scalar(0.0)
+    params['SEI solvent diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
+    params['SEI lithium interstitial diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
+    params['SEI resistivity'] = pybamm.Scalar(0.0)
+    params['Initial SEI thickness [m]'] = pybamm.Scalar(0.0)
+    params['Negative electrode double-layer capacity [F.m-2]'] = pybamm.Scalar(0.0)
+    params['Positive electrode double-layer capacity [F.m-2]'] = pybamm.Scalar(0.0)  
     experiment = build_pulse_experiment(pulses, period_s=period_s)
     sim = pybamm.Simulation(model, parameter_values=params, experiment=experiment)
 
