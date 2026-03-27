@@ -24,3 +24,7 @@ def grid_gen(xlim, ylim, size):
     y = np.linspace(ylim[0], ylim[1], int(y_size))
     X, Y = np.meshgrid(x, y)
     return X, Y
+
+def colors():
+    colors = ['tab:blue', 'tab:red', 'tab:green','black', 'tab:orange', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:cyan']
+    return colors
