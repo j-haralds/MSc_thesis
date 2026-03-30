@@ -15,7 +15,7 @@ N = 20                        # number of sample points (simulations to run)
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
     "C_rate": (0.5,  5.0,  1),
-    "u_par":  (-30.0, 30.0, 1),
+    "u_par":  (0.0, 30.0, 1),
 }
 
 SAVE_CSV     = False
