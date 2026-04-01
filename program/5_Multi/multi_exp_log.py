@@ -3,7 +3,7 @@ from torchinfo import summary
 import numpy as np
 
 
-def exp_log(model,history,current, name, d_loss_type, p_loss = None):
+def exp_log(model,history, name, N_trajs, mse, mae):
     '''Log experiment results to a CSV file and save model summary to a text file.
     Args:
         model: The trained PyTorch model.
@@ -12,19 +12,17 @@ def exp_log(model,history,current, name, d_loss_type, p_loss = None):
         d_loss_type: A string describing the type of data loss used.
         p_loss: Optional; a string describing the type of physics loss used (if any).
     '''
-    
-    N_ep = len(history['d_loss'])
-    d_loss = np.mean(history['d_loss'][-3:])
+    mean_mse_V = np.mean(mse[:,0])
+    mean_mse_F = np.mean(mse[:,1])
+    mean_mae_V = np.mean(mae[:,0])
+    mean_mae_F = np.mean(mae[:,1]) 
+    N_ep = len(history['loss'])
     train_time = np.sum(history['time per ep'])
-    if p_loss is not None:
-        p_loss = np.mean(history['p_loss'][-3:])
-    else: 
-        p_loss = 0
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     df_existing = pd.read_csv("exp_log/multi_exps.csv")
 
-    data = np.array([name,current,n_params,N_ep,train_time,d_loss,d_loss_type, p_loss]).reshape(1,8)
+    data = np.array([name,n_params,N_ep,train_time,N_trajs, mean_mse_V,mean_mse_F, mean_mae_V, mean_mae_F]).reshape(1,9)
 
     df_new = pd.DataFrame(data, columns=df_existing.columns.values)
     df_combined = pd.concat([df_existing,df_new], ignore_index=True)
