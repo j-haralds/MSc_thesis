@@ -2,26 +2,41 @@ epss_neg 0.6 "Active electrode volume fraction, negative"
 epss_pos 0.6 "Active electrode volume fraction, positive"
 epss_binder_neg 0.1 "Binder volume fraction, negative"
 epss_binder_pos 0.1 "Binder volume fraction, positive"
+
 epsl_neg 1-epss_neg-epss_binder_neg "Electrolyte volume fraction, negative"
 epsl_sep 0.4 "Separator volume fraction"
 epsl_pos 1-epss_pos-epss_binder_pos "Electrolyte volume fraction, positive"
-sigmas_neg 1[S/m] "Effective electrode conductivity, negative"
-sigmas_pos 1[S/m] "Effective electrode conductivity, positive"
-rp_neg 6[um] "Electrode particle radius, negative"
-rp_pos 5[um] "Electrode particle radius, positive"
-cs_max_neg 31507[mol/m^3] "Maximum concentration, negative"
-cs_max_pos 49000[mol/m^3] "Maximum concentration, positive"
-i0_ref_neg 10[A/m^2] "Exchange current density at 50% lithiation, negative"
-i0_ref_pos 10[A/m^2] "Exchange current density at 50% lithiation, positive"
-L_sep 20[um] "Separator thickness"
-L_pos 45[um] "Positive electrode thickness"
-L_neg (1-0.1)*epss_pos*cs_max_pos*L_pos/(0.8*epss_neg*cs_max_neg) "Negative electrode thickness"
-L_ccs 10[um] "Thickness of current collectors"
-V_cell 90[%]*(10.5[mm])^2*pi*70[mm] "Active cell volume"
+
+sigmas_neg 1 "Effective electrode conductivity, negative [S/m]"
+sigmas_pos 1 "Effective electrode conductivity, positive [S/m]"
+
+rp_neg 6 "Electrode particle radius, negative [um]"
+rp_pos 5 "Electrode particle radius, positive [um]"
+
+cs_max_neg 31507 "Maximum concentration, negative [mol/m^3]"
+cs_max_pos 49000 "Maximum concentration, positive [mol/m^3]"
+
+i0_ref_neg 10 "Exchange current density at 50% lithiation, negative [A/m^2]"
+i0_ref_pos 10 "Exchange current density at 50% lithiation, positive [A/m^2]"
+
+L_sep 20 "Separator thickness [um]"
+L_pos 45 "Positive electrode thickness [um]"
+
+L_neg (1-0.1)*epss_pos*cs_max_pos*L_pos/(0.8*epss_neg*cs_max_neg) "Negative electrode thickness [um]"
+
+L_ccs 10 "Thickness of current collectors [um]"
+
+V_cell 90*(10.5)^2*pi*70 "Active cell volume [% * mm^2 * mm]"
+
 A_cell V_cell/(L_neg+L_sep+L_pos+L_ccs/2) "Cell area"
+
 soc_init 1 "Initial SOC"
-T 25[degC] Temperature
+
+T 25 "Temperature [degC]"
+
 C_par 1 ""
 u_par 1 ""
+
 u_pre u_par*0.01*(L_sep+L_pos+L_neg) ""
-V_cutoff "3.3-1 [V]" ""
+
+V_cutoff 3.3-1 "Cutoff voltage [V]"
