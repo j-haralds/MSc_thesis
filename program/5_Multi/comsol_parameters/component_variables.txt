@@ -1,0 +1,8 @@
+sol_neg liion.soc_average_pce1 "Degree of lithiation, negative"
+sol_pos liion.soc_average_pce2 "Degree of lithiation, positive"
+soc_cell liion.SOC_cell "Battery cell state of charge"
+E_ocp_neg mat2.def.Eeq(sol_neg) "Open-circuit potential in negative electrode"
+E_ocp_pos mat3.def.Eeq(sol_pos) "Open-circuit potential in positive electrode"
+E_ocv_cell E_ocp_pos-E_ocp_neg "Open-circuit cell voltage"
+E_pol_tot E_cell-E_ocv_cell "Total battery cell polarization"
+I_1C "-liion.I_1C_cell/A_cell * C_par" "1 h charge/discharge current density"
