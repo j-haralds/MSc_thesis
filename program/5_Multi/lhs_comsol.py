@@ -22,7 +22,7 @@ PARAMS = {
 
 SAVE_CSV     = False
 CSV_PATH     = "lhs_samples.csv"
-RANDOM_SEED  = 42             # set to None for a different draw each run
+RANDOM_SEED  = 43             # set to None for a different draw each run
 # ──────────────────────────────────────────────────────────────────────────────
 
 
