@@ -10,11 +10,11 @@ import numpy as np
 import pandas as pd
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-N = 50                        # number of sample points (simulations to run)
+N = 70                        # number of sample points (simulations to run)
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
-    "C_rate": (0.5,  5.0,  1),
+    "C_rate": (3.5,  5.0,  1),
     "u_par":  (0.0, 30.0, 1),
     # "C_rate": (0.5,  5.0,  1),
     # "u_par":  (0.0, 0.0, 1),
