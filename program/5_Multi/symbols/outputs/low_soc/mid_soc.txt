@@ -1,0 +1,29 @@
+Model 0: Complexity=2, Loss=5.928067e-06
+Equation: f = -0.010911924; g = 880.16016
+
+Model 1: Complexity=4, Loss=2.4317437e-06
+Equation: f = 0.010364339; g = 11593.25 / #1
+
+Model 2: Complexity=6, Loss=2.3393384e-06
+Equation: f = -0.010374471; g = (-11503.121 / #1) / #3
+
+Model 3: Complexity=7, Loss=2.167898e-06
+Equation: f = -0.010374471; g = (-11291.161 / #1) / cube(#3)
+
+Model 4: Complexity=8, Loss=1.749381e-06
+Equation: f = 0.010424972; g = (-10870.941 / #1) / cube(cube(#3))
+
+Model 5: Complexity=9, Loss=1.0480456e-06
+Equation: f = -0.010589212; g = (-9981.689 / #1) / cube(cube(cube(#3)))
+
+Model 6: Complexity=10, Loss=4.697829e-07
+Equation: f = 0.0124561405; g = (9298.501 / #1) / cube(cube(cube(cube(#3))))
+
+Model 7: Complexity=11, Loss=1.8237583e-07
+Equation: f = -0.032433655; g = square(-98.17127 / cube(cube(cube(cube(#3))))) / #1
+
+Model 8: Complexity=13, Loss=9.299805e-08
+Equation: f = 0.03156462; g = square(103.31447 / cube(cube(cube(cube(#3))))) / (#1 - #2)
+
+Model 9: Complexity=15, Loss=8.094841e-08
+Equation: f = 0.033652876; g = (square(105.125824 / cube(cube(cube(cube(#3))))) / (#2 - #1)) + #1
