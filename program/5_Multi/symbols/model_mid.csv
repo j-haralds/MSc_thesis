@@ -1,0 +1,11 @@
+complexity,loss,equation,score,julia_expression,lambda_format
+2,0.0002952321,R = 0.10086699; C = 23.415087,0.0,R = 0.10086699; C = 23.415087,<pysr.expression_specs.CallableJuliaExpression object at 0x343c3bd40>
+4,0.00026210595,R = -0.10121503; C = #1 - 42.000652,0.059506507660607964,R = -0.10121503; C = #1 - 42.000652,<pysr.expression_specs.CallableJuliaExpression object at 0x343c387a0>
+6,0.00019760687,R = (-0.095731586 / #1) + -0.09368966; C = 23.402395,0.14123462970743622,R = (-0.095731586 / #1) + -0.09368966; C = 23.402395,<pysr.expression_specs.CallableJuliaExpression object at 0x343c3b440>
+7,0.0001638526,R = (-0.33635646 / square(#1)) + -0.09825395; C = -23.374949,0.18731230872484578,R = (-0.33635646 / square(#1)) + -0.09825395; C = -23.374949,<pysr.expression_specs.CallableJuliaExpression object at 0x343c3a8a0>
+8,0.0001255972,R = (-0.11424552 / #1) + -0.09270356; C = #1 - 41.62552,0.2658872823990588,R = (-0.11424552 / #1) + -0.09270356; C = #1 - 41.62552,<pysr.expression_specs.CallableJuliaExpression object at 0x343e60470>
+9,0.0001002879,R = (-0.37837481 / square(#1)) + -0.09829916; C = #1 - 41.701504,0.22503491118718738,R = (-0.37837481 / square(#1)) + -0.09829916; C = #1 - 41.701504,<pysr.expression_specs.CallableJuliaExpression object at 0x343e63fe0>
+10,9.826993e-05,R = sqrt((0.089612 / square(#1)) + 0.009582551); C = #1 + -41.679626,0.020326969553897394,R = sqrt((0.089612 / square(#1)) + 0.009582551); C = #1 + -41.679626,<pysr.expression_specs.CallableJuliaExpression object at 0x343c5b830>
+11,7.379119e-05,R = (#1 / (-65.8932 - exp(#1))) + -0.0995006; C = #1 + -41.668095,0.28647873226419535,R = (#1 / (-65.8932 - exp(#1))) + -0.0995006; C = #1 + -41.668095,<pysr.expression_specs.CallableJuliaExpression object at 0x343c5b650>
+13,6.690918e-05,R = (#1 / (-70.975494 - exp(#1))) + -0.09958201; C = #1 + (-43.908016 - #2),0.04895158516766842,R = (#1 / (-70.975494 - exp(#1))) + -0.09958201; C = #1 + (-43.908016 - #2),<pysr.expression_specs.CallableJuliaExpression object at 0x343c5a240>
+15,6.378823e-05,R = (#1 / (-59.01505 - exp(#1 / #3))) + -0.099535614; C = -43.772358 + (#1 - #2),0.02388374343913616,R = (#1 / (-59.01505 - exp(#1 / #3))) + -0.099535614; C = -43.772358 + (#1 - #2),<pysr.expression_specs.CallableJuliaExpression object at 0x343c5a600>
