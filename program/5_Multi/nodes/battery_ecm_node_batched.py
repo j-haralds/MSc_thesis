@@ -40,8 +40,8 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '7_merged_data.txt')
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
-N_HIDDEN    = 100
-EPOCHS      = 100
+N_HIDDEN    = 64
+EPOCHS      = 300
 LR          = 1e-3
 BATCH_SIZE  = 16        # ← NEW: trajectories per batch
 
@@ -324,31 +324,32 @@ def plot_predictions(model, trajs, title='', n_show=3):
         V, soc_np, U1, R1 = _predict_np(
             model, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
-        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', label='data', lw=1.5)
-        axes[0, j].plot(soc_np, V, '-', label='model', lw=1.5)
-        axes[0, j].set_ylabel('V [V]'); axes[0, j].legend()
+        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
+        axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
+        axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
         axes[0, j].invert_xaxis()
+        axes[0, j].set_xlabel('State of Charge');
         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', label='U1 true', lw=1.5)
-        axes[1, j].plot(soc_np, U1, '-', label='U1 model', lw=1.5)
-        axes[1, j].set_ylabel('U1 [V]'); axes[1, j].legend()
+        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
+        axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
+        axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+        axes[1, j].set_xlabel('State of Charge');
         axes[1, j].invert_xaxis()
 
         R0_val = R0_func(tr['u'], tr['I'])
-        axes[2, j].axhline(R0_val * 1000, ls='--', label='R0', lw=1.5)
-        axes[2, j].plot(soc_np, R1 * 1000, '-', label='R1', lw=1.5)
-        axes[2, j].set_ylabel('R [mΩ]'); axes[2, j].legend()
+        axes[2, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'Function $R0$', lw=1)
+        axes[2, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'Predicted $R1$', lw=1)
+        axes[2, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[2, j].legend()
         axes[2, j].invert_xaxis()
 
         C1 = model.C1.item()
         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[3, j].plot(soc_np, dU1_data, '--', label='data', lw=1.2, alpha=0.7)
-        axes[3, j].plot(soc_np, dU1_rc, '-', label='RC eq', lw=1.5)
-        axes[3, j].axhline(0, color='k', lw=0.5, alpha=0.3)
-        axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
-        axes[3, j].legend(fontsize=8); axes[3, j].invert_xaxis()
+        axes[3, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
+        axes[3, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
+        axes[3, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[3, j].set_xlabel('SOC')
+        axes[3, j].legend(); axes[3, j].invert_xaxis()
 
     fig.tight_layout()
     return fig
@@ -364,8 +365,8 @@ def plot_R1_landscape(model, I_values, u_val=-0.5):
             u_t    = torch.full((200,), u_val)
             R1 = model.r1_net(soc, I_norm, u_t).numpy() * 1000
             ax.plot(soc.numpy(), R1, label=f'I={Iv:.0f}A')
-    ax.set_xlabel('SOC'); ax.set_ylabel('R₁ [mΩ]')
-    ax.set_title('Charge-transfer resistance R₁(SOC)')
+    ax.set_xlabel('SOC'); ax.set_ylabel(r'$R$ [m$\Omega$]')
+    ax.set_title(r'Charge-transfer resistance $R_1$(SOC)')
     ax.legend(); ax.invert_xaxis(); fig.tight_layout()
     return fig
 
@@ -499,7 +500,7 @@ torch.save({
     'C1_init': C1_init,
     'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
-}, 'ecm_node.pt')
+}, os.path.join(FILE_PATH, 'ecm_node.pt'))
 
 print(f"Saved: ecm_node.pt")
 # %%

@@ -25,6 +25,8 @@
 #  What ECM lite gets for free from the RC equation:
 #    - All of the above. The NN only learns how R1 varies with SOC.
 
+import os
+import sys
 import torch
 import torch.nn as nn
 import numpy as np
@@ -33,11 +35,21 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import time as _time
 
+FILE_PATH = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
+import plot_settings
+plot_settings.apply()
+COLORS = plot_settings.colors()
+
 # %% ══════════════════════════════════════════════════════════
 #  CONFIGURATION  (match ECM lite exactly)
 # ══════════════════════════════════════════════════════════════
 
-DATA_FILE   = '2_merged_data.txt'
+DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
+DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+os.makedirs(FIGS_DIR, exist_ok=True)
+
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
@@ -221,7 +233,7 @@ def train_model(model, train_trajs, test_trajs,
     return history
 
 # %% ══════════════════════════════════════════════════════════
-#  PLOTTING  (same layout as ECM lite, row 3 = dU1/dt from NN)
+#  PLOTTING  (same layout as ECM lite, row 2 = dU1/dt from NN)
 # ══════════════════════════════════════════════════════════════
 
 def plot_predictions(model, trajs, title='', n_show=3):
@@ -237,29 +249,29 @@ def plot_predictions(model, trajs, title='', n_show=3):
             soc_np = soc.numpy()
 
             # Row 0: V
-            axes[0, j].plot(soc_np, tr['V'].numpy(), '--',
-                            label='data', lw=1.5)
-            axes[0, j].plot(soc_np, V.numpy(), '-',
-                            label='model', lw=1.5)
-            axes[0, j].set_ylabel('V [V]'); axes[0, j].legend()
+            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1],
+                            label=r'True $V$', lw=2)
+            axes[0, j].plot(soc_np, V.numpy(), '-', color=COLORS[0],
+                            label=r'Predicted $V$', lw=2)
+            axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
             axes[0, j].invert_xaxis()
             axes[0, j].set_title(
                 f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
             # Row 1: U1
-            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--',
-                            label='U1 true', lw=1.5)
-            axes[1, j].plot(soc_np, U1.numpy(), '-',
-                            label='U1 model', lw=1.5)
-            axes[1, j].set_ylabel('U1 [V]'); axes[1, j].legend()
+            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1],
+                            label=r'True $U_1$', lw=2)
+            axes[1, j].plot(soc_np, U1.numpy(), '-', color=COLORS[0],
+                            label=r'Predicted $U_1$', lw=2)
+            axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
             axes[1, j].invert_xaxis()
 
             # Row 2: dU1/dt  (NN output directly, no RC equation)
             dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-            axes[2, j].plot(soc_np, dU1_data, '--',
-                            label='data', lw=1.2, alpha=0.7)
-            axes[2, j].plot(soc_np, dU1.numpy(), '-',
-                            label='NN output', lw=1.5)
+            axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1],
+                            label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+            axes[2, j].plot(soc_np, dU1.numpy(), '-', color=COLORS[0],
+                            label=r'NN $dU_1/dt$', lw=2)
             axes[2, j].axhline(0, color='k', lw=0.5, alpha=0.3)
             axes[2, j].set_ylabel('dU1/dt [V/s]')
             axes[2, j].set_xlabel('SOC')
@@ -274,6 +286,7 @@ def plot_predictions(model, trajs, title='', n_show=3):
 
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
+print(data.columns)
 data['eta'] = -data['eta']
 I_MAX = data['I'].max()
 
@@ -316,13 +329,13 @@ history = train_model(model, train_trajs, test_trajs,
 #  LOSS CURVE
 # ══════════════════════════════════════════════════════════════
 
-fig, ax = plt.subplots(figsize=(8, 4))
-ax.semilogy(history['train'], label='train')
-ax.semilogy(history['test'], label='test')
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.semilogy(history['train'], color=COLORS[0], label='train')
+ax.semilogy(history['test'],  color=COLORS[1], label='test')
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 ax.set_title('Free-form NODE: dU1/dt = NN(U1, SOC, I, u)')
 fig.tight_layout()
-plt.savefig('freeform_loss.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'freeform_loss.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -330,7 +343,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, train_trajs, 'Train: ')
-plt.savefig('freeform_train.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'freeform_train.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -338,7 +351,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig('freeform_test.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'freeform_test.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -350,7 +363,7 @@ torch.save({
     'history': history,
     'N_HIDDEN': N_HIDDEN,
     'EPOCHS': EPOCHS,
-}, 'freeform_node.pt')
+}, os.path.join(FILE_PATH, 'freeform_node.pt'))
 
 print(f"Saved: freeform_node.pt")
 # %%

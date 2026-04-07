@@ -14,6 +14,8 @@
 #
 #  No odeint, no torchdiffeq. ~10× faster than dopri5.
 
+import os
+import sys
 import torch
 import torch.nn as nn
 import numpy as np
@@ -22,11 +24,21 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import time as _time
 
+FILE_PATH = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
+import plot_settings
+plot_settings.apply()
+COLORS = plot_settings.colors()
+
 # %% ══════════════════════════════════════════════════════════
 #  CONFIGURATION
 # ══════════════════════════════════════════════════════════════
 
-DATA_FILE   = '2_merged_data.txt'
+DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
+DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+os.makedirs(FIGS_DIR, exist_ok=True)
+
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
@@ -106,7 +118,6 @@ class BatteryECM(nn.Module):
         u_t    = torch.full((T,), u_val)
         R1     = self.r1_net(soc, I_norm, u_t)
 
-        # Replace with odeint?
         # Euler integrate U1
         U1_list = [torch.zeros(1)]
         for n in range(T - 1):
@@ -211,42 +222,62 @@ def train_model(model, train_trajs, test_trajs,
 #  PLOTTING FUNCTIONS
 # ══════════════════════════════════════════════════════════════
 
+@torch.no_grad()
+def _predict_np(model, I_val, u_val, soc0, T):
+    """Pure-numpy single-trajectory predict for plotting."""
+    C1 = model.C1.item()
+    t  = np.arange(T, dtype=np.float32)
+    soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
+
+    soc_t  = torch.from_numpy(soc)
+    I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
+    u_t    = torch.full((T,), u_val)
+    R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
+
+    U1 = np.zeros(T, dtype=np.float64)
+    for n in range(T - 1):
+        U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
+
+    Ue = model.Ue_interp(soc)
+    R0 = model.R0_func(u_val, I_val)
+    V  = Ue - I_val * R0 - U1
+    return V, soc, U1, R1
+
+
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
     fig, axes = plt.subplots(4, n, figsize=(5 * n, 12), squeeze=False)
 
     model.eval()
-    with torch.no_grad():
-        for j in range(n):
-            tr = trajs[j]
-            V, soc, U1, R1 = model(tr['I'], tr['u'], tr['soc0'], tr['T'])
-            soc_np = soc.numpy()
+    for j in range(n):
+        tr = trajs[j]
+        V, soc_np, U1, R1 = _predict_np(
+            model, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
-            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', label='data', lw=1.5)
-            axes[0, j].plot(soc_np, V.numpy(), '-', label='model', lw=1.5)
-            axes[0, j].set_ylabel('V [V]'); axes[0, j].legend()
-            axes[0, j].invert_xaxis()
-            axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+        axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+        axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
+        axes[0, j].invert_xaxis()
+        axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', label='U1 true', lw=1.5)
-            axes[1, j].plot(soc_np, U1.numpy(), '-', label='U1 model', lw=1.5)
-            axes[1, j].set_ylabel('U1 [V]'); axes[1, j].legend()
-            axes[1, j].invert_xaxis()
+        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+        axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+        axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+        axes[1, j].invert_xaxis()
 
-            R0_val = R0_func(tr['u'], tr['I'])
-            axes[2, j].axhline(R0_val * 1000, ls='--', label='R0', lw=1.5)
-            axes[2, j].plot(soc_np, R1.numpy() * 1000, '-', label='R1', lw=1.5)
-            axes[2, j].set_ylabel('R [mΩ]'); axes[2, j].legend()
-            axes[2, j].invert_xaxis()
+        R0_val = R0_func(tr['u'], tr['I'])
+        axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'Function $R_0$', lw=1)
+        axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'Predicted $R_1$', lw=1)
+        axes[2, j].set_ylabel('R [m\u03a9]'); axes[2, j].legend()
+        axes[2, j].invert_xaxis()
 
-            dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-            C1 = model.C1.item()
-            dU1_rc = tr['I'] / C1 - U1.numpy() / (R1.numpy() * C1)
-            axes[3, j].plot(soc_np, dU1_data, '--', label='data', lw=1.2, alpha=0.7)
-            axes[3, j].plot(soc_np, dU1_rc, '-', label='RC eq', lw=1.5)
-            axes[3, j].axhline(0, color='k', lw=0.5, alpha=0.3)
-            axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
-            axes[3, j].legend(fontsize=8); axes[3, j].invert_xaxis()
+        C1 = model.C1.item()
+        dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
+        dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+        axes[3, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+        axes[3, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+        axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
+        axes[3, j].legend(fontsize=8); axes[3, j].invert_xaxis()
 
     fig.tight_layout()
     return fig
@@ -257,13 +288,13 @@ def plot_R1_landscape(model, I_values, u_val=-0.5):
     soc = torch.linspace(0.02, 1.0, 200)
     model.eval()
     with torch.no_grad():
-        for Iv in I_values:
+        for k, Iv in enumerate(I_values):
             I_norm = torch.full((200,), Iv / model.r1_net.I_ref)
             u_t    = torch.full((200,), u_val)
             R1 = model.r1_net(soc, I_norm, u_t).numpy() * 1000
-            ax.plot(soc.numpy(), R1, label=f'I={Iv:.0f}A')
-    ax.set_xlabel('SOC'); ax.set_ylabel('R₁ [mΩ]')
-    ax.set_title('Charge-transfer resistance R₁(SOC)')
+            ax.plot(soc.numpy(), R1, color=COLORS[k % len(COLORS)], label=f'I={Iv:.0f}A')
+    ax.set_xlabel('SOC'); ax.set_ylabel('R\u2081 [m\u03a9]')
+    ax.set_title('Charge-transfer resistance R\u2081(SOC)')
     ax.legend(); ax.invert_xaxis(); fig.tight_layout()
     return fig
 
@@ -290,6 +321,7 @@ def extract_ecm_params(model, soc_points, I_val, u_val):
 
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
+print(data.columns)
 data['eta'] = -data['eta']
 I_MAX = data['I'].max()
 
@@ -337,7 +369,7 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, train_trajs, 'Train: ')
-plt.savefig('lite_train.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_train.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -345,7 +377,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig('lite_test.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_test.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -354,7 +386,7 @@ plt.show()
 
 I_vals = sorted(data['I'].unique())
 plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
-plt.savefig('lite_R1.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_R1.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -362,11 +394,11 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], label='train')
-ax.semilogy(history['test'], label='test')
+ax.semilogy(history['train'], color=COLORS[0], label='train')
+ax.semilogy(history['test'],  color=COLORS[1], label='test')
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig('lite_loss.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_loss.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -395,6 +427,7 @@ torch.save({
     'C1_init': C1_init,
     'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
-}, 'ecm_lite.pt')
+}, os.path.join(FILE_PATH, 'ecm_node.pt'))
 
-print(f"Saved: ecm_lite.pt")
+print(f"Saved: ecm_node.pt")
+# %%
