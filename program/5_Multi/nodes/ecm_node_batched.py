@@ -37,11 +37,11 @@ COLORS = plot_settings.colors()
 # ══════════════════════════════════════════════════════════════
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, '7_merged_data.txt')
+DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
-N_HIDDEN    = 64
-EPOCHS      = 300
+N_HIDDEN    = 128
+EPOCHS      = 100
 LR          = 1e-3
 BATCH_SIZE  = 16        # ← NEW: trajectories per batch
 
@@ -94,11 +94,14 @@ class BatteryECM(nn.Module):
         self.Ue_interp = Ue_interp
         self.R0_func   = R0_func
         self.Q0        = Q0
-        self.log_C1    = nn.Parameter(
-            torch.tensor(np.log(C1_init), dtype=torch.float32))
+        # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
+        # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init - 8000.0), dtype=torch.float32))
+        self.log_C1    = torch.tensor(np.log(C1_init), dtype=torch.float32)
 
     @property
     def C1(self):
+        # return torch.exp(self.log_C1)
+        # return torch.exp(self.log_C1) + 8000.0      # Ensure C1 > 1000 F for stability
         return torch.exp(self.log_C1)
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
@@ -261,6 +264,7 @@ def train_model(model, train_trajs, test_trajs,
             sq_err = (V_pred - V_true) ** 2
             loss = torch.sqrt(sq_err[mask].mean())
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             epoch_loss += loss.item()
@@ -284,7 +288,8 @@ def train_model(model, train_trajs, test_trajs,
             lr_now = optimizer.param_groups[0]['lr']
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
                   f"| test {test_loss:.4f} | C1={C1:.0f}F "
-                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m")
+                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
+                  f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * model.C1).min().item():.2f} s")
 
     return history
 
@@ -316,7 +321,7 @@ def _predict_np(model, I_val, u_val, soc0, T):
 
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(4, n, figsize=(5 * n, 12), squeeze=False)
+    fig, axes = plt.subplots(4, n, figsize=(5 * n, 14), squeeze=False)
 
     model.eval()
     for j in range(n):
@@ -412,7 +417,8 @@ split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
-C1_init = estimate_C1(train_trajs)
+# C1_init = estimate_C1(train_trajs)
+C1_init = 170
 print(f"  C1 estimate: {C1_init:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════

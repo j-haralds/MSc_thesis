@@ -53,7 +53,7 @@ os.makedirs(FIGS_DIR, exist_ok=True)
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100          # no warmup/dynamic split — just one phase
+EPOCHS      = 50          # no warmup/dynamic split — just one phase
 LR          = 1e-3
 
 # %% ══════════════════════════════════════════════════════════
@@ -249,29 +249,23 @@ def plot_predictions(model, trajs, title='', n_show=3):
             soc_np = soc.numpy()
 
             # Row 0: V
-            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1],
-                            label=r'True $V$', lw=2)
-            axes[0, j].plot(soc_np, V.numpy(), '-', color=COLORS[0],
-                            label=r'Predicted $V$', lw=2)
+            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+            axes[0, j].plot(soc_np, V.numpy(), '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
             axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
             axes[0, j].invert_xaxis()
             axes[0, j].set_title(
                 f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
             # Row 1: U1
-            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1],
-                            label=r'True $U_1$', lw=2)
-            axes[1, j].plot(soc_np, U1.numpy(), '-', color=COLORS[0],
-                            label=r'Predicted $U_1$', lw=2)
+            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+            axes[1, j].plot(soc_np, U1.numpy(), '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
             axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
             axes[1, j].invert_xaxis()
 
             # Row 2: dU1/dt  (NN output directly, no RC equation)
             dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-            axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1],
-                            label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-            axes[2, j].plot(soc_np, dU1.numpy(), '-', color=COLORS[0],
-                            label=r'NN $dU_1/dt$', lw=2)
+            axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+            axes[2, j].plot(soc_np, dU1.numpy(), '-', color=COLORS[0], label=r'NN $dU_1/dt$', lw=2)
             axes[2, j].axhline(0, color='k', lw=0.5, alpha=0.3)
             axes[2, j].set_ylabel('dU1/dt [V/s]')
             axes[2, j].set_xlabel('SOC')
@@ -343,7 +337,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, train_trajs, 'Train: ')
-plt.savefig(os.path.join(FIGS_DIR, 'freeform_train.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, 'freeform_train.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -363,7 +357,7 @@ torch.save({
     'history': history,
     'N_HIDDEN': N_HIDDEN,
     'EPOCHS': EPOCHS,
-}, os.path.join(FILE_PATH, 'freeform_node.pt'))
+}, os.path.join(FILE_PATH, f'freeform_node_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
 print(f"Saved: freeform_node.pt")
 # %%
