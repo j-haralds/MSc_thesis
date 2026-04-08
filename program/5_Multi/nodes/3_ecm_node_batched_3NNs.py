@@ -1,5 +1,5 @@
 # %% ══════════════════════════════════════════════════════════
-#  2 BATTERY ECM NODE — BATCHED VERSION
+#  3 BATTERY ECM NODE — BATCHED VERSION
 # ══════════════════════════════════════════════════════════════
 #
 #  Same physics as the original, but with batched training:
@@ -39,9 +39,10 @@ COLORS = plot_settings.colors()
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 Q0          = 17921.57581
+I_MAX       = 5 / 3600 * Q0        # C max * Q0 / 3600
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 64
-EPOCHS      = 100
+EPOCHS      = 20
 LR          = 1e-3
 BATCH_SIZE  = 1        # ← NEW: trajectories per batch
 
@@ -58,7 +59,7 @@ def R0_func(u, I):
 
 class R1Net(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=20.0):
+    def __init__(self, n_hidden=32, I_ref=I_MAX):
         super().__init__()
         self.I_ref = I_ref
         self.net = nn.Sequential(
@@ -74,7 +75,53 @@ class R1Net(nn.Module):
     def forward(self, soc, I_norm, u):
         # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5    # Scaling as Brucker et al. (2020) and small floor for stability
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5    # Scaling as Brucker and small floor for stability
+    
+# %% ══════════════════════════════════════════════════════════
+#  C1 NETWORK
+# ══════════════════════════════════════════════════════════════
+
+class C1Net(nn.Module):
+    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        for m in self.net:
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight, gain=0.3)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 10000.0
+    
+# %% ══════════════════════════════════════════════════════════
+#  R0 NETWORK
+# ══════════════════════════════════════════════════════════════
+
+class R0Net(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        for m in self.net:
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight, gain=0.3)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5    # Scaling as Brucker and small floor for stability
 
 # %% ══════════════════════════════════════════════════════════
 #  BATCHED ECM MODEL
@@ -88,21 +135,15 @@ class BatteryECM(nn.Module):
     The Euler loop steps ALL trajectories simultaneously at each
     timestep — no per-trajectory Python loop.
     """
-    def __init__(self, r1_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
+    def __init__(self, r1_net, c1_net, r0_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
         super().__init__()
         self.r1_net    = r1_net
+        self.c1_net    = c1_net
+        self.r0_net    = r0_net
         self.Ue_interp = Ue_interp
         self.R0_func   = R0_func
         self.Q0        = Q0
-        self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
-        # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init - 8000.0), dtype=torch.float32))
-        # self.log_C1    = torch.tensor(np.log(C1_init), dtype=torch.float32)
 
-    @property
-    def C1(self):
-        # return torch.exp(self.log_C1)
-        # return torch.exp(self.log_C1) + 8000.0      # Ensure C1 > 1000 F for stability
-        return torch.exp(self.log_C1)
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
         """
@@ -121,22 +162,24 @@ class BatteryECM(nn.Module):
         R1   : (B, T_max)
         """
         B  = I_batch.shape[0]
-        C1 = self.C1
 
         # SOC: analytical  (B, T_max)
         t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)  # (1, T)
         soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
 
-        # R1 at every (batch, time) point  →  (B, T_max)
-        I_norm = (I_batch / self.r1_net.I_ref).unsqueeze(1).expand(B, T_max)
+        # R1, C1, R0 at every (batch, time) point  →  (B, T_max)
+        I_norm = (I_batch / I_MAX).unsqueeze(1).expand(B, T_max)
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
         R1 = self.r1_net(soc, I_norm, u_exp)   # (B, T_max)
+        C1 = self.c1_net(soc, I_norm, u_exp)   # (B, T_max)
+        R0 = self.r0_net(soc, I_norm, u_exp)   # (B, T_max)
+
 
         # Vectorised Euler integration of U1 across the batch
         # Each timestep: U1[n+1] = U1[n] + I/C1 − U1[n]/(R1[n]·C1)
         U1_steps = [torch.zeros(B)]
         for n in range(T_max - 1):
-            dU1 = I_batch / C1 - U1_steps[n] / (R1[:, n] * C1)
+            dU1 = I_batch / C1[:, n] - U1_steps[n] / (R1[:, n] * C1[:, n])
             U1_steps.append(U1_steps[n] + dU1)   # dt = 1 s
 
             # Semi-implicit euler for stability: use U1[n+1] on the right-hand side
@@ -287,13 +330,13 @@ def train_model(model, train_trajs, test_trajs,
         scheduler.step(epoch_loss)
 
         if epoch % print_every == 0 or epoch == 1:
-            C1 = model.C1.item()
+            #C1 = model.C1.item()
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
             lr_now = optimizer.param_groups[0]['lr']
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
-                  f"| test {test_loss:.4f} | C1={C1:.0f}F "
+                  f"| test {test_loss:.4f} "
                   f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
-                  f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * model.C1).min().item():.2f} s")
+                  f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / I_MAX, u_b) * model.c1_net(soc0_b, I_b / I_MAX, u_b)).min().item():.2f} s")
 
     return history
 
@@ -304,7 +347,6 @@ def train_model(model, train_trajs, test_trajs,
 @torch.no_grad()
 def _predict_np(model, I_val, u_val, soc0, T):
     """Pure-numpy single-trajectory predict for plotting."""
-    C1 = model.C1.item()
     t  = np.arange(T, dtype=np.float32)
     soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
 
@@ -312,10 +354,11 @@ def _predict_np(model, I_val, u_val, soc0, T):
     I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
     u_t    = torch.full((T,), u_val)
     R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
+    C1 = model.c1_net(soc_t, I_norm, u_t).numpy()  # Just use C1 at the initial point for simplicity
 
     U1 = np.zeros(T, dtype=np.float64)
     for n in range(T - 1):
-        U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
+        U1[n+1] = U1[n] + I_val / C1[n] - U1[n] / (R1[n] * C1[n])
 
     Ue = model.Ue_interp(soc)
     R0 = model.R0_func(u_val, I_val)
@@ -430,7 +473,9 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 r1_net = R1Net(n_hidden=N_HIDDEN, I_ref=I_MAX)
-model  = BatteryECM(r1_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
+c1_net = C1Net(n_hidden=N_HIDDEN)
+r0_net = R0Net(n_hidden=N_HIDDEN)
+model  = BatteryECM(r1_net, c1_net, r0_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -442,10 +487,10 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 print(f"\nTraining ({EPOCHS} epochs, batch_size={BATCH_SIZE})...")
 history = train_model(model, train_trajs, test_trajs,
                       n_epochs=EPOCHS, lr=LR,
-                      batch_size=BATCH_SIZE, print_every=20)
+                      batch_size=BATCH_SIZE, print_every=5)
 
-C1_final = model.C1.item()
-print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
+# C1_final = model.C1.item()
+# print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TRAIN
