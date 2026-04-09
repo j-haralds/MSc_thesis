@@ -375,7 +375,12 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
             ax.plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label='True', lw=1.5)
             ax.plot(soc_np, V_pred.numpy(), '-', color=COLORS[0], label='model', lw=1.5)
             ax.set_xlabel('SOC'); ax.set_ylabel('V [V]')
-            ax.set_title(f'{title_prefix}I={tr["I"].item():.1f}, '
+            if complete_ode is not None:
+                ax.set_title(f'{title_prefix}I={tr["I"].item():.1f}, '
+                         f'u={tr["u"].item():.3f}' 
+                         f' | C1={complete_ode.C1.item():.0f} F')
+            else:
+                ax.set_title(f'{title_prefix}I={tr["I"].item():.1f}, '
                          f'u={tr["u"].item():.3f}')
             ax.legend(); ax.invert_xaxis()
 
@@ -400,18 +405,15 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
             ax4 = axes[3, j]
             dU1_data = dU1dt_from_data(tr)
             dU1_model = np.gradient(U1_pred_np, 1.0)
-            ax4.plot(soc_np, dU1_data, '--', color='tab:blue',
-                     label='dU1/dt data', lw=1.2, alpha=0.7)
-            ax4.plot(soc_np, dU1_model, '-', color='tab:orange',
-                     label='dU1/dt model', lw=1.2)
+            ax4.plot(soc_np, dU1_data, '--', color=COLORS[1], label='dU1/dt data', lw=1.5)
+            ax4.plot(soc_np, dU1_model, '-', color=COLORS[0], label='dU1/dt model', lw=1.5)
 
-            # If we have the RC model, show the analytical dU1/dt too
-            if complete_ode is not None and r1_net_ref is not None:
-                dU1_rc = dU1dt_from_rc(
-                    r1_net_ref, complete_ode,
-                    soc_np, U1_pred_np, tr)
-                ax4.plot(soc_np, dU1_rc, '-', color='tab:red',
-                         label='dU1/dt (RC eq)', lw=1.2, alpha=0.8)
+            # # If we have the RC model, show the analytical dU1/dt too
+            # if complete_ode is not None and r1_net_ref is not None:
+            #     dU1_rc = dU1dt_from_rc(
+            #         r1_net_ref, complete_ode,
+            #         soc_np, U1_pred_np, tr)
+            #     ax4.plot(soc_np, dU1_rc, '-', color=COLORS[2], label='dU1/dt (RC eq)', lw=1.5, alpha=0.8)
 
             ax4.set_xlabel('SOC'); ax4.set_ylabel('dU1/dt [V/s]')
             ax4.legend(fontsize=7); ax4.invert_xaxis()
@@ -426,7 +428,7 @@ def _run_static(tr):
 fig = plot_results(train_trajs, _run_static, 'S1 Train: ', r1_net_ref=r1_net)
 # plt.savefig(os.path.join(FILE_PATH, 's1_train.pdf'), bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_static, 'S1 Test: ', r1_net_ref=r1_net)
-# plt.savefig('static_dynamic/s1_test.pdf', bbox_inches='tight'); plt.show()
+plt.savefig(os.path.join(FILE_PATH, 's1_test.pdf'), bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -570,7 +572,7 @@ fig = plot_results(train_trajs, _run_complete, 'S2 Train: ',
 # plt.savefig('static_dynamic/s2_train.pdf', bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_complete, 'S2 Test: ',
                    complete_ode=complete_ode, r1_net_ref=r1_net)
-# plt.savefig('static_dynamic/s2_test.pdf', bbox_inches='tight'); plt.show()
+plt.savefig(os.path.join(FILE_PATH, 's2_test.pdf'), bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
