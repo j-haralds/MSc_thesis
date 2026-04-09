@@ -1,5 +1,5 @@
 # %% ══════════════════════════════════════════════════════════
-#  not batchedBATTERY ECM — Minimal ECM surrogate with Euler integration
+#  BATTERY ECM LITE — Minimal ECM surrogate with Euler integration
 # ══════════════════════════════════════════════════════════════
 #
 #  Physics:
@@ -268,7 +268,7 @@ def plot_predictions(model, trajs, title='', n_show=3):
         R0_val = R0_func(tr['u'], tr['I'])
         axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'Function $R_0$', lw=1)
         axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'Predicted $R_1$', lw=1)
-        axes[2, j].set_ylabel('R [m\u03a9]'); axes[2, j].legend()
+        axes[2, j].set_ylabel(r'R [m$\Omega$]'); axes[2, j].legend()
         axes[2, j].invert_xaxis()
 
         C1 = model.C1.item()
@@ -369,7 +369,7 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, train_trajs, 'Train: ')
-plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_train.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_train.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -377,17 +377,17 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_test.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_test.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  R1 LANDSCAPE
 # ══════════════════════════════════════════════════════════════
 
-I_vals = sorted(data['I'].unique())
-plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
-plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_R1.pdf'), bbox_inches='tight')
-plt.show()
+# I_vals = sorted(data['I'].unique())
+# plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
+# # plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_R1.pdf'), bbox_inches='tight')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
@@ -398,7 +398,7 @@ ax.semilogy(history['train'], color=COLORS[0], label='train')
 ax.semilogy(history['test'],  color=COLORS[1], label='test')
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_loss.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_loss.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════

@@ -10,11 +10,11 @@ import numpy as np
 import pandas as pd
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-N = 70                        # number of sample points (simulations to run)
+N = 50                        # number of sample points (simulations to run)
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
-    "C_rate": (3.5,  5.0,  1),
+    "C_rate": (1.0,  5.0,  1),
     "u_par":  (0.0, 30.0, 1),
     # "C_rate": (0.5,  5.0,  1),
     # "u_par":  (0.0, 0.0, 1),
@@ -64,11 +64,11 @@ raw = latin_hypercube_sample(N, bounds_list, decimals_list, seed=RANDOM_SEED)
 # 1. DataFrame
 df = pd.DataFrame(raw, columns=param_names)
 df.insert(0, "case_id", range(1, N + 1))
-print("═" * 55)
-print(f"  LHS samples  (N={N})")
-print("═" * 55)
-print(df.to_string(index=False))
-print()
+# print("═" * 55)
+# print(f"  LHS samples  (N={N})")
+# print("═" * 55)
+# print(df.to_string(index=False))
+# print()
 
 # 2. COMSOL strings  (one per parameter)
 print("─── COMSOL value lists (paste into Parameter Value List) ───")
@@ -77,7 +77,7 @@ for col in param_names:
     print(f"\n  {col}:\n  {cs}")
 print()
 
-# 3. Optional CSV export
-if SAVE_CSV:
-    df.to_csv(CSV_PATH, index=False)
-    print(f"  Samples saved → {CSV_PATH}")
+# # 3. Optional CSV export
+# if SAVE_CSV:
+#     df.to_csv(CSV_PATH, index=False)
+#     print(f"  Samples saved → {CSV_PATH}")
