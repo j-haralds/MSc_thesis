@@ -86,12 +86,12 @@ Q0_INIT     = 17921.57581
 TRAIN_SPLIT = 0.8
 
 # Stage 1
-S1_EPOCHS   = 1
+S1_EPOCHS   = 100
 S1_LR       = 1e-2
 S1_LR_DROP  = 1e-3      # lr after epoch 50
 
 # Stage 2
-S2_EPOCHS     = 1      # was 30 — doubled
+S2_EPOCHS     = 30      # was 30 — doubled
 S2_C1_WARMUP  = 15      # train only C1 for these many epochs
 S2_LR_C1      = 1e-2    # C1 needs a high lr (it's one scalar)
 S2_LR_JOINT   = 5e-4    # slower for joint training (protect Stage 1 weights)
@@ -316,8 +316,8 @@ for epoch in range(1, S1_EPOCHS + 1):
         print(f"  Epoch {epoch:4d}/{S1_EPOCHS} | RMSE {epoch_loss:.4f} "
               f"| C_bat {soc_func.C_bat.item():.2f} Ah | ETA {eta:.1f}m")
 
-torch.save(soc_func.state_dict(), '_s1_soc.pt')
-torch.save(r1_net.state_dict(),   '_s1_r1.pt')
+# torch.save(soc_func.state_dict(), os.path.join(FILE_PATH, '_s1_soc.pt'))
+# torch.save(r1_net.state_dict(),   os.path.join(FILE_PATH, '_s1_r1.pt'))
 print(f"  Stage 1 done. C_bat = {soc_func.C_bat.item():.2f} Ah")
 
 
@@ -372,10 +372,8 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
 
             # Row 0: Voltage
             ax = axes[0, j]
-            ax.plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1],
-                    label='True', lw=1.5)
-            ax.plot(soc_np, V_pred.numpy(), '-', color='tab:orange',
-                    label='model', lw=1.5)
+            ax.plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label='True', lw=1.5)
+            ax.plot(soc_np, V_pred.numpy(), '-', color=COLORS[0], label='model', lw=1.5)
             ax.set_xlabel('SOC'); ax.set_ylabel('V [V]')
             ax.set_title(f'{title_prefix}I={tr["I"].item():.1f}, '
                          f'u={tr["u"].item():.3f}')
@@ -383,10 +381,8 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
 
             # Row 1: U1
             ax2 = axes[1, j]
-            ax2.plot(soc_np, tr['U1_true'].numpy(), '--',
-                     label='U1 true', lw=1.5)
-            ax2.plot(soc_np, U1_pred_np, '-',
-                     label='U1 model', lw=1.5)
+            ax2.plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label='U1 true', lw=1.5)
+            ax2.plot(soc_np, U1_pred_np, '-', color=COLORS[0], label='U1 model', lw=1.5)
             ax2.set_xlabel('SOC'); ax2.set_ylabel('U1 [V]')
             ax2.legend(); ax2.invert_xaxis()
 
@@ -394,13 +390,9 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
             ax3 = axes[2, j]
             # R1_np = (vRC1_pred / tr['I']).numpy()
             T = len(SOC_pred)
-            R1_np = r1_net_ref(
-                    SOC_pred.detach(),
-                    tr['I'].expand(T),
-                    tr['u'].expand(T)).squeeze().detach().numpy()
-            ax3.plot(soc_np, np.full_like(soc_np, tr['R0']),
-                     '--', label='R0', lw=1.5)
-            ax3.plot(soc_np, R1_np, '-', label='R1', lw=1.5)
+            R1_np = r1_net_ref(SOC_pred.detach(), tr['I'].expand(T), tr['u'].expand(T)).squeeze().detach().numpy()
+            ax3.plot(soc_np, np.full_like(soc_np, tr['R0']), '--', color=COLORS[1], label='R0', lw=1.5)
+            ax3.plot(soc_np, R1_np, '-', color=COLORS[0], label='R1', lw=1.5)
             ax3.set_xlabel('SOC'); ax3.set_ylabel('R [Ohm]')
             ax3.legend(); ax3.invert_xaxis()
 
@@ -432,7 +424,7 @@ def _run_static(tr):
     return run_static(soc_func, r1_net, tr)
 
 fig = plot_results(train_trajs, _run_static, 'S1 Train: ', r1_net_ref=r1_net)
-# plt.savefig('static_dynamic/s1_train.pdf', bbox_inches='tight'); plt.show()
+# plt.savefig(os.path.join(FILE_PATH, 's1_train.pdf'), bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_static, 'S1 Test: ', r1_net_ref=r1_net)
 # plt.savefig('static_dynamic/s1_test.pdf', bbox_inches='tight'); plt.show()
 
@@ -722,7 +714,7 @@ axes[1].set_xlabel('epoch'); axes[1].set_ylabel('RMSE')
 axes[1].set_title('Stage 2: Dynamic')
 axes[1].legend()
 fig.tight_layout()
-plt.savefig('static_dynamic/loss_curves.pdf', bbox_inches='tight'); plt.show()
+plt.savefig(os.path.join(FILE_PATH, 'loss_curves.pdf'), bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -745,7 +737,7 @@ torch.save({
         'C1_final': complete_ode.C1.item(),
         'C1_init': C1_INIT,
     },
-}, os.path.join(FILE_PATH, 'ecm_node.pt'))
+}, os.path.join(FILE_PATH, f'{MODEL_NAME}.pt'))
 
 print(f"\nSaved: {MODEL_NAME}.pt")
 print("Done.")
