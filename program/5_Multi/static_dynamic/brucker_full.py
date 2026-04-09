@@ -428,7 +428,7 @@ def _run_static(tr):
 fig = plot_results(train_trajs, _run_static, 'S1 Train: ', r1_net_ref=r1_net)
 # plt.savefig(os.path.join(FILE_PATH, 's1_train.pdf'), bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_static, 'S1 Test: ', r1_net_ref=r1_net)
-plt.savefig(os.path.join(FILE_PATH, 's1_test.pdf'), bbox_inches='tight'); plt.show()
+plt.savefig(os.path.join(FILE_PATH, f's1_test_h{N_HIDDEN}_s1e{S1_EPOCHS}_s2e{S2_EPOCHS}.pdf'), bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -572,7 +572,7 @@ fig = plot_results(train_trajs, _run_complete, 'S2 Train: ',
 # plt.savefig('static_dynamic/s2_train.pdf', bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_complete, 'S2 Test: ',
                    complete_ode=complete_ode, r1_net_ref=r1_net)
-plt.savefig(os.path.join(FILE_PATH, 's2_test.pdf'), bbox_inches='tight'); plt.show()
+plt.savefig(os.path.join(FILE_PATH, f's2_test_h{N_HIDDEN}_s1e{S1_EPOCHS}_s2e{S2_EPOCHS}.pdf'), bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
