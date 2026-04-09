@@ -10,7 +10,7 @@ def setup_model(its = 500, pop = 25, selection = "best",run_id = None):
         expressions=['R', 'C'],
         variable_names= ['x1', 'x2', 'x3','x4'],   #x1 = dU1, x2 = I, x3 = u, x4 = soc 
         #combine = '-x1 / (exp(f(x2, x3,x4)) * exp(g(x2, x3,x4))) + x2 / exp(g(x2, x3,x4))'
-        combine = '(R(x2,x3,x4))^2 * (x2 - (C(x2,x3,x4))^2 * x1)'
+        combine = '(R(x2,x3,x4))^2/100 * (x2 - (x1 * C(x2,x3,x4))^2*10000 )'
     )
     model = PySRRegressor(
         model_selection=selection,
