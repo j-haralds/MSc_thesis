@@ -1,10 +1,6 @@
 # %% ══════════════════════════════════════════════════════════
-#  3 BATTERY ECM NODE — BATCHED VERSION
+#  not batchedBATTERY ECM — Minimal ECM surrogate with Euler integration
 # ══════════════════════════════════════════════════════════════
-#
-#  Same physics as the original, but with batched training:
-#  all trajectories (padded to equal length) are integrated
-#  simultaneously, giving ~5-10× speedup on CPU.
 #
 #  Physics:
 #      SOC(t)  = SOC0 − I·t/Q0                     (analytical)
@@ -15,6 +11,8 @@
 #  Learned:  R1Net(SOC, I, u) → R1 > 0   (small feedforward NN)
 #            C1                            (one scalar)
 #  Known:    Ue(SOC) from data,  R0(u, I) fitted function
+#
+#  No odeint, no torchdiffeq. ~10× faster than dopri5.
 
 import os
 import sys
@@ -38,13 +36,14 @@ COLORS = plot_settings.colors()
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+os.makedirs(FIGS_DIR, exist_ok=True)
+
 Q0          = 17921.57581
-I_MAX       = 5 / 3600 * Q0        # C max * Q0 / 3600
 TRAIN_SPLIT = 0.8
-N_HIDDEN    = 64
+N_HIDDEN    = 32
 EPOCHS      = 20
 LR          = 1e-3
-BATCH_SIZE  = 1        # ← NEW: trajectories per batch
 
 # %% ══════════════════════════════════════════════════════════
 #  KNOWN PHYSICS
@@ -54,12 +53,12 @@ def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
 # %% ══════════════════════════════════════════════════════════
-#  R1 NETWORK  (unchanged — already handles arbitrary batch dims)
+#  R1 NETWORK
 # ══════════════════════════════════════════════════════════════
 
 class R1Net(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=I_MAX):
+    def __init__(self, n_hidden=32, I_ref=20.0):
         super().__init__()
         self.I_ref = I_ref
         self.net = nn.Sequential(
@@ -73,143 +72,67 @@ class R1Net(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5    # Scaling as Brucker and small floor for stability
-    
-# %% ══════════════════════════════════════════════════════════
-#  C1 NETWORK
-# ══════════════════════════════════════════════════════════════
-
-class C1Net(nn.Module):
-    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1),
-        )
-        for m in self.net:
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight, gain=0.3)
-                nn.init.zeros_(m.bias)
-
-    def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 10000.0
-    
-# %% ══════════════════════════════════════════════════════════
-#  R0 NETWORK
-# ══════════════════════════════════════════════════════════════
-
-class R0Net(nn.Module):
-    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1),
-        )
-        for m in self.net:
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight, gain=0.3)
-                nn.init.zeros_(m.bias)
-
-    def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5    # Scaling as Brucker and small floor for stability
+        x = torch.stack([soc.reshape(-1),
+                         I_norm.reshape(-1),
+                         u.reshape(-1)], dim=-1)
+        return (nn.functional.softplus(self.net(x)).squeeze(-1)
+                * 0.01 + 1e-5)
 
 # %% ══════════════════════════════════════════════════════════
-#  BATCHED ECM MODEL
+#  ECM MODEL  (Euler integration, no odeint)
 # ══════════════════════════════════════════════════════════════
 
 class BatteryECM(nn.Module):
     """
-    Batched ECM:  forward() now accepts tensors of shape (B,) for
-    scalar-per-trajectory quantities and returns (B, T_max) tensors.
+    Minimal ECM with RC dynamics via explicit Euler.
 
-    The Euler loop steps ALL trajectories simultaneously at each
-    timestep — no per-trajectory Python loop.
+        1. SOC = SOC0 − I·t/Q0           (analytical)
+        2. R1 = R1Net(SOC, I, u)          (learned)
+        3. U1[n+1] = U1[n] + I/C1 − U1[n]/(R1[n]·C1)   (Euler)
+        4. V = Ue(SOC) − I·R0 − U1       (algebraic)
     """
-    def __init__(self, r1_net, c1_net, r0_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
+    def __init__(self, r1_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
         super().__init__()
         self.r1_net    = r1_net
-        self.c1_net    = c1_net
-        self.r0_net    = r0_net
         self.Ue_interp = Ue_interp
         self.R0_func   = R0_func
         self.Q0        = Q0
+        self.log_C1    = nn.Parameter(
+            torch.tensor(np.log(C1_init), dtype=torch.float32))
 
+    @property
+    def C1(self):
+        return torch.exp(self.log_C1)
 
-    def forward(self, I_batch, u_batch, soc0_batch, T_max):
-        """
-        Parameters
-        ----------
-        I_batch    : (B,) tensor — current per trajectory
-        u_batch    : (B,) tensor — aging factor per trajectory
-        soc0_batch : (B,) tensor — initial SOC per trajectory
-        T_max      : int — padded sequence length
+    def forward(self, I_val, u_val, soc0_val, T):
+        C1  = self.C1
+        I_t = torch.tensor(I_val, dtype=torch.float32)
+        R0  = self.R0_func(u_val, I_val)
 
-        Returns
-        -------
-        V    : (B, T_max)
-        soc  : (B, T_max)
-        U1   : (B, T_max)
-        R1   : (B, T_max)
-        """
-        B  = I_batch.shape[0]
+        # SOC: analytical
+        t_idx = torch.arange(T, dtype=torch.float32)
+        soc   = soc0_val - I_val / self.Q0 * t_idx
 
-        # SOC: analytical  (B, T_max)
-        t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)  # (1, T)
-        soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
+        # R1 at every step
+        I_norm = torch.full((T,), I_val / self.r1_net.I_ref)
+        u_t    = torch.full((T,), u_val)
+        R1     = self.r1_net(soc, I_norm, u_t)
 
-        # R1, C1, R0 at every (batch, time) point  →  (B, T_max)
-        I_norm = (I_batch / I_MAX).unsqueeze(1).expand(B, T_max)
-        u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
-        R1 = self.r1_net(soc, I_norm, u_exp)   # (B, T_max)
-        C1 = self.c1_net(soc, I_norm, u_exp)   # (B, T_max)
-        R0 = self.r0_net(soc, I_norm, u_exp)   # (B, T_max)
+        # Euler integrate U1
+        U1_list = [torch.zeros(1)]
+        for n in range(T - 1):
+            dU1 = I_t / C1 - U1_list[n] / (R1[n] * C1)
+            U1_list.append(U1_list[n] + dU1)    # dt=1s
+        U1 = torch.cat(U1_list)
 
-
-        # Vectorised Euler integration of U1 across the batch
-        # Each timestep: U1[n+1] = U1[n] + I/C1 − U1[n]/(R1[n]·C1)
-        U1_steps = [torch.zeros(B)]
-        for n in range(T_max - 1):
-            dU1 = I_batch / C1[:, n] - U1_steps[n] / (R1[:, n] * C1[:, n])
-            U1_steps.append(U1_steps[n] + dU1)   # dt = 1 s
-
-            # Semi-implicit euler for stability: use U1[n+1] on the right-hand side
-            # U1_next = (U1_steps[n] + I_batch / C1) / (1.0 + 1.0 / (R1[:, n] * C1))
-            # U1_steps.append(U1_next)
-        U1 = torch.stack(U1_steps, dim=1)         # (B, T_max)
-
-        # Ue from interpolation  (B, T_max)
+        # Ue from interpolation
         with torch.no_grad():
-            soc_np = soc.detach().numpy()
             Ue = torch.tensor(
-                self.Ue_interp(soc_np), dtype=torch.float32)
+                self.Ue_interp(soc.detach().numpy()),
+                dtype=torch.float32)
 
-        # R0  (B,)  →  (B, 1) for broadcasting
-        R0 = torch.tensor(
-            [self.R0_func(u_batch[b].item(), I_batch[b].item())
-             for b in range(B)],
-            dtype=torch.float32).unsqueeze(1)
-
-        V = Ue - I_batch.unsqueeze(1) * R0 - U1
+        V = Ue - I_t * R0 - U1
         return V, soc, U1, R1
-
-    # Keep single-trajectory forward for inference / plotting
-    def forward_single(self, I_val, u_val, soc0_val, T):
-        """Convenience wrapper matching the original forward() signature."""
-        I_b    = torch.tensor([I_val], dtype=torch.float32)
-        u_b    = torch.tensor([u_val], dtype=torch.float32)
-        soc0_b = torch.tensor([soc0_val], dtype=torch.float32)
-        V, soc, U1, R1 = self.forward(I_b, u_b, soc0_b, T)
-        return V[0], soc[0], U1[0], R1[0]
 
 # %% ══════════════════════════════════════════════════════════
 #  DATA FUNCTIONS
@@ -245,45 +168,11 @@ def estimate_C1(trajs):
     return float(np.median(ests)) if ests else 30000.0
 
 # %% ══════════════════════════════════════════════════════════
-#  BATCH COLLATION
-# ══════════════════════════════════════════════════════════════
-
-def collate_batch(trajs):
-    """
-    Pack a list of trajectory dicts into padded tensors + mask.
-
-    Returns
-    -------
-    I_batch    : (B,)
-    u_batch    : (B,)
-    soc0_batch : (B,)
-    V_batch    : (B, T_max)    padded with 0
-    mask       : (B, T_max)    True where data exists
-    T_max      : int
-    """
-    B = len(trajs)
-    T_max = max(tr['T'] for tr in trajs)
-
-    I_batch    = torch.tensor([tr['I']    for tr in trajs], dtype=torch.float32)
-    u_batch    = torch.tensor([tr['u']    for tr in trajs], dtype=torch.float32)
-    soc0_batch = torch.tensor([tr['soc0'] for tr in trajs], dtype=torch.float32)
-
-    V_batch = torch.zeros(B, T_max)
-    mask    = torch.zeros(B, T_max, dtype=torch.bool)
-
-    for i, tr in enumerate(trajs):
-        T = tr['T']
-        V_batch[i, :T] = tr['V']
-        mask[i, :T]    = True
-
-    return I_batch, u_batch, soc0_batch, V_batch, mask, T_max
-
-# %% ══════════════════════════════════════════════════════════
-#  TRAINING FUNCTION  (batched)
+#  TRAINING FUNCTION
 # ══════════════════════════════════════════════════════════════
 
 def train_model(model, train_trajs, test_trajs,
-                n_epochs=200, lr=1e-3, batch_size=16, print_every=20):
+                n_epochs=200, lr=1e-3, print_every=20):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, patience=40, factor=0.5)
@@ -295,58 +184,48 @@ def train_model(model, train_trajs, test_trajs,
         model.train()
         order = np.random.permutation(len(train_trajs))
         epoch_loss = 0.0
-        n_batches  = 0
 
-        # ── mini-batch loop ──
-        for start in range(0, len(train_trajs), batch_size):
-            idxs  = order[start : start + batch_size]
-            batch = [train_trajs[i] for i in idxs]
-
-            I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(batch)
-
+        for idx in order:
+            tr = train_trajs[idx]
             optimizer.zero_grad()
-            V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
-
-            # Masked RMSE — only score real (non-padded) timesteps
-            sq_err = (V_pred - V_true) ** 2
-            loss = torch.sqrt(sq_err[mask].mean())
+            V_pred, _, _, _ = model(tr['I'], tr['u'], tr['soc0'], tr['T'])
+            loss = torch.sqrt(torch.mean((V_pred - tr['V']) ** 2))
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
             epoch_loss += loss.item()
-            n_batches  += 1
 
-        epoch_loss /= n_batches
+        epoch_loss /= len(train_trajs)
         history['train'].append(epoch_loss)
 
-        # ── test loss (one big batch) ──
         model.eval()
+        test_loss = 0.0
         with torch.no_grad():
-            I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(test_trajs)
-            V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
-            test_loss = torch.sqrt(((V_pred - V_true)**2)[mask].mean()).item()
+            for tr in test_trajs:
+                V_pred, _, _, _ = model(tr['I'], tr['u'], tr['soc0'], tr['T'])
+                test_loss += torch.sqrt(
+                    torch.mean((V_pred - tr['V']) ** 2)).item()
+        test_loss /= max(len(test_trajs), 1)
         history['test'].append(test_loss)
         scheduler.step(epoch_loss)
 
         if epoch % print_every == 0 or epoch == 1:
-            #C1 = model.C1.item()
+            C1 = model.C1.item()
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
             lr_now = optimizer.param_groups[0]['lr']
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
-                  f"| test {test_loss:.4f} "
-                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
-                  f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / I_MAX, u_b) * model.c1_net(soc0_b, I_b / I_MAX, u_b)).min().item():.2f} s")
+                  f"| test {test_loss:.4f} | C1={C1:.0f}F "
+                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m")
 
     return history
 
 # %% ══════════════════════════════════════════════════════════
-#  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
+#  PLOTTING FUNCTIONS
 # ══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
 def _predict_np(model, I_val, u_val, soc0, T):
     """Pure-numpy single-trajectory predict for plotting."""
+    C1 = model.C1.item()
     t  = np.arange(T, dtype=np.float32)
     soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
 
@@ -354,11 +233,10 @@ def _predict_np(model, I_val, u_val, soc0, T):
     I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
     u_t    = torch.full((T,), u_val)
     R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
-    C1 = model.c1_net(soc_t, I_norm, u_t).numpy()  # Just use C1 at the initial point for simplicity
 
     U1 = np.zeros(T, dtype=np.float64)
     for n in range(T - 1):
-        U1[n+1] = U1[n] + I_val / C1[n] - U1[n] / (R1[n] * C1[n])
+        U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
 
     Ue = model.Ue_interp(soc)
     R0 = model.R0_func(u_val, I_val)
@@ -368,7 +246,7 @@ def _predict_np(model, I_val, u_val, soc0, T):
 
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(4, n, figsize=(5 * n, 14), squeeze=False)
+    fig, axes = plt.subplots(4, n, figsize=(5 * n, 12), squeeze=False)
 
     model.eval()
     for j in range(n):
@@ -376,32 +254,30 @@ def plot_predictions(model, trajs, title='', n_show=3):
         V, soc_np, U1, R1 = _predict_np(
             model, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
-        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
-        axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
+        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+        axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
         axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
         axes[0, j].invert_xaxis()
-        axes[0, j].set_xlabel('State of Charge');
         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
-        axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
+        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+        axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
         axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
-        axes[1, j].set_xlabel('State of Charge');
         axes[1, j].invert_xaxis()
 
         R0_val = R0_func(tr['u'], tr['I'])
-        axes[2, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'Function $R0$', lw=1)
-        axes[2, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'Predicted $R1$', lw=1)
-        axes[2, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[2, j].legend()
+        axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'Function $R_0$', lw=1)
+        axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'Predicted $R_1$', lw=1)
+        axes[2, j].set_ylabel('R [m\u03a9]'); axes[2, j].legend()
         axes[2, j].invert_xaxis()
 
         C1 = model.C1.item()
         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[3, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
-        axes[3, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
-        axes[3, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[3, j].set_xlabel('SOC')
-        axes[3, j].legend(); axes[3, j].invert_xaxis()
+        axes[3, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+        axes[3, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+        axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
+        axes[3, j].legend(fontsize=8); axes[3, j].invert_xaxis()
 
     fig.tight_layout()
     return fig
@@ -412,18 +288,18 @@ def plot_R1_landscape(model, I_values, u_val=-0.5):
     soc = torch.linspace(0.02, 1.0, 200)
     model.eval()
     with torch.no_grad():
-        for Iv in I_values:
+        for k, Iv in enumerate(I_values):
             I_norm = torch.full((200,), Iv / model.r1_net.I_ref)
             u_t    = torch.full((200,), u_val)
             R1 = model.r1_net(soc, I_norm, u_t).numpy() * 1000
-            ax.plot(soc.numpy(), R1, label=f'I={Iv:.0f}A')
-    ax.set_xlabel('SOC'); ax.set_ylabel(r'$R$ [m$\Omega$]')
-    ax.set_title(r'Charge-transfer resistance $R_1$(SOC)')
+            ax.plot(soc.numpy(), R1, color=COLORS[k % len(COLORS)], label=f'I={Iv:.0f}A')
+    ax.set_xlabel('SOC'); ax.set_ylabel('R\u2081 [m\u03a9]')
+    ax.set_title('Charge-transfer resistance R\u2081(SOC)')
     ax.legend(); ax.invert_xaxis(); fig.tight_layout()
     return fig
 
 # %% ══════════════════════════════════════════════════════════
-#  EXTRACT ECM PARAMETERS  (unchanged)
+#  EXTRACT ECM PARAMETERS  (for use elsewhere)
 # ══════════════════════════════════════════════════════════════
 
 def extract_ecm_params(model, soc_points, I_val, u_val):
@@ -464,8 +340,7 @@ split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
-# C1_init = estimate_C1(train_trajs)
-C1_init = 170
+C1_init = estimate_C1(train_trajs)
 print(f"  C1 estimate: {C1_init:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
@@ -473,9 +348,7 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 r1_net = R1Net(n_hidden=N_HIDDEN, I_ref=I_MAX)
-c1_net = C1Net(n_hidden=N_HIDDEN)
-r0_net = R0Net(n_hidden=N_HIDDEN)
-model  = BatteryECM(r1_net, c1_net, r0_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
+model  = BatteryECM(r1_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -484,20 +357,19 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 #  TRAIN
 # ══════════════════════════════════════════════════════════════
 
-print(f"\nTraining ({EPOCHS} epochs, batch_size={BATCH_SIZE})...")
+print(f"\nTraining ({EPOCHS} epochs)...")
 history = train_model(model, train_trajs, test_trajs,
-                      n_epochs=EPOCHS, lr=LR,
-                      batch_size=BATCH_SIZE, print_every=5)
+                      n_epochs=EPOCHS, lr=LR, print_every=20)
 
-# C1_final = model.C1.item()
-# print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
+C1_final = model.C1.item()
+print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, train_trajs, 'Train: ')
-# plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_train.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -505,28 +377,28 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig('nodes_figs/ecm_node_test.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_test.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  R1 LANDSCAPE
 # ══════════════════════════════════════════════════════════════
 
-# I_vals = sorted(data['I'].unique())
-# plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
-# # plt.savefig('nodes_figs/ecm_node_R1.pdf', bbox_inches='tight')
-# plt.show()
+I_vals = sorted(data['I'].unique())
+plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_R1.pdf'), bbox_inches='tight')
+plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
 # ══════════════════════════════════════════════════════════════
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], label='train')
-ax.semilogy(history['test'], label='test')
+ax.semilogy(history['train'], color=COLORS[0], label='train')
+ax.semilogy(history['test'],  color=COLORS[1], label='test')
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig('nodes_figs/ecm_node_loss.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_loss.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -552,6 +424,8 @@ for i, s in enumerate(soc_pts):
 torch.save({
     'model': model.state_dict(),
     'history': history,
+    'C1_init': C1_init,
+    'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
 }, os.path.join(FILE_PATH, 'ecm_node.pt'))
 
