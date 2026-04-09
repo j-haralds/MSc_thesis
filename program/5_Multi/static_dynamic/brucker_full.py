@@ -355,7 +355,7 @@ def dU1dt_from_rc(r1_net, complete_ode, soc, U1, tr):
 
 
 def plot_results(trajs, run_func, title_prefix='', n_show=3,
-                 complete_ode=None, r1_net_ref=None):
+                 complete_ode=None, r1_net_ref=r1_net):
     """
     4-row plot: V, U1, R1, dU1/dt.
     If complete_ode is provided, also shows RC-computed dU1/dt.
@@ -372,8 +372,8 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
 
             # Row 0: Voltage
             ax = axes[0, j]
-            ax.plot(soc_np, tr['V'].numpy(), '--', color='tab:blue',
-                    label='data', lw=1.5)
+            ax.plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1],
+                    label='True', lw=1.5)
             ax.plot(soc_np, V_pred.numpy(), '-', color='tab:orange',
                     label='model', lw=1.5)
             ax.set_xlabel('SOC'); ax.set_ylabel('V [V]')
@@ -393,7 +393,11 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
             # Row 2: Resistances
             ax3 = axes[2, j]
             # R1_np = (vRC1_pred / tr['I']).numpy()
-            R1_np = r1_net_ref(soc_pred=SOC_pred, I=tr['I'], u=tr['u']).detach().numpy()
+            T = len(SOC_pred)
+            R1_np = r1_net_ref(
+                    SOC_pred.detach(),
+                    tr['I'].expand(T),
+                    tr['u'].expand(T)).squeeze().detach().numpy()
             ax3.plot(soc_np, np.full_like(soc_np, tr['R0']),
                      '--', label='R0', lw=1.5)
             ax3.plot(soc_np, R1_np, '-', label='R1', lw=1.5)
@@ -427,10 +431,10 @@ def plot_results(trajs, run_func, title_prefix='', n_show=3,
 def _run_static(tr):
     return run_static(soc_func, r1_net, tr)
 
-fig = plot_results(train_trajs, _run_static, 'S1 Train: ')
-plt.savefig('s1_train.pdf', bbox_inches='tight'); plt.show()
-fig = plot_results(test_trajs, _run_static, 'S1 Test: ')
-plt.savefig('s1_test.pdf', bbox_inches='tight'); plt.show()
+fig = plot_results(train_trajs, _run_static, 'S1 Train: ', r1_net_ref=r1_net)
+# plt.savefig('static_dynamic/s1_train.pdf', bbox_inches='tight'); plt.show()
+fig = plot_results(test_trajs, _run_static, 'S1 Test: ', r1_net_ref=r1_net)
+# plt.savefig('static_dynamic/s1_test.pdf', bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -519,6 +523,7 @@ for epoch in range(1, S2_EPOCHS + 1):
     if epoch == S2_C1_WARMUP + 1:
         optimizer = optim.Adam(complete_ode.parameters(), lr=S2_LR_JOINT)
         print(f"  Epoch {epoch}: unfreezing R1Net, lr → {S2_LR_JOINT:.1e}")
+        # optimizer = optim.Adam([complete_ode.C_bat, complete_ode.C1_param], lr=S2_LR_JOINT)
 
     # ── STOCHASTIC GD: step per trajectory (matching Stage 1) ──
     order = np.random.permutation(len(train_trajs))
@@ -570,10 +575,10 @@ def _run_complete(tr):
 
 fig = plot_results(train_trajs, _run_complete, 'S2 Train: ',
                    complete_ode=complete_ode, r1_net_ref=r1_net)
-plt.savefig('s2_train.pdf', bbox_inches='tight'); plt.show()
+# plt.savefig('static_dynamic/s2_train.pdf', bbox_inches='tight'); plt.show()
 fig = plot_results(test_trajs, _run_complete, 'S2 Test: ',
                    complete_ode=complete_ode, r1_net_ref=r1_net)
-plt.savefig('s2_test.pdf', bbox_inches='tight'); plt.show()
+# plt.savefig('static_dynamic/s2_test.pdf', bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -681,12 +686,12 @@ def plot_comparison(trajs, soc_func, r1_net, complete_ode,
             # approximation implies a derivative)
             dU1dt_s1 = compute_dU1dt(vRC1_s1, tr['t'])
             ax3.plot(soc_s1, dU1dt_s1, '-', color='tab:orange',
-                     label='S1 (∆R1·I/∆t)', lw=1.0, alpha=0.6)
+                     label='S1 (R1·I/t)', lw=1.0, alpha=0.6)
 
             # from S2 RC equation: I/C1 − U1/(R1·C1)
             dU1dt_s2 = compute_dU1dt_RC(vRC1_s2, r1_net, complete_ode, tr)
             ax3.plot(soc_s2, dU1dt_s2, '-', color='tab:green',
-                     label='S2 (I/C1−U1/R1C1)', lw=1.5)
+                     label='S2 (I/C1-U1/R1C1)', lw=1.5)
 
             ax3.set_xlabel('SOC'); ax3.set_ylabel('dU1/dt [V/s]')
             ax3.legend(fontsize=7); ax3.invert_xaxis()
@@ -699,7 +704,7 @@ def plot_comparison(trajs, soc_func, r1_net, complete_ode,
 
 fig = plot_comparison(test_trajs, soc_func, r1_net, complete_ode,
                       title_prefix='Test: ')
-plt.savefig('comparison.pdf', bbox_inches='tight'); plt.show()
+# plt.savefig('comparison.pdf', bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -717,35 +722,7 @@ axes[1].set_xlabel('epoch'); axes[1].set_ylabel('RMSE')
 axes[1].set_title('Stage 2: Dynamic')
 axes[1].legend()
 fig.tight_layout()
-plt.savefig('loss_curves.pdf', bbox_inches='tight'); plt.show()
-
-
-# %%══════════════════════════════════════════════════════════
-#  DIAGNOSTICS  (from battery_diagnostics.py)
-# ══════════════════════════════════════════════════════════
-
-try:
-    from battery_diagnostics import (
-        print_summary, plot_R1_landscape,
-        plot_tau_landscape, plot_U1ss_landscape,
-        plot_trajectory_physics,
-    )
-
-    print_summary(r1_net, complete_ode, R0_func, test_trajs)
-
-    I_vals = sorted(data['I'].unique().tolist())
-    plot_R1_landscape(r1_net, I_values=I_vals)
-    plt.savefig('R1_landscape.pdf', bbox_inches='tight'); plt.show()
-
-    plot_tau_landscape(r1_net, complete_ode, I_values=I_vals)
-    plt.savefig('tau_landscape.pdf', bbox_inches='tight'); plt.show()
-
-    plot_trajectory_physics(r1_net, complete_ode, test_trajs, R0_func,
-                            title_prefix='Test: ')
-    plt.savefig('traj_physics.pdf', bbox_inches='tight'); plt.show()
-
-except ImportError:
-    print("  (battery_diagnostics.py not found — skipping diagnostics)")
+plt.savefig('static_dynamic/loss_curves.pdf', bbox_inches='tight'); plt.show()
 
 
 # %%══════════════════════════════════════════════════════════
@@ -768,7 +745,7 @@ torch.save({
         'C1_final': complete_ode.C1.item(),
         'C1_init': C1_INIT,
     },
-}, f'{MODEL_NAME}.pt')
+}, os.path.join(FILE_PATH, 'ecm_node.pt'))
 
 print(f"\nSaved: {MODEL_NAME}.pt")
 print("Done.")
