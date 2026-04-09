@@ -1,5 +1,4 @@
 """
-run_brucker_improved.py
 ========================
 Brucker-style grey-box battery model — improved Stage 2.
 
