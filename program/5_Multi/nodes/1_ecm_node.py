@@ -25,6 +25,7 @@ from scipy.interpolate import interp1d
 import time as _time
 
 FILE_PATH = os.path.dirname(os.path.abspath(__file__))
+print(f"File path: {FILE_PATH}")
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
 import plot_settings
 plot_settings.apply()
@@ -37,13 +38,16 @@ COLORS = plot_settings.colors()
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 os.makedirs(FIGS_DIR, exist_ok=True)
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 20
+EPOCHS      = 100
 LR          = 1e-3
+
+SAVE_NAME   = f'ecm_node_{N_HIDDEN}h_{EPOCHS}eps'
 
 # %% ══════════════════════════════════════════════════════════
 #  KNOWN PHYSICS
@@ -172,12 +176,12 @@ def estimate_C1(trajs):
 # ══════════════════════════════════════════════════════════════
 
 def train_model(model, train_trajs, test_trajs,
-                n_epochs=200, lr=1e-3, print_every=20):
+                n_epochs=200, lr=1e-3, print_every=10):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, patience=40, factor=0.5)
 
-    history = {'train': [], 'test': []}
+    history = {'train': [], 'test': [], 'time': []}
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
@@ -216,6 +220,7 @@ def train_model(model, train_trajs, test_trajs,
                   f"| test {test_loss:.4f} | C1={C1:.0f}F "
                   f"| lr {lr_now:.1e} | ETA {eta:.1f}m")
 
+    history['time'] = (_time.time() - t0) / 60
     return history
 
 # %% ══════════════════════════════════════════════════════════
@@ -266,8 +271,9 @@ def plot_predictions(model, trajs, title='', n_show=3):
         axes[1, j].invert_xaxis()
 
         R0_val = R0_func(tr['u'], tr['I'])
-        axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'Function $R_0$', lw=1)
-        axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'Predicted $R_1$', lw=1)
+        axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'$R_0$', lw=1)
+        axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=1)
+        axes[2, j].plot()
         axes[2, j].set_ylabel(r'R [m$\Omega$]'); axes[2, j].legend()
         axes[2, j].invert_xaxis()
 
@@ -277,7 +283,7 @@ def plot_predictions(model, trajs, title='', n_show=3):
         axes[3, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
         axes[3, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
         axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
-        axes[3, j].legend(fontsize=8); axes[3, j].invert_xaxis()
+        axes[3, j].legend(); axes[3, j].invert_xaxis()
 
     fig.tight_layout()
     return fig
@@ -359,9 +365,11 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 
 print(f"\nTraining ({EPOCHS} epochs)...")
 history = train_model(model, train_trajs, test_trajs,
-                      n_epochs=EPOCHS, lr=LR, print_every=20)
+                      n_epochs=EPOCHS, lr=LR, print_every=10)
 
 C1_final = model.C1.item()
+TOTAL_TIME = history['time']
+print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
@@ -395,10 +403,10 @@ plt.show()
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.semilogy(history['train'], color=COLORS[0], label='train')
-ax.semilogy(history['test'],  color=COLORS[1], label='test')
+ax.semilogy(history['test'],  color=COLORS[1], label='test \n last RMSE: {:.4f} V'.format(history['test'][-1]))
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-# plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_loss.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_loss_{TOTAL_TIME:.1f}min_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -428,7 +436,7 @@ torch.save({
     'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
     'EPOCHS': EPOCHS,
-}, os.path.join(FILE_PATH, f'ecm_node_{N_HIDDEN}h_{EPOCHS}eps.pt'))
+}, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
-print(f"Saved: ecm_node_{N_HIDDEN}h_{EPOCHS}eps.pt")
+print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{N_HIDDEN}h_{EPOCHS}eps.pt")
 # %%

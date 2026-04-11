@@ -45,9 +45,9 @@ MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100
+EPOCHS      = 20
 LR          = 1e-3
-BATCH_SIZE  = 16        # ← NEW: trajectories per batch
+BATCH_SIZE  = 1        # ← NEW: trajectories per batch
 
 # %% ══════════════════════════════════════════════════════════
 #  KNOWN PHYSICS
@@ -268,7 +268,7 @@ def train_model(model, train_trajs, test_trajs,
             sq_err = (V_pred - V_true) ** 2
             loss = torch.sqrt(sq_err[mask].mean())
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             epoch_loss += loss.item()
@@ -278,14 +278,25 @@ def train_model(model, train_trajs, test_trajs,
         history['train'].append(epoch_loss)
 
 
-        # ── test loss (one big batch) ──
+        # # ── test loss (one big batch) ──
+        # model.eval()
+        # with torch.no_grad():
+        #     I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(test_trajs)
+        #     V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
+        #     test_loss = torch.sqrt(((V_pred - V_true)**2)[mask].mean()).item()
+        # history['test'].append(test_loss)
+        # scheduler.step(epoch_loss)
+
         model.eval()
         with torch.no_grad():
-            I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(test_trajs)
-            V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
-            test_loss = torch.sqrt(((V_pred - V_true)**2)[mask].mean()).item()
-        history['test'].append(test_loss)
-        scheduler.step(epoch_loss)
+            test_loss = 0.0
+            for tr in test_trajs:
+                I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
+                u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
+                soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
+                V_pred, _, _, _ = model(I_b, u_b, soc0_b, tr['T'])
+                test_loss += torch.sqrt(torch.mean((V_pred[0] - tr['V'])**2)).item()
+            test_loss /= len(test_trajs)
 
         if epoch % print_every == 0 or epoch == 1:
             C1 = model.C1.item()
@@ -296,7 +307,7 @@ def train_model(model, train_trajs, test_trajs,
                   f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
                   f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * model.C1).min().item():.2f} s")
 
-    history['time'].append((_time.time() - t0) / 60)
+    history['time'] = (_time.time() - t0) / 60
 
     return history
 
@@ -328,7 +339,7 @@ def _predict_np(model, I_val, u_val, soc0, T):
 
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(4, n, figsize=(5 * n, 14), squeeze=False)
+    fig, axes = plt.subplots(5, n, figsize=(5 * n, 17), squeeze=False)
 
     model.eval()
     for j in range(n):
@@ -349,19 +360,24 @@ def plot_predictions(model, trajs, title='', n_show=3):
         axes[1, j].set_xlabel('State of Charge');
         axes[1, j].invert_xaxis()
 
-        R0_val = R0_func(tr['u'], tr['I'])
-        axes[2, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'Function $R0$', lw=1)
-        axes[2, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'Predicted $R1$', lw=1)
-        axes[2, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[2, j].legend()
-        axes[2, j].invert_xaxis()
-
         C1 = model.C1.item()
         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[3, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
-        axes[3, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
-        axes[3, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[3, j].set_xlabel('SOC')
-        axes[3, j].legend(); axes[3, j].invert_xaxis()
+        axes[2, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
+        axes[2, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
+        axes[2, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[2, j].set_xlabel('SOC')
+        axes[2, j].legend(); axes[2, j].invert_xaxis()
+
+        R0_val = R0_func(tr['u'], tr['I'])
+        axes[3, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'$R0$' + f' = {R0_val * 1000:.1f} m$\Omega$', lw=2)
+        axes[3, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'$R1$', lw=2)
+        axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+        axes[3, j].invert_xaxis()
+
+        axes[4, j].axhline(C1, ls='--', color = COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+        axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+        axes[4, j].invert_xaxis()
+
 
     fig.tight_layout()
     return fig
@@ -481,8 +497,8 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], label='train')
-ax.semilogy(history['test'], label='test')
+ax.semilogy(history['train'], color=COLORS[0], label='train')
+ax.semilogy(history['test'], color=COLORS[1], label='test \n last RMSE: {:.4f} V'.format(history['test'][-1]))
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
 plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
