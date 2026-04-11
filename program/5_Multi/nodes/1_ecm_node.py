@@ -44,7 +44,7 @@ os.makedirs(FIGS_DIR, exist_ok=True)
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100
+EPOCHS      = 20
 LR          = 1e-3
 
 SAVE_NAME   = f'ecm_node_{N_HIDDEN}h_{EPOCHS}eps'
@@ -101,8 +101,7 @@ class BatteryECM(nn.Module):
         self.Ue_interp = Ue_interp
         self.R0_func   = R0_func
         self.Q0        = Q0
-        self.log_C1    = nn.Parameter(
-            torch.tensor(np.log(C1_init), dtype=torch.float32))
+        self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
 
     @property
     def C1(self):
@@ -195,6 +194,7 @@ def train_model(model, train_trajs, test_trajs,
             V_pred, _, _, _ = model(tr['I'], tr['u'], tr['soc0'], tr['T'])
             loss = torch.sqrt(torch.mean((V_pred - tr['V']) ** 2))
             loss.backward()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             epoch_loss += loss.item()
 
@@ -206,8 +206,7 @@ def train_model(model, train_trajs, test_trajs,
         with torch.no_grad():
             for tr in test_trajs:
                 V_pred, _, _, _ = model(tr['I'], tr['u'], tr['soc0'], tr['T'])
-                test_loss += torch.sqrt(
-                    torch.mean((V_pred - tr['V']) ** 2)).item()
+                test_loss += torch.sqrt(torch.mean((V_pred - tr['V']) ** 2)).item()
         test_loss /= max(len(test_trajs), 1)
         history['test'].append(test_loss)
         scheduler.step(epoch_loss)
@@ -251,7 +250,7 @@ def _predict_np(model, I_val, u_val, soc0, T):
 
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(4, n, figsize=(5 * n, 12), squeeze=False)
+    fig, axes = plt.subplots(5, n, figsize=(5 * n, 17), squeeze=False)
 
     model.eval()
     for j in range(n):
@@ -259,31 +258,37 @@ def plot_predictions(model, trajs, title='', n_show=3):
         V, soc_np, U1, R1 = _predict_np(
             model, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
-        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-        axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
+        axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
         axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
         axes[0, j].invert_xaxis()
+        axes[0, j].set_xlabel('State of Charge');
         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-        axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
+        axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
         axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+        axes[1, j].set_xlabel('State of Charge');
         axes[1, j].invert_xaxis()
-
-        R0_val = R0_func(tr['u'], tr['I'])
-        axes[2, j].axhline(R0_val * 1000, ls='--', color=COLORS[1], label=r'$R_0$', lw=1)
-        axes[2, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=1)
-        axes[2, j].plot()
-        axes[2, j].set_ylabel(r'R [m$\Omega$]'); axes[2, j].legend()
-        axes[2, j].invert_xaxis()
 
         C1 = model.C1.item()
         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[3, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-        axes[3, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-        axes[3, j].set_ylabel('dU1/dt [V/s]'); axes[3, j].set_xlabel('SOC')
-        axes[3, j].legend(); axes[3, j].invert_xaxis()
+        axes[2, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
+        axes[2, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
+        axes[2, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[2, j].set_xlabel('SOC')
+        axes[2, j].legend(); axes[2, j].invert_xaxis()
+
+        R0_val = R0_func(tr['u'], tr['I'])
+        axes[3, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'$R0$' + fr' = {R0_val * 1000:.1f} m$\Omega$', lw=2)
+        axes[3, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'$R1$', lw=2)
+        axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+        axes[3, j].invert_xaxis()
+
+        axes[4, j].axhline(C1, ls='--', color = COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+        axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+        axes[4, j].invert_xaxis()
+
 
     fig.tight_layout()
     return fig
@@ -385,7 +390,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-# plt.savefig(os.path.join(FIGS_DIR, 'ecm_node_test.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_test_{TOTAL_TIME:.1f}min_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
