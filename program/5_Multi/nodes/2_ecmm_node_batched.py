@@ -1,5 +1,5 @@
 # %% ══════════════════════════════════════════════════════════
-#  BATTERY ECM NODE — BATCHED VERSION
+#  BATTERY ECM + EMM NODE — BATCHED VERSION
 # ══════════════════════════════════════════════════════════════
 #
 #  Same physics as the original, but with batched training:
@@ -115,7 +115,7 @@ class BatteryECM(nn.Module):
         Parameters
         ----------
         I_batch    : (B,) tensor — current per trajectory
-        u_batch    : (B,) tensor — aging factor per trajectory
+        u_batch    : (B,) tensor — compression per trajectory
         soc0_batch : (B,) tensor — initial SOC per trajectory
         T_max      : int — padded sequence length
 
@@ -429,9 +429,14 @@ print(data.columns)
 data['eta'] = -data['eta']
 I_MAX = data['I'].max()
 
+# TODO: Replace with existing GP 
 _s, _u = data['soc'].values, data['Ue'].values
 _i = np.argsort(_s)
 Ue_interp = interp1d(_s[_i], _u[_i], kind='linear', fill_value='extrapolate')
+
+F_first = data.groupby('u')['F'].first()
+FORCE_CONST = abs(F_first / data.groupby('u')['u'].first()).values[0] * 100 # GN/mm
+print(f'Force constant: {FORCE_CONST:.2f} GN/mm')
 
 print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 
