@@ -427,7 +427,8 @@ torch.save({
     'C1_init': C1_init,
     'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
-}, os.path.join(FILE_PATH, 'ecm_node.pt'))
+    'EPOCHS': EPOCHS,
+}, os.path.join(FILE_PATH, f'ecm_node_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
-print(f"Saved: ecm_node.pt")
+print(f"Saved: ecm_node_{N_HIDDEN}h_{EPOCHS}eps.pt")
 # %%

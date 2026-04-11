@@ -26,7 +26,9 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import time as _time
 
-FILE_PATH = os.path.dirname(os.path.abspath(__file__))
+FILE_PATH = os.path.dirname(os.path.realpath(__file__))
+# FILE_PATH = os.getcwd()
+print(FILE_PATH)
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
 import plot_settings
 plot_settings.apply()
@@ -38,9 +40,11 @@ COLORS = plot_settings.colors()
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
-N_HIDDEN    = 128
+N_HIDDEN    = 32
 EPOCHS      = 100
 LR          = 1e-3
 BATCH_SIZE  = 16        # ← NEW: trajectories per batch
@@ -96,7 +100,7 @@ class BatteryECM(nn.Module):
         self.Q0        = Q0
         # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
         # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init - 8000.0), dtype=torch.float32))
-        self.log_C1    = torch.tensor(np.log(C1_init), dtype=torch.float32)
+        self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
 
     @property
     def C1(self):
@@ -236,12 +240,12 @@ def collate_batch(trajs):
 # ══════════════════════════════════════════════════════════════
 
 def train_model(model, train_trajs, test_trajs,
-                n_epochs=200, lr=1e-3, batch_size=16, print_every=20):
+                n_epochs=200, lr=1e-3, batch_size=16, print_every=10):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, patience=40, factor=0.5)
 
-    history = {'train': [], 'test': []}
+    history = {'train': [], 'test': [], 'time': []}
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
@@ -273,6 +277,7 @@ def train_model(model, train_trajs, test_trajs,
         epoch_loss /= n_batches
         history['train'].append(epoch_loss)
 
+
         # ── test loss (one big batch) ──
         model.eval()
         with torch.no_grad():
@@ -290,6 +295,8 @@ def train_model(model, train_trajs, test_trajs,
                   f"| test {test_loss:.4f} | C1={C1:.0f}F "
                   f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
                   f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * model.C1).min().item():.2f} s")
+
+    history['time'].append((_time.time() - t0) / 60)
 
     return history
 
@@ -417,8 +424,7 @@ split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
-# C1_init = estimate_C1(train_trajs)
-C1_init = 170
+C1_init = estimate_C1(train_trajs)
 print(f"  C1 estimate: {C1_init:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
@@ -438,9 +444,11 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 print(f"\nTraining ({EPOCHS} epochs, batch_size={BATCH_SIZE})...")
 history = train_model(model, train_trajs, test_trajs,
                       n_epochs=EPOCHS, lr=LR,
-                      batch_size=BATCH_SIZE, print_every=20)
+                      batch_size=BATCH_SIZE, print_every=10)
 
 C1_final = model.C1.item()
+TOTAL_TIME = history['time'][0]
+print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 # %% ══════════════════════════════════════════════════════════
@@ -456,17 +464,17 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig('nodes_figs/ecm_node_test.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  R1 LANDSCAPE
 # ══════════════════════════════════════════════════════════════
 
-I_vals = sorted(data['I'].unique())
-plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
-# plt.savefig('nodes_figs/ecm_node_R1.pdf', bbox_inches='tight')
-plt.show()
+# I_vals = sorted(data['I'].unique())
+# plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
+# # plt.savefig('nodes_figs/ecm_node_R1.pdf', bbox_inches='tight')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
@@ -477,7 +485,7 @@ ax.semilogy(history['train'], label='train')
 ax.semilogy(history['test'], label='test')
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig('nodes_figs/ecm_node_loss.pdf', bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -506,7 +514,8 @@ torch.save({
     'C1_init': C1_init,
     'C1_final': C1_final,
     'N_HIDDEN': N_HIDDEN,
-}, os.path.join(FILE_PATH, 'ecm_node.pt'))
+    'EPOCHS': EPOCHS,
+}, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
-print(f"Saved: ecm_node.pt")
+print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
 # %%
