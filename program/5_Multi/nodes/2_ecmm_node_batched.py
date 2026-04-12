@@ -44,10 +44,11 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = True
 SAVE_MODELS = True
+
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 20
+EPOCHS      = 50
 LR          = 1e-3
 BATCH_SIZE  = 1        # ← NEW: trajectories per batch
 
@@ -59,7 +60,7 @@ def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
 # %% ══════════════════════════════════════════════════════════
-#  R1 NETWORK  (unchanged — already handles arbitrary batch dims)
+#  R1 NETWORK
 # ══════════════════════════════════════════════════════════════
 
 class R1Net(nn.Module):
@@ -72,42 +73,55 @@ class R1Net(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
-        for m in self.net:
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight, gain=0.3)
-                nn.init.zeros_(m.bias)
 
     def forward(self, soc, I_norm, u):
         # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
-
+    
 # %% ══════════════════════════════════════════════════════════
-#  BATCHED ECM MODEL
+#  ks NETWORK
 # ══════════════════════════════════════════════════════════════
 
-class BatteryECM(nn.Module):
+class ksNet(nn.Module):
+    """(SOC, I, u) → ks > 0  [GN].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, k=53):
+        super().__init__()
+        self.k = k
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm, u):
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return self.net(x).squeeze(-1)
+
+# %% ══════════════════════════════════════════════════════════
+#  BATCHED ECMM MODEL
+# ══════════════════════════════════════════════════════════════
+
+class BatteryECMM(nn.Module):
     """
-    Batched ECM:  forward() now accepts tensors of shape (B,) for
+    Batched ECMM:  forward() now accepts tensors of shape (B,) for
     scalar-per-trajectory quantities and returns (B, T_max) tensors.
 
     The Euler loop steps ALL trajectories simultaneously at each
     timestep — no per-trajectory Python loop.
     """
-    def __init__(self, r1_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
+    def __init__(self, r1_net, ks_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
         super().__init__()
+        # TODO Initialize in accordance with HEAT  
         self.r1_net    = r1_net
+        self.ks_net    = ks_net
         self.Ue_interp = Ue_interp
         self.R0_func   = R0_func
         self.Q0        = Q0
-        # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
-        # self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init - 8000.0), dtype=torch.float32))
         self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
 
     @property
     def C1(self):
-        # return torch.exp(self.log_C1)
-        # return torch.exp(self.log_C1) + 8000.0      # Ensure C1 > 1000 F for stability
         return torch.exp(self.log_C1)
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
@@ -126,6 +140,7 @@ class BatteryECM(nn.Module):
         U1   : (B, T_max)
         R1   : (B, T_max)
         """
+        # TODO Call on parameters and networks in accordance with HEAT  
         B  = I_batch.shape[0]
         C1 = self.C1
 
@@ -138,13 +153,20 @@ class BatteryECM(nn.Module):
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
         R1 = self.r1_net(soc, I_norm, u_exp)   # (B, T_max)
 
-        # Vectorised Euler integration of U1 across the batch
+        # Vectorised Euler integration of U1 and Fs across the batch
         # Each timestep: U1[n+1] = U1[n] + I/C1 − U1[n]/(R1[n]·C1)
         U1_steps = [torch.zeros(B)]
+        Fs_steps = [torch.zeros(B)]
         for n in range(T_max - 1):
             dU1 = I_batch / C1 - U1_steps[n] / (R1[:, n] * C1)
             U1_steps.append(U1_steps[n] + dU1)   # dt = 1 s
+
+            ks = self.ks_net(soc[:, n], I_norm[:, n], u_exp[:, n])
+            dFs = ks * (-I_batch / self.Q0)  # dSOC/dt = -I/Q0
+            Fs_steps.append(Fs_steps[n] + dFs)
+
         U1 = torch.stack(U1_steps, dim=1)         # (B, T_max)
+        Fs = torch.stack(Fs_steps, dim=1)         # (B, T_max)
 
         # Ue from interpolation  (B, T_max)
         with torch.no_grad():
@@ -158,8 +180,13 @@ class BatteryECM(nn.Module):
              for b in range(B)],
             dtype=torch.float32).unsqueeze(1)
 
-        V = Ue - I_batch.unsqueeze(1) * R0 - U1
-        return V, soc, U1, R1
+        # --- Voltage from ECM ---
+        V = Ue - I_batch.unsqueeze(1) * R0 - U1     # (B, T_max)
+
+        # --- Force from EMM ---
+        Fr = - self.ks_net.k * u_exp + Fs           # (B, T_max)
+        
+        return V, Fr, soc, U1, R1, Fs
 
     # Keep single-trajectory forward for inference / plotting
     def forward_single(self, I_val, u_val, soc0_val, T):
@@ -167,8 +194,8 @@ class BatteryECM(nn.Module):
         I_b    = torch.tensor([I_val], dtype=torch.float32)
         u_b    = torch.tensor([u_val], dtype=torch.float32)
         soc0_b = torch.tensor([soc0_val], dtype=torch.float32)
-        V, soc, U1, R1 = self.forward(I_b, u_b, soc0_b, T)
-        return V[0], soc[0], U1[0], R1[0]
+        V, Fr, soc, U1, R1, Fs = self.forward(I_b, u_b, soc0_b, T)
+        return V[0], Fr[0], soc[0], U1[0], R1[0], Fs[0]
 
 # %% ══════════════════════════════════════════════════════════
 #  DATA FUNCTIONS
@@ -183,10 +210,9 @@ def prepare_data(data, R0_func):
         trajs.append(dict(
             I=I_val, u=u_val, soc0=float(grp['soc'].iloc[0]), T=len(grp),
             V=torch.tensor(grp['V'].values, dtype=torch.float32),
+            F=torch.tensor(grp['F'].values, dtype=torch.float32),
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
-            U1_true=torch.tensor(
-                grp['Ue'].values - I_val * R0_val - grp['V'].values,
-                dtype=torch.float32),
+            U1_true=torch.tensor(grp['Ue'].values - I_val * R0_val - grp['V'].values, dtype=torch.float32),
         ))
     return trajs
 
@@ -217,6 +243,7 @@ def collate_batch(trajs):
     u_batch    : (B,)
     soc0_batch : (B,)
     V_batch    : (B, T_max)    padded with 0
+    Fr_batch   : (B, T_max)    padded with 0
     mask       : (B, T_max)    True where data exists
     T_max      : int
     """
@@ -227,15 +254,17 @@ def collate_batch(trajs):
     u_batch    = torch.tensor([tr['u']    for tr in trajs], dtype=torch.float32)
     soc0_batch = torch.tensor([tr['soc0'] for tr in trajs], dtype=torch.float32)
 
-    V_batch = torch.zeros(B, T_max)
-    mask    = torch.zeros(B, T_max, dtype=torch.bool)
+    V_batch  = torch.zeros(B, T_max)
+    Fr_batch = torch.zeros(B, T_max)
+    mask     = torch.zeros(B, T_max, dtype=torch.bool)
 
     for i, tr in enumerate(trajs):
         T = tr['T']
-        V_batch[i, :T] = tr['V']
-        mask[i, :T]    = True
+        V_batch[i, :T]  = tr['V']
+        Fr_batch[i, :T] = tr['F']
+        mask[i, :T]     = True
 
-    return I_batch, u_batch, soc0_batch, V_batch, mask, T_max
+    return I_batch, u_batch, soc0_batch, V_batch, Fr_batch, mask, T_max
 
 # %% ══════════════════════════════════════════════════════════
 #  TRAINING FUNCTION  (batched)
@@ -261,14 +290,24 @@ def train_model(model, train_trajs, test_trajs,
             idxs  = order[start : start + batch_size]
             batch = [train_trajs[i] for i in idxs]
 
-            I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(batch)
+            I_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch(batch)
 
             optimizer.zero_grad()
-            V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
+            V_pred, Fr_pred, soc_pred, U1_pred, R1_pred, Fs_pred = model(I_b, u_b, soc0_b, T_max)
+            # print(f"V range: [{V_pred.min():.4f}, {V_pred.max():.4f}] V")
+            # print(f"Fr range: [{Fr_pred.min():.4f}, {Fr_pred.max():.4f}] V")
+            # print(f"U1 range: [{U1_pred.min():.4f}, {U1_pred.max():.4f}] V")
+            # print(f"Fs range: [{Fs_pred.min():.4f}, {Fs_pred.max():.4f}] GN")
+            # print(f"R1 range: [{R1_pred.min()*1000:.2f}, {R1_pred.max()*1000:.2f}] mOhm")
 
             # Masked RMSE — only score real (non-padded) timesteps
-            sq_err = (V_pred - V_true) ** 2
-            loss = torch.sqrt(sq_err[mask].mean())
+            sq_err_V = (V_pred - V_true) ** 2
+            loss_V = torch.sqrt(sq_err_V[mask].mean())
+            sq_err_Fr = (Fr_pred - Fr_true) ** 2
+            loss_Fr = torch.sqrt(sq_err_Fr[mask].mean())
+            loss = loss_V + loss_Fr
+            # print(f'Batch loss: V {loss_V.item():.4f} V, Fr {loss_Fr.item():.4f} N, total {loss.item():.4f}')
+
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -296,7 +335,7 @@ def train_model(model, train_trajs, test_trajs,
                 I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
                 u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
                 soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
-                V_pred, _, _, _ = model(I_b, u_b, soc0_b, tr['T'])
+                V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'])
                 test_loss += torch.sqrt(torch.mean((V_pred[0] - tr['V'])**2)).item()
             test_loss /= len(test_trajs)
         history['test'].append(test_loss)
@@ -319,69 +358,170 @@ def train_model(model, train_trajs, test_trajs,
 #  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
 # ══════════════════════════════════════════════════════════════
 
+# @torch.no_grad()
+# def _predict_np(model, I_val, u_val, soc0, T):
+#     """Pure-numpy single-trajectory predict for plotting."""
+#     C1 = model.C1.item()
+#     t  = np.arange(T, dtype=np.float32)
+#     soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
+
+#     soc_t  = torch.from_numpy(soc)
+#     I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
+#     u_t    = torch.full((T,), u_val)
+#     R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
+
+#     U1 = np.zeros(T, dtype=np.float64)
+#     for n in range(T - 1):
+#         U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
+
+#     Ue = model.Ue_interp(soc)
+#     R0 = model.R0_func(u_val, I_val)
+#     V  = Ue - I_val * R0 - U1
+#     return V, soc, U1, R1
+
+
+# def plot_predictions(model, trajs, title='', n_show=3):
+#     n = min(n_show, len(trajs))
+#     fig, axes = plt.subplots(5, n, figsize=(5 * n, 17), squeeze=False)
+
+#     model.eval()
+#     for j in range(n):
+#         tr = trajs[j]
+#         V, soc_np, U1, R1 = _predict_np(
+#             model, tr['I'], tr['u'], tr['soc0'], tr['T'])
+
+#         axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
+#         axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
+#         axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
+#         axes[0, j].invert_xaxis()
+#         axes[0, j].set_xlabel('State of Charge');
+#         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+
+#         axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
+#         axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
+#         axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+#         axes[1, j].set_xlabel('State of Charge');
+#         axes[1, j].invert_xaxis()
+
+#         C1 = model.C1.item()
+#         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
+#         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+#         axes[2, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
+#         axes[2, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
+#         axes[2, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[2, j].set_xlabel('SOC')
+#         axes[2, j].legend(); axes[2, j].invert_xaxis()
+
+#         R0_val = R0_func(tr['u'], tr['I'])
+#         axes[3, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'$R0$' + fr' = {R0_val * 1000:.1f} m$\Omega$', lw=2)
+#         axes[3, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'$R1$', lw=2)
+#         axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+#         axes[3, j].invert_xaxis()
+
+#         axes[4, j].axhline(C1, ls='--', color = COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+#         axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+#         axes[4, j].invert_xaxis()
+
+
+#     fig.tight_layout()
+#     return fig
+
 @torch.no_grad()
-def _predict_np(model, I_val, u_val, soc0, T):
+def _predict_np(model, I_val, u_val, soc0, T, Fs0=0.0):
     """Pure-numpy single-trajectory predict for plotting."""
     C1 = model.C1.item()
+    k  = model.ks_net.k
     t  = np.arange(T, dtype=np.float32)
     soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
 
     soc_t  = torch.from_numpy(soc)
     I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
     u_t    = torch.full((T,), u_val)
+
     R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
+    ks = model.ks_net(soc_t, I_norm, u_t).numpy()
 
     U1 = np.zeros(T, dtype=np.float64)
+    Fs = np.zeros(T, dtype=np.float64)
+    Fs[0] = Fs0
     for n in range(T - 1):
         U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
+        Fs[n+1] = Fs[n] - ks[n] * I_val / model.Q0   # dSOC/dt step
 
     Ue = model.Ue_interp(soc)
     R0 = model.R0_func(u_val, I_val)
     V  = Ue - I_val * R0 - U1
-    return V, soc, U1, R1
+    Fr = -k * u_val + Fs
+
+    return V, soc, U1, R1, Fs, Fr, ks
 
 
 def plot_predictions(model, trajs, title='', n_show=3):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(5, n, figsize=(5 * n, 17), squeeze=False)
+    fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
 
     model.eval()
+    k = model.ks_net.k
+
     for j in range(n):
         tr = trajs[j]
-        V, soc_np, U1, R1 = _predict_np(
-            model, tr['I'], tr['u'], tr['soc0'], tr['T'])
+        # Use true F(0) as IC for Fs so the level is right
+        Fs0 = float(tr['F'][0]) + k * tr['u']
+        V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(
+            model, tr['I'], tr['u'], tr['soc0'], tr['T'], Fs0=Fs0)
 
-        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
-        axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
+        # Row 0: V
+        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+        axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
         axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
-        axes[0, j].invert_xaxis()
-        axes[0, j].set_xlabel('State of Charge');
         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
-        axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
+        # Row 1: U1
+        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+        axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
         axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
-        axes[1, j].set_xlabel('State of Charge');
-        axes[1, j].invert_xaxis()
 
+        # Row 2: dU1/dt
         C1 = model.C1.item()
         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[2, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
-        axes[2, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
-        axes[2, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[2, j].set_xlabel('SOC')
-        axes[2, j].legend(); axes[2, j].invert_xaxis()
+        axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+        axes[2, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+        axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
+        # Row 3: R1 (+ R0 reference)
         R0_val = R0_func(tr['u'], tr['I'])
-        axes[3, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'$R0$' + fr' = {R0_val * 1000:.1f} m$\Omega$', lw=2)
-        axes[3, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'$R1$', lw=2)
+        axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0],
+                           label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+        axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
         axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
-        axes[3, j].invert_xaxis()
 
-        axes[4, j].axhline(C1, ls='--', color = COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+        # Row 4: C1
+        axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
         axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
-        axes[4, j].invert_xaxis()
 
+        # Row 5: Fr (reaction force)
+        axes[5, j].plot(soc_np, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+        axes[5, j].plot(soc_np, Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+        axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
+
+        # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
+        Fs_true = tr['F'].numpy() + k * tr['u']
+        axes[6, j].plot(soc_np, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+        axes[6, j].plot(soc_np, Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+        axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
+
+        # Row 7: ks — compare to empirical slope dFs/dSOC from data
+        dSOC     = np.gradient(soc_np)
+        dFs_true = np.gradient(Fs_true)
+        # ks_true = dFs/dSOC
+        ks_true = dFs_true / dSOC
+        axes[7, j].plot(soc_np, ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
+        axes[7, j].plot(soc_np, ks, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+        axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
+
+    for ax in axes.flat:
+        ax.set_xlabel('State of Charge')
+        ax.invert_xaxis()
 
     fig.tight_layout()
     return fig
@@ -435,8 +575,8 @@ _i = np.argsort(_s)
 Ue_interp = interp1d(_s[_i], _u[_i], kind='linear', fill_value='extrapolate')
 
 F_first = data.groupby('u')['F'].first()
-FORCE_CONST = abs(F_first / data.groupby('u')['u'].first()).values[0] * 100 # GN/mm
-print(f'Force constant: {FORCE_CONST:.2f} GN/mm')
+FORCE_CONST = abs(F_first / data.groupby('u')['u'].first()).values[0]  # GN/mm
+print(f'Force constant: {100 * FORCE_CONST:.2f} GN/mm')
 
 print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 
@@ -457,7 +597,8 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 r1_net = R1Net(n_hidden=N_HIDDEN, I_ref=I_MAX)
-model  = BatteryECM(r1_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
+ks_net = ksNet(n_hidden=N_HIDDEN, k=FORCE_CONST)
+model  = BatteryECMM(r1_net, ks_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -489,7 +630,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -510,7 +651,7 @@ ax.semilogy(history['train'], color=COLORS[0], label='train')
 ax.semilogy(history['test'], color=COLORS[1], label='test \n last RMSE: {:.4f} V'.format(history['test'][-1]))
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig(os.path.join(FIGS_DIR, f'ecm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -533,14 +674,14 @@ for i, s in enumerate(soc_pts):
 #  SAVE
 # ══════════════════════════════════════════════════════════════
 
-torch.save({
-    'model': model.state_dict(),
-    'history': history,
-    'C1_init': C1_init,
-    'C1_final': C1_final,
-    'N_HIDDEN': N_HIDDEN,
-    'EPOCHS': EPOCHS,
-}, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
+# torch.save({
+#     'model': model.state_dict(),
+#     'history': history,
+#     'C1_init': C1_init,
+#     'C1_final': C1_final,
+#     'N_HIDDEN': N_HIDDEN,
+#     'EPOCHS': EPOCHS,
+# }, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
-print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
+# print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
 # %%
