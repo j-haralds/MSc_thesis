@@ -62,7 +62,7 @@ BATCH_SIZE  = 1        # Trajectories per batch
 
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
-    'C1_mode': 'const',   # 'net' or 'const'
+    'C1_mode': 'net',   # 'net' or 'const'
     'R0_mode': 'func',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
 }

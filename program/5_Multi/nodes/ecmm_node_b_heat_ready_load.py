@@ -27,8 +27,8 @@ COLORS = plot_settings.colors()
 importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
 from ecmm_node_b_heat_ready_lib import (
-    prepare_data, BatteryECMM,
-    plot_predictions, plot_R1_landscape, extract_ecm_params, R0_func, plot_loss, _scalar_C1
+    prepare_data, BatteryECMM, plot_predictions, plot_predictions_pulse, 
+    extract_ecm_params, R0_func, plot_loss, _scalar_C1
 )
 
 
@@ -38,10 +38,11 @@ from ecmm_node_b_heat_ready_lib import (
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+PULSE_FILE  = os.path.join(DATA_DIR, 'pulse_data1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_51.2min_1b_32h_100eps.pt'
-SAVE_FIGS   = False
+MODEL_NAME  = 'ecm_node_C1500_45.5min_1b_32h_100eps.pt'
+SAVE_FIGS   = True
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
@@ -59,6 +60,11 @@ data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
 data['eta'] = -data['eta']
 I_MAX = data['I'].max()
+
+pulse_raw = pd.read_csv(PULSE_FILE, sep=',', comment='%')
+print(pulse_raw.columns)
+pulse_raw['eta'] = -pulse_raw['eta']
+
 
 # TODO: Replace with existing GP
 _s, _u = data['soc'].values, data['Ue'].values
@@ -79,6 +85,24 @@ trajs = prepare_data(data, R0_func)
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
+
+def prepare_pulse_data(pulse_raw):
+    pulse_trajs = []
+    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
+        grp = grp.reset_index(drop=True)
+        pulse_trajs.append(dict(
+            I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
+            u     = float(grp['u'].iloc[0]),
+            soc0  = float(grp['soc'].iloc[0]),
+            T     = len(grp),
+            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
+            V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
+            F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
+            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
+        ))
+    return pulse_trajs
+
+pulse_trajs = prepare_pulse_data(pulse_raw)
 
 # %% ══════════════════════════════════════════════════════════
 #  REBUILD + LOAD MODEL
@@ -103,6 +127,25 @@ model = BatteryECMM(config, Ue_interp, R0_func, Q0,
                     C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
 model.load_state_dict(ckpt['model'])
 model.eval()
+
+
+# Single-trajectory inference
+idx = 0
+tr = pulse_trajs[idx]
+with torch.no_grad():
+    V, Fr, soc, U1, R1, Fs = model.forward_pulse(tr['I_seq'].unsqueeze(0),           # (1, T)
+                                                torch.tensor([tr['u']]),            # (1,)
+                                                torch.tensor([tr['soc0']]),         # (1,)
+                                                )   
+print(V.shape, Fr.shape, soc.shape, U1.shape, R1.shape)
+V, Fr, soc, U1, R1 = V[0], Fr[0], soc[0], U1[0], R1[0]
+print(V, Fr, soc, U1, R1)
+plt.plot(tr['t'], V.numpy(), label='Predicted V')
+plt.plot(tr['t'], tr['V'].numpy(), '--', label='True V')
+plt.plot(tr['t'], U1.numpy(), label='Predicted U1')
+plt.plot(tr['I_seq'].numpy(), label='I')
+
+
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -137,13 +180,16 @@ if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps_loaded.pdf'), bbox_inches='tight')
 plt.show()
 
+
 # %% ══════════════════════════════════════════════════════════
-#  R1 LANDSCAPE
+# Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-# I_vals = sorted(data['I'].unique())
-# plot_R1_landscape(model, I_vals, u_val=float(data['u'].median()))
-# plt.show()
+plot_predictions_pulse(model, pulse_trajs, time=False)
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps_loaded.pdf'), bbox_inches='tight')
+plt.show()
+
 
 # %% ══════════════════════════════════════════════════════════
 #  EXTRACT ECM PARAMETERS

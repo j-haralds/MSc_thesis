@@ -177,16 +177,12 @@ class BatteryECMM(nn.Module):
             return self.r1_net(soc, I_norm, u)
         if m == 'param':
             return nn.functional.softplus(self.R1).expand_as(soc)
-        raise ValueError(f"Unknown R1_mode: {m}")
 
     def _C1(self, soc, I_norm, u):
         m = self.config['C1_mode']
         if m == 'net': return self.C1_net(soc, I_norm, u)
-
         if m == 'param': return torch.exp(self.log_C1)
-
         elif m == 'const': return torch.exp(self.log_C1)
-        raise ValueError(f"Unknown C1_mode: {m}")
 
     def _R0(self, soc, I_norm, u, I_batch, u_batch):
         """Returns R0 broadcastable to (B, T)."""
@@ -201,7 +197,6 @@ class BatteryECMM(nn.Module):
             return torch.tensor(
                 [self.R0_func(u_batch[b].item(), I_batch[b].item()) for b in range(B)],
                 dtype=torch.float32).unsqueeze(1)
-        raise ValueError(f"Unknown R0_mode: {m}")
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
         B = I_batch.shape[0]
@@ -246,14 +241,64 @@ class BatteryECMM(nn.Module):
         soc0_b = torch.tensor([soc0_val], dtype=torch.float32)
         V, Fr, soc, U1, R1, Fs = self.forward(I_b, u_b, soc0_b, T)
         return V[0], Fr[0], soc[0], U1[0], R1[0], Fs[0]
+    
+    def forward_pulse(self, I_seq, u_batch, soc0_batch):
+        """
+        I_seq      : (B, T) — current per trajectory per timestep
+        u_batch    : (B,)
+        soc0_batch : (B,)
+        """
+        B, T = I_seq.shape
+
+        # SOC cumulative integration
+        dsoc = -I_seq / self.Q0
+        soc = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]
+
+        I_norm = I_seq / self.I_ref
+        u_exp  = u_batch.unsqueeze(1).expand(B, T)
+
+        R1 = self._R1(soc, I_norm, u_exp)           # local, not self.R1
+        C1 = self._C1(soc, I_norm, u_exp)           # local, not self.C1
+        
+        m = self.config['R0_mode']
+        if m == 'net':
+            R0 = self.R0_net(soc, I_norm, u_exp)                   # (B, T)
+        elif m == 'param':
+            R0 = nn.functional.softplus(self.R0).expand_as(soc)    # (B, T)
+        elif m == 'func':
+            R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
+
+        U1_steps = [torch.zeros(B)]
+        Fs_steps = [torch.zeros(B)]
+        for n in range(T - 1):
+            # C1 may be scalar OR (B, T_max) — index only if 2-D
+            C1_n = C1[:, n] if C1.ndim == 2 else C1
+            dU1 = I_seq[:, n] / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
+            U1_steps.append(U1_steps[n] + dU1)
+
+            ks = self.ks_net(soc[:, n], I_norm[:, n], u_exp[:, n])
+            dFs = ks * (-I_seq[:, n] / self.Q0)
+            Fs_steps.append(Fs_steps[n] + dFs)
+
+        U1 = torch.stack(U1_steps, dim=1)
+        Fs = torch.stack(Fs_steps, dim=1)
+
+        with torch.no_grad():
+            Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
+
+        # Use the dispatcher result, not a second hard-coded R0_func call
+        V = Ue - I_seq * R0 - U1
+        Fr = -self.ks_net.k * u_exp + Fs
+
+        return V, Fr, soc, U1, R1, Fs
 
 def _scalar_C1(model, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06):
     """Return a representative scalar C1 for display purposes."""
     if model.config['C1_mode'] in ('const', 'param'):
         return torch.exp(model.log_C1).item()
-    soc_t  = torch.tensor([soc_ref])
-    I_norm = torch.tensor([I_ref_val / model.I_ref])
-    u_t    = torch.tensor([u_ref])
+    soc_t  = torch.tensor([soc_ref], dtype=torch.float32)
+    I_norm = torch.tensor([I_ref_val / model.I_ref], dtype=torch.float32)
+    u_t    = torch.tensor([u_ref], dtype=torch.float32)
     with torch.no_grad():
         return model._C1(soc_t, I_norm, u_t).mean().item()
 
@@ -400,8 +445,7 @@ def train_model(model, train_trajs, test_trajs,
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
                   f"| train_V {epoch_loss_V:.4f} V | train_Fr {epoch_loss_Fr:.4f} N "
                   f"| test {test_loss:.4f} | C1={C1:.0f}F "
-                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
-                  f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * _scalar_C1(model)).min().item():.2f} s")
+                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m")
 
     history['time'] = (_time.time() - t0) / 60
 
@@ -412,120 +456,151 @@ def train_model(model, train_trajs, test_trajs,
 # ══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def _predict_np(model, I_val, u_val, soc0, T, Fs0=0.0):
-    k = model.ks_net.k
-    t = np.arange(T, dtype=np.float32)
-    soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
+def _predict_np(model, I_val, u_val, soc0, T):
+    # --- run model ---
+    I_b    = torch.tensor([I_val],  dtype=torch.float32)
+    u_b    = torch.tensor([u_val],  dtype=torch.float32)
+    soc0_b = torch.tensor([soc0],   dtype=torch.float32)
+    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
+    V   = V[0].numpy();   Fr = Fr[0].numpy()
+    soc = soc[0].numpy(); U1 = U1[0].numpy()
+    R1  = R1[0].numpy();  Fs = Fs[0].numpy()
 
+    # ks along the trajectory (not returned by forward)
     soc_t  = torch.from_numpy(soc)
-    I_norm = torch.full((T,), I_val / model.I_ref)   # not model.r1_net.I_ref
+    I_norm = torch.full((T,), I_val / model.I_ref)
     u_t    = torch.full((T,), u_val)
-
-    R1 = model._R1(soc_t, I_norm, u_t).numpy()       # works for net OR param
-    C1_t = model._C1(soc_t, I_norm, u_t)             # scalar OR (T,)
-    C1   = C1_t.numpy() if C1_t.ndim > 0 else float(C1_t)
-    R0_t = model._R0(soc_t, I_norm, u_t,
-                     torch.tensor([I_val]), torch.tensor([u_val]))
-    R0   = float(R0_t.flatten()[0]) if R0_t.ndim > 0 else float(R0_t)
     ks = model.ks_net(soc_t, I_norm, u_t).numpy()
 
-    U1 = np.zeros(T); Fs = np.zeros(T); Fs[0] = Fs0
-    for n in range(T - 1):
-        C1_n = C1[n] if np.ndim(C1) else C1
-        U1[n+1] = U1[n] + I_val / C1_n - U1[n] / (R1[n] * C1_n)
-        Fs[n+1] = Fs[n] - ks[n] * I_val / model.Q0
-
-    Ue = model.Ue_interp(soc)
-    V  = Ue - I_val * R0 - U1
-    Fr = -k * u_val + Fs
     return V, soc, U1, R1, Fs, Fr, ks
 
 
-def plot_predictions(model, trajs, title='', n_show=3):
+def plot_predictions(model, trajs, time=False, title='', n_show=3):
     n = min(n_show, len(trajs))
     fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
 
     model.eval()
     k = model.ks_net.k
 
-    for j in range(n):
-        tr = trajs[j]
-        # Use true F(0) as IC for Fs so the level is right
-        Fs0 = float(tr['F'][0]) + k * tr['u']
-        V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(
-            model, tr['I'], tr['u'], tr['soc0'], tr['T'], Fs0=Fs0)
+    if not time:
+        for j in range(n):
+            tr = trajs[j]
 
-        # Row 0: V
-        axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-        axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-        axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
-        axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+            V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(model, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
-        # Row 1: U1
-        axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-        axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-        axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+            # Row 0: V
+            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+            axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+            axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
+            axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-        # Row 2: dU1/dt
-        C1 = _scalar_C1(model)
-        dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-        dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-        axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-        axes[2, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-        axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
+            # Row 1: U1
+            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+            axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+            axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
 
-        # Row 3: R1 (+ R0 reference)
-        R0_val = R0_func(tr['u'], tr['I'])
-        axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
-        axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
-        axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+            # Row 2: dU1/dt
+            C1 = _scalar_C1(model)
+            dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
+            dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+            axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+            axes[2, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+            axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
-        # Row 4: C1
-        axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
-        axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+            # Row 3: R1 (+ R0 reference)
+            R0_val = R0_func(tr['u'], tr['I'])
+            axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+            axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
+            axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
-        # Row 5: Fr (reaction force)
-        axes[5, j].plot(soc_np, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-        axes[5, j].plot(soc_np, Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-        axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
+            # Row 4: C1
+            axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
 
-        # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
-        Fs_true = tr['F'].numpy() + k * tr['u']
-        axes[6, j].plot(soc_np, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-        axes[6, j].plot(soc_np, Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-        axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
+            # Row 5: Fr (reaction force)
+            axes[5, j].plot(soc_np, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+            axes[5, j].plot(soc_np, Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+            axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
 
-        # Row 7: ks — compare to empirical slope dFs/dSOC from data
-        dSOC     = np.gradient(soc_np)
-        dFs_true = np.gradient(Fs_true)
-        # ks_true = dFs/dSOC
-        ks_true = dFs_true / dSOC
-        axes[7, j].plot(soc_np, ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
-        axes[7, j].plot(soc_np, ks, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-        axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
+            # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
+            Fs_true = tr['F'].numpy() + k * tr['u']
+            axes[6, j].plot(soc_np, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+            axes[6, j].plot(soc_np, Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+            axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
 
-    for ax in axes.flat:
-        ax.set_xlabel('State of Charge')
-        ax.invert_xaxis()
+            # Row 7: ks — compare to empirical slope dFs/dSOC from data
+            dSOC     = np.gradient(soc_np)
+            dFs_true = np.gradient(Fs_true)
+            # ks_true = dFs/dSOC
+            ks_true = dFs_true / dSOC
+            axes[7, j].plot(soc_np, ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
+            axes[7, j].plot(soc_np, ks, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
+
+        for ax in axes.flat:
+            ax.set_xlabel('State of Charge')
+            ax.invert_xaxis()
+    else:
+        for j in range(n):
+            tr = trajs[j]
+
+            V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(model, tr['I'], tr['u'], tr['soc0'], tr['T'])
+
+            # Row 0: V
+            axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+            axes[0, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+            axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
+            axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+
+            # Row 1: U1
+            axes[1, j].plot(tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+            axes[1, j].plot(U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+            axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+
+            # Row 2: dU1/dt
+            C1 = _scalar_C1(model)
+            dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
+            dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+            axes[2, j].plot(dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+            axes[2, j].plot(dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+            axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
+
+            # Row 3: R1 (+ R0 reference)
+            R0_val = R0_func(tr['u'], tr['I'])
+            axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+            axes[3, j].plot(R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
+            axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+
+            # Row 4: C1
+            axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+
+            # Row 5: Fr (reaction force)
+            axes[5, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+            axes[5, j].plot(Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+            axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
+
+            # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
+            Fs_true = tr['F'].numpy() + k * tr['u']
+            axes[6, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+            axes[6, j].plot(Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+            axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
+
+            # Row 7: ks — compare to empirical slope dFs/dSOC from data
+            dSOC     = np.gradient(soc_np)
+            dFs_true = np.gradient(Fs_true)
+            # ks_true = dFs/dSOC
+            ks_true = dFs_true / dSOC
+            axes[7, j].plot(ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
+            axes[7, j].plot(ks, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
+
+        for ax in axes.flat:
+            ax.set_xlabel('Time [s]')
 
     fig.tight_layout()
     return fig
 
-
-def plot_R1_landscape(model, I_values, u_val=-0.5):
-    fig, ax = plt.subplots(figsize=(6, 4))
-    soc = torch.linspace(0.02, 1.0, 200)
-    model.eval()
-    with torch.no_grad():
-        for Iv in I_values:
-            I_norm = torch.full((200,), Iv / model.r1_net.I_ref)
-            u_t    = torch.full((200,), u_val)
-            R1 = model.r1_net(soc, I_norm, u_t).numpy() * 1000
-            ax.plot(soc.numpy(), R1, label=f'I={Iv:.0f}A')
-    ax.set_xlabel('SOC'); ax.set_ylabel(r'$R$ [m$\Omega$]')
-    ax.set_title(r'Charge-transfer resistance $R_1$(SOC)')
-    ax.legend(); ax.invert_xaxis(); fig.tight_layout()
-    return fig
 
 def plot_loss(history):
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -534,6 +609,171 @@ def plot_loss(history):
     ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_V'][-1]))
     # ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
     ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+@torch.no_grad()
+def _predict_pulse_np(model, I_seq, u, soc0, T):
+    # --- run model ---
+    I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
+    u_b    = torch.tensor([u],    dtype=torch.float32)
+    soc0_b = torch.tensor([soc0], dtype=torch.float32)
+    V, Fr, soc, U1, R1, Fs = model.forward_pulse(I_b, u_b, soc0_b)
+    V   = V[0].numpy();   Fr = Fr[0].numpy()
+    soc = soc[0].numpy(); U1 = U1[0].numpy()
+    R1  = R1[0].numpy();  Fs = Fs[0].numpy()
+
+    I_np = I_b[0].numpy()
+    u_np = np.full(T, u)
+    soc_t = torch.from_numpy(soc.astype(np.float32))
+    In_t  = torch.from_numpy((I_np / model.I_ref).astype(np.float32))
+    u_t   = torch.from_numpy(u_np.astype(np.float32))
+    ks    = model.ks_net(soc_t, In_t, u_t).numpy()
+    C1_t  = model._C1(soc_t, In_t, u_t)
+
+    return V, soc, U1, R1, Fs, Fr, ks, C1_t
+
+def plot_predictions_pulse(model, pulse_trajs, time=False, title='', n_show=3):
+
+    n = min(n_show, len(pulse_trajs))
+    fig, axes = plt.subplots(9, n, figsize=(5 * n, 28), squeeze=False)
+    model.eval()
+    k = model.ks_net.k
+
+    if not time:
+        for j in range(n):
+            tr = pulse_trajs[j]
+            T  = tr['T']
+
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+
+            I_np = tr['I_seq'].numpy()
+            u_np = np.full(T, tr['u'])
+
+            # TODO: Switch to R0 from config
+            R0_np = R0_func(u_np, I_np)
+            Ue_np = model.Ue_interp(soc)
+            U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
+
+            # Row 0: I profile vs SOC
+            axes[0, j].plot(soc, I_np, '-', color=COLORS[0], lw=2)
+            axes[0, j].set_ylabel(r'$I$ [A]')
+            axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
+
+            # Row 1: V
+            axes[1, j].plot(soc, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+            axes[1, j].plot(soc, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+            axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
+
+            # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
+            # (keep this one on a sample index since both curves ARE soc)
+            axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
+            axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
+            axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
+            axes[2, j].set_xlabel('Time [s]')
+
+            # Row 3: U1
+            axes[3, j].plot(soc, U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+            axes[3, j].plot(soc, U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+            axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
+
+            # Row 4: R1 (+ R0, time-varying via I)
+            axes[4, j].plot(soc, R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
+            axes[4, j].plot(soc, R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
+            axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
+
+            # Row 5: C1
+            C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
+            axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
+            axes[5, j].set_ylabel(r'$C_1$ [F]')
+
+            # Row 6: Fr
+            axes[6, j].plot(soc, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+            axes[6, j].plot(soc, Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+            axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
+
+            # Row 7: Fs
+            Fs_true = tr['F'].numpy() + k * tr['u']
+            Fs_plot = Fs 
+            axes[7, j].plot(soc, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+            axes[7, j].plot(soc, Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+            axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
+
+            # Row 8: ks
+            axes[8, j].plot(soc, ks_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+
+        for ax in axes.flat:
+            if ax.get_xlabel() != 'Time [s]':
+                ax.set_xlabel('State of Charge')
+                ax.invert_xaxis()
+    else:
+        for j in range(n):
+            tr = pulse_trajs[j]
+            T  = tr['T']
+
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+
+            I_np = tr['I_seq'].numpy()
+            u_np = np.full(T, tr['u'])
+
+            # TODO: Switch to R0 from config
+            R0_np = R0_func(u_np, I_np)
+            Ue_np = model.Ue_interp(soc)
+            U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
+
+            # Row 0: I profile vs SOC
+            axes[0, j].plot(I_np, '-', color=COLORS[0], lw=2)
+            axes[0, j].set_ylabel(r'$I$ [A]')
+            axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
+
+            # Row 1: V
+            axes[1, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+            axes[1, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+            axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
+
+            # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
+            # (keep this one on a sample index since both curves ARE soc)
+            axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
+            axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
+            axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
+
+            # Row 3: U1
+            axes[3, j].plot(U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+            axes[3, j].plot(U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+            axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
+
+            # Row 4: R1 (+ R0, time-varying via I)
+            axes[4, j].plot(R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
+            axes[4, j].plot(R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
+            axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
+
+            # Row 5: C1
+            C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
+            axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
+            axes[5, j].set_ylabel(r'$C_1$ [F]')
+
+            # Row 6: Fr
+            axes[6, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+            axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+            axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
+
+            # Row 7: Fs
+            Fs_true = tr['F'].numpy() + k * tr['u']
+            Fs_plot = Fs 
+            axes[7, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+            axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+            axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
+
+            # Row 8: ks
+            axes[8, j].plot(ks_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+
+        for ax in axes.flat:
+            ax.set_xlabel('Time [s]')
+    
+
     fig.tight_layout()
     return fig
 
