@@ -112,7 +112,6 @@ class BatteryECMM(nn.Module):
     """
     def __init__(self, r1_net, ks_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
         super().__init__()
-        # TODO Initialize in accordance with HEAT  
         self.r1_net    = r1_net
         self.ks_net    = ks_net
         self.Ue_interp = Ue_interp
@@ -140,7 +139,6 @@ class BatteryECMM(nn.Module):
         U1   : (B, T_max)
         R1   : (B, T_max)
         """
-        # TODO Call on parameters and networks in accordance with HEAT  
         B  = I_batch.shape[0]
         C1 = self.C1
 

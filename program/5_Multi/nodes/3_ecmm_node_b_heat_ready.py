@@ -52,12 +52,6 @@ EPOCHS      = 2
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
-# %% ══════════════════════════════════════════════════════════
-#  KNOWN PHYSICS
-# ══════════════════════════════════════════════════════════════
-
-def R0_func(u, I):
-    return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
 # %% ══════════════════════════════════════════════════════════
 #  R1 NETWORK
@@ -78,6 +72,49 @@ class R1Net(nn.Module):
         # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
+# %% ══════════════════════════════════════════════════════════
+#  C1 NETWORK
+# ══════════════════════════════════════════════════════════════
+
+class C1Net(nn.Module):
+    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+
+# %% ══════════════════════════════════════════════════════════
+#  R0 NETWORK
+# ══════════════════════════════════════════════════════════════
+
+class R0Net(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
+def R0_func(u, I):
+    return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
     
 # %% ══════════════════════════════════════════════════════════
 #  ks NETWORK
@@ -110,19 +147,32 @@ class BatteryECMM(nn.Module):
     The Euler loop steps ALL trajectories simultaneously at each
     timestep — no per-trajectory Python loop.
     """
-    def __init__(self, r1_net, ks_net, Ue_interp, R0_func, Q0, C1_init=30000.0):
+    def __init__(self, config, Ue_interp, R0_func, Q0, C1_init=30000.0, I_ref=20.0, k=53.0):
         super().__init__()
-        # TODO Initialize in accordance with HEAT  
-        self.r1_net    = r1_net
-        self.ks_net    = ks_net
         self.Ue_interp = Ue_interp
-        self.R0_func   = R0_func
         self.Q0        = Q0
-        self.log_C1    = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
+        self.I_ref     = I_ref
+        self.k         = k
 
-    @property
-    def C1(self):
-        return torch.exp(self.log_C1)
+        nh = config.get('n_hidden', 32)
+
+        # Instantiate according to configurations
+        if config['R1_mode'] == 'net':
+            self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
+        elif config['R1_mode'] == 'const':
+            self.R1 = nn.Parameter(torch.tensor((config.get('R1_const', 0.01)), dtype=torch.float32))  # constant R1 value
+
+        if config['C1_mode'] == 'net':
+            self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
+        elif config['C1_mode'] == 'const':
+            self.log_C1 = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))  # log of constant C1 value
+
+        if config['R0_mode'] == 'net':
+            self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
+        elif config['R0_mode'] == 'func':
+            self.R0_func = R0_func
+        elif config['R0_mode'] == 'const':
+            self.R0 = nn.Parameter(torch.tensor((config.get('R0_const', 0.01)), dtype=torch.float32))  # constant R0 value
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
         """
@@ -149,8 +199,9 @@ class BatteryECMM(nn.Module):
         soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
 
         # R1 at every (batch, time) point  →  (B, T_max)
-        I_norm = (I_batch / self.r1_net.I_ref).unsqueeze(1).expand(B, T_max)
+        I_norm = (I_batch / self.I_ref).unsqueeze(1).expand(B, T_max)
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
+        
         R1 = self.r1_net(soc, I_norm, u_exp)   # (B, T_max)
 
         # Vectorised Euler integration of U1 and Fs across the batch
@@ -295,11 +346,6 @@ def train_model(model, train_trajs, test_trajs,
 
             optimizer.zero_grad()
             V_pred, Fr_pred, soc_pred, U1_pred, R1_pred, Fs_pred = model(I_b, u_b, soc0_b, T_max)
-            # print(f"V range: [{V_pred.min():.4f}, {V_pred.max():.4f}] V")
-            # print(f"Fr range: [{Fr_pred.min():.4f}, {Fr_pred.max():.4f}] V")
-            # print(f"U1 range: [{U1_pred.min():.4f}, {U1_pred.max():.4f}] V")
-            # print(f"Fs range: [{Fs_pred.min():.4f}, {Fs_pred.max():.4f}] GN")
-            # print(f"R1 range: [{R1_pred.min()*1000:.2f}, {R1_pred.max()*1000:.2f}] mOhm")
 
             # Masked RMSE — only score real (non-padded) timesteps
             sq_err_V = (V_pred - V_true) ** 2
@@ -324,15 +370,6 @@ def train_model(model, train_trajs, test_trajs,
         history['train'].append(epoch_loss)
         history['train_V'].append(epoch_loss_V)
         history['train_Fr'].append(epoch_loss_Fr)
-
-        # # ── test loss (one big batch) ──
-        # model.eval()
-        # with torch.no_grad():
-        #     I_b, u_b, soc0_b, V_true, mask, T_max = collate_batch(test_trajs)
-        #     V_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max)
-        #     test_loss = torch.sqrt(((V_pred - V_true)**2)[mask].mean()).item()
-        # history['test'].append(test_loss)
-        # scheduler.step(epoch_loss)
 
         model.eval()
         with torch.no_grad():
@@ -430,8 +467,7 @@ def plot_predictions(model, trajs, title='', n_show=3):
 
         # Row 3: R1 (+ R0 reference)
         R0_val = R0_func(tr['u'], tr['I'])
-        axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0],
-                           label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+        axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
         axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
         axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
@@ -536,9 +572,14 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 #  BUILD MODEL
 # ══════════════════════════════════════════════════════════════
 
-r1_net = R1Net(n_hidden=N_HIDDEN, I_ref=I_MAX)
-ks_net = ksNet(n_hidden=N_HIDDEN, k=FORCE_CONST)
-model  = BatteryECMM(r1_net, ks_net, Ue_interp, R0_func, Q0, C1_init=C1_init)
+config = {
+    'R1_mode': 'net',   # 'net' or 'const'
+    'C1_mode': 'net',   # 'net' or 'const'
+    'R0_mode': 'func',  # 'net', 'func', or 'const'
+    'n_hidden': N_HIDDEN,
+}
+
+model  = BatteryECMM(config, Ue_interp, R0_func, Q0, C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
