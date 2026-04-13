@@ -81,6 +81,5 @@ class U1Net(nn.Module):
 
 
 def next_step(model, x, constraints=False, R0_mode="const"):
-    print(x.shape)
     Fs, U1, R0 = model(x, constraints=constraints, R0_mode=R0_mode)
     return torch.stack([ECM_model(x[:, 3], x[:, 0], R0, U1), Mech_model(x[:, 1], Fs)], dim=1)
