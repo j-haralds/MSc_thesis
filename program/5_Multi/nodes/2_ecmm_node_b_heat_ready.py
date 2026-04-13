@@ -174,6 +174,13 @@ class BatteryECMM(nn.Module):
         elif config['R0_mode'] == 'const':
             self.R0 = nn.Parameter(torch.tensor((config.get('R0_const', 0.01)), dtype=torch.float32))  # constant R0 value
 
+        # Dispatchers
+    def _R1(self, soc, I_norm, u):
+        m = self.cfg['R1_mode']
+        if m == 'net':   return self.r1_net(soc, I_norm, u)
+        if m == 'const': return nn.functional.softplus(self.log_R1).expand_as(soc)
+        if m == 'func':  return self.cfg['R1_func'](soc, I_norm * self.I_ref, u)
+
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
         """
         Parameters
@@ -190,9 +197,9 @@ class BatteryECMM(nn.Module):
         U1   : (B, T_max)
         R1   : (B, T_max)
         """
-        # TODO Call on parameters and networks in accordance with HEAT  
+
         B  = I_batch.shape[0]
-        C1 = self.C1
+        C1 = self._C1
 
         # SOC: analytical  (B, T_max)
         t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)  # (1, T)
@@ -202,7 +209,7 @@ class BatteryECMM(nn.Module):
         I_norm = (I_batch / self.I_ref).unsqueeze(1).expand(B, T_max)
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
         
-        R1 = self.r1_net(soc, I_norm, u_exp)   # (B, T_max)
+        R1 = self._R1(soc, I_norm, u_exp)   # (B, T_max)
 
         # Vectorised Euler integration of U1 and Fs across the batch
         # Each timestep: U1[n+1] = U1[n] + I/C1 − U1[n]/(R1[n]·C1)
@@ -222,8 +229,7 @@ class BatteryECMM(nn.Module):
         # Ue from interpolation  (B, T_max)
         with torch.no_grad():
             soc_np = soc.detach().numpy()
-            Ue = torch.tensor(
-                self.Ue_interp(soc_np), dtype=torch.float32)
+            Ue = torch.tensor(self.Ue_interp(soc_np), dtype=torch.float32)
 
         # R0  (B,)  →  (B, 1) for broadcasting
         R0 = torch.tensor(
