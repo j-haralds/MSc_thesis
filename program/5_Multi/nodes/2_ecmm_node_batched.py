@@ -42,15 +42,15 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = True
-SAVE_MODELS = True
+SAVE_FIGS   = False
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 50
+EPOCHS      = 2
 LR          = 1e-3
-BATCH_SIZE  = 1        # ← NEW: trajectories per batch
+BATCH_SIZE  = 1        # Trajectories per batch
 
 # %% ══════════════════════════════════════════════════════════
 #  KNOWN PHYSICS
@@ -273,16 +273,17 @@ def collate_batch(trajs):
 def train_model(model, train_trajs, test_trajs,
                 n_epochs=200, lr=1e-3, batch_size=16, print_every=10):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, patience=40, factor=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
 
-    history = {'train': [], 'test': [], 'time': []}
+    history = {'train': [], 'train_V': [], 'train_Fr': [], 'test': [], 'time': []}
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
         model.train()
         order = np.random.permutation(len(train_trajs))
         epoch_loss = 0.0
+        epoch_loss_V = 0.0
+        epoch_loss_Fr = 0.0
         n_batches  = 0
 
         # ── mini-batch loop ──
@@ -306,18 +307,23 @@ def train_model(model, train_trajs, test_trajs,
             sq_err_Fr = (Fr_pred - Fr_true) ** 2
             loss_Fr = torch.sqrt(sq_err_Fr[mask].mean())
             loss = loss_V + loss_Fr
-            # print(f'Batch loss: V {loss_V.item():.4f} V, Fr {loss_Fr.item():.4f} N, total {loss.item():.4f}')
 
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             epoch_loss += loss.item()
-            n_batches  += 1
+            epoch_loss_V += loss_V.item()
+            epoch_loss_Fr += loss_Fr.item()
+
+            n_batches += 1
 
         epoch_loss /= n_batches
+        epoch_loss_V /= n_batches
+        epoch_loss_Fr /= n_batches
         history['train'].append(epoch_loss)
-
+        history['train_V'].append(epoch_loss_V)
+        history['train_Fr'].append(epoch_loss_Fr)
 
         # # ── test loss (one big batch) ──
         # model.eval()
@@ -346,6 +352,7 @@ def train_model(model, train_trajs, test_trajs,
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
             lr_now = optimizer.param_groups[0]['lr']
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
+                  f"| train_V {epoch_loss_V:.4f} V | train_Fr {epoch_loss_Fr:.4f} N "
                   f"| test {test_loss:.4f} | C1={C1:.0f}F "
                   f"| lr {lr_now:.1e} | ETA {eta:.1f}m"
                   f"| min(R1*C1): {(model.r1_net(soc0_b, I_b / model.r1_net.I_ref, u_b) * model.C1).min().item():.2f} s")
@@ -357,73 +364,6 @@ def train_model(model, train_trajs, test_trajs,
 # %% ══════════════════════════════════════════════════════════
 #  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
 # ══════════════════════════════════════════════════════════════
-
-# @torch.no_grad()
-# def _predict_np(model, I_val, u_val, soc0, T):
-#     """Pure-numpy single-trajectory predict for plotting."""
-#     C1 = model.C1.item()
-#     t  = np.arange(T, dtype=np.float32)
-#     soc = (soc0 - I_val / model.Q0 * t).astype(np.float32)
-
-#     soc_t  = torch.from_numpy(soc)
-#     I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
-#     u_t    = torch.full((T,), u_val)
-#     R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
-
-#     U1 = np.zeros(T, dtype=np.float64)
-#     for n in range(T - 1):
-#         U1[n+1] = U1[n] + I_val / C1 - U1[n] / (R1[n] * C1)
-
-#     Ue = model.Ue_interp(soc)
-#     R0 = model.R0_func(u_val, I_val)
-#     V  = Ue - I_val * R0 - U1
-#     return V, soc, U1, R1
-
-
-# def plot_predictions(model, trajs, title='', n_show=3):
-#     n = min(n_show, len(trajs))
-#     fig, axes = plt.subplots(5, n, figsize=(5 * n, 17), squeeze=False)
-
-#     model.eval()
-#     for j in range(n):
-#         tr = trajs[j]
-#         V, soc_np, U1, R1 = _predict_np(
-#             model, tr['I'], tr['u'], tr['soc0'], tr['T'])
-
-#         axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color = COLORS[1], label=r'True $V$', lw=2)
-#         axes[0, j].plot(soc_np, V, '-', color = COLORS[0], label=r'Predicted $V$', lw=2)
-#         axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
-#         axes[0, j].invert_xaxis()
-#         axes[0, j].set_xlabel('State of Charge');
-#         axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
-
-#         axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color = COLORS[1], label=r'True $U_1$', lw=2)
-#         axes[1, j].plot(soc_np, U1, '-', color = COLORS[0], label=r'Predicted $U_1$', lw=2)
-#         axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
-#         axes[1, j].set_xlabel('State of Charge');
-#         axes[1, j].invert_xaxis()
-
-#         C1 = model.C1.item()
-#         dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-#         dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-#         axes[2, j].plot(soc_np, dU1_data, '--', color = COLORS[1], label=r'True $dU1/dt$', lw=2, alpha=0.7)
-#         axes[2, j].plot(soc_np, dU1_rc, '-', color = COLORS[0], label=r'Predicted $dU1/dt$', lw=2)
-#         axes[2, j].set_ylabel(r'$dU1/dt$ [V/s]'); axes[2, j].set_xlabel('SOC')
-#         axes[2, j].legend(); axes[2, j].invert_xaxis()
-
-#         R0_val = R0_func(tr['u'], tr['I'])
-#         axes[3, j].axhline(R0_val * 1000, ls='--', color = COLORS[0], label=r'$R0$' + fr' = {R0_val * 1000:.1f} m$\Omega$', lw=2)
-#         axes[3, j].plot(soc_np, R1 * 1000, '-', color = COLORS[0], label=r'$R1$', lw=2)
-#         axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
-#         axes[3, j].invert_xaxis()
-
-#         axes[4, j].axhline(C1, ls='--', color = COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
-#         axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
-#         axes[4, j].invert_xaxis()
-
-
-#     fig.tight_layout()
-#     return fig
 
 @torch.no_grad()
 def _predict_np(model, I_val, u_val, soc0, T, Fs0=0.0):
@@ -630,7 +570,8 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_predictions(model, test_trajs, 'Test: ')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -647,11 +588,14 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], color=COLORS[0], label='train')
-ax.semilogy(history['test'], color=COLORS[1], label='test \n last RMSE: {:.4f} V'.format(history['test'][-1]))
+ax.semilogy(history['train'], color=COLORS[0], label='Train')
+ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Train $F_r$')
+ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Train $V$')
+# ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -674,14 +618,15 @@ for i, s in enumerate(soc_pts):
 #  SAVE
 # ══════════════════════════════════════════════════════════════
 
-# torch.save({
-#     'model': model.state_dict(),
-#     'history': history,
-#     'C1_init': C1_init,
-#     'C1_final': C1_final,
-#     'N_HIDDEN': N_HIDDEN,
-#     'EPOCHS': EPOCHS,
-# }, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
+if SAVE_MODELS:
+    torch.save({
+        'model': model.state_dict(),
+        'history': history,
+        'C1_init': C1_init,
+        'C1_final': C1_final,
+        'N_HIDDEN': N_HIDDEN,
+        'EPOCHS': EPOCHS,
+    }, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
 
-# print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
+    print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
 # %%
