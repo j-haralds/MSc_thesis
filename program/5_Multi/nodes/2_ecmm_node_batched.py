@@ -547,8 +547,8 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 
 print(f"\nTraining ({EPOCHS} epochs, batch_size={BATCH_SIZE})...")
 history = train_model(model, train_trajs, test_trajs,
-                      n_epochs=EPOCHS, lr=LR,
-                      batch_size=BATCH_SIZE, print_every=10)
+                    n_epochs=EPOCHS, lr=LR,
+                    batch_size=BATCH_SIZE, print_every=10)
 
 C1_final = model.C1.item()
 TOTAL_TIME = history['time']
@@ -586,9 +586,9 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], color=COLORS[0], label='Train')
-ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Train $F_r$')
-ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Train $V$')
+ax.semilogy(history['train'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train'][-1]))
+ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} V'.format(history['train_Fr'][-1]))
+ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_V'][-1]))
 # ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
 ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
 fig.tight_layout()
@@ -606,11 +606,11 @@ ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
 print(f"ECM parameters at I=11A:")
 print(f"  C1 = {ecm['C1']:.0f} F")
 print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
-      f"{'τ s':>7s}  {'U1ss V':>7s}")
+    f"{'τ s':>7s}  {'U1ss V':>7s}")
 for i, s in enumerate(soc_pts):
     print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
-          f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
-          f"{ecm['U1_ss'][i]:7.4f}")
+        f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
+        f"{ecm['U1_ss'][i]:7.4f}")
 
 # %% ══════════════════════════════════════════════════════════
 #  SAVE
