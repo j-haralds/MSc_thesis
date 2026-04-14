@@ -84,7 +84,7 @@ class C1Net(nn.Module):
     def forward(self, soc, I_norm, u):
         # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000
 
 # ══════════════════════════════════════════════════════════
 #  R0 NETWORK
@@ -292,15 +292,20 @@ class BatteryECMM(nn.Module):
 
         return V, Fr, soc, U1, R1, Fs
 
-def _scalar_C1(model, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06):
+def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06, soc=0, I_norm=0, u_exp=0):
     """Return a representative scalar C1 for display purposes."""
     if model.config['C1_mode'] in ('const', 'param'):
         return torch.exp(model.log_C1).item()
-    soc_t  = torch.tensor([soc_ref], dtype=torch.float32)
-    I_norm = torch.tensor([I_ref_val / model.I_ref], dtype=torch.float32)
-    u_t    = torch.tensor([u_ref], dtype=torch.float32)
-    with torch.no_grad():
-        return model._C1(soc_t, I_norm, u_t).mean().item()
+    
+    if model.config['C1_mode'] in ('net') and scalar:
+        soc_t  = torch.tensor([soc_ref], dtype=torch.float32)
+        I_norm = torch.tensor([I_ref_val / model.I_ref], dtype=torch.float32)
+        u_t    = torch.tensor([u_ref], dtype=torch.float32)
+        with torch.no_grad():
+            return model._C1(soc_t, I_norm, u_t).mean().item()
+        
+    elif model.config['C1_mode'] in ('net'):
+        return model._C1(soc, I_norm, u_exp).detach().numpy()
 
 # ══════════════════════════════════════════════════════════
 #  DATA FUNCTIONS
@@ -439,7 +444,7 @@ def train_model(model, train_trajs, test_trajs,
         scheduler.step(epoch_loss)
 
         if epoch % print_every == 0 or epoch == 1:
-            C1 = _scalar_C1(model)
+            C1 = get_C1(model, scalar=True)
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
             lr_now = optimizer.param_groups[0]['lr']
             print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
@@ -456,7 +461,7 @@ def train_model(model, train_trajs, test_trajs,
 # ══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def _predict_np(model, I_val, u_val, soc0, T):
+def _predict_np(model, config, I_val, u_val, soc0, T):
     # --- run model ---
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
@@ -472,10 +477,15 @@ def _predict_np(model, I_val, u_val, soc0, T):
     u_t    = torch.full((T,), u_val)
     ks = model.ks_net(soc_t, I_norm, u_t).numpy()
 
-    return V, soc, U1, R1, Fs, Fr, ks
+    if config['C1_mode'] in ('net'):
+        C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
+    else:
+        C1 = get_C1(model, scalar=True)
+
+    return V, soc, U1, R1, Fs, Fr, ks, C1
 
 
-def plot_predictions(model, trajs, time=False, title='', n_show=3):
+def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
     n = min(n_show, len(trajs))
     fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
 
@@ -486,7 +496,7 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(model, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             # Row 0: V
             axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -500,7 +510,6 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
             axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
 
             # Row 2: dU1/dt
-            C1 = _scalar_C1(model)
             dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
             dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
             axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
@@ -514,7 +523,10 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
             # Row 4: C1
-            axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            if config['C1_mode'] in ('net'):
+                axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
+            else:
+                axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
             axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
 
             # Row 5: Fr (reaction force)
@@ -544,7 +556,7 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks = _predict_np(model, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             # Row 0: V
             axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -558,7 +570,6 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
             axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
 
             # Row 2: dU1/dt
-            C1 = _scalar_C1(model)
             dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
             dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
             axes[2, j].plot(dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
@@ -572,7 +583,10 @@ def plot_predictions(model, trajs, time=False, title='', n_show=3):
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
             # Row 4: C1
-            axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            if config['C1_mode'] in ('net'):
+                axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
+            else:
+                axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
             axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
 
             # Row 5: Fr (reaction force)

@@ -39,7 +39,7 @@ importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
 from ecmm_node_b_heat_ready_lib import (
     prepare_data, estimate_C1, BatteryECMM, train_model,
-    plot_predictions, extract_ecm_params, R0_func, _scalar_C1
+    plot_predictions, extract_ecm_params, R0_func, get_C1, plot_loss
 )
 
 # %% ══════════════════════════════════════════════════════════
@@ -50,22 +50,24 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = False
-SAVE_MODELS = False
+SAVE_FIGS   = True
+SAVE_MODELS = True
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 1
+EPOCHS      = 100
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
-    'C1_mode': 'net',   # 'net' or 'const'
+    'C1_mode': 'net',   # 'net' or 'const' or 'param'
     'R0_mode': 'func',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
 }
+
+
 
 # %% ══════════════════════════════════════════════════════════
 #  LOAD DATA
@@ -119,7 +121,7 @@ history = train_model(model, train_trajs, test_trajs,
                       n_epochs=EPOCHS, lr=LR,
                       batch_size=BATCH_SIZE, print_every=10)
 
-C1_final = _scalar_C1(model)
+C1_final = get_C1(model, scalar=True)
 TOTAL_TIME = history['time']
 print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
@@ -128,32 +130,30 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions(model, train_trajs, 'Train: ')
-# plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
-plt.show()
+# plot_predictions(model, CONFIG, train_trajs, 'Train: ')
+# # plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions(model, test_trajs, 'Test: ')
+SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+
+plot_predictions(model, CONFIG, test_trajs, 'Test: ')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
 # ══════════════════════════════════════════════════════════════
 
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.semilogy(history['train'], color=COLORS[0], label='Train')
-ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Train $F_r$')
-ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Train $V$')
-# ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
-ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
-fig.tight_layout()
+plot_loss(history)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -185,7 +185,7 @@ if SAVE_MODELS:
         'C1_final': C1_final,
         'N_HIDDEN': N_HIDDEN,
         'EPOCHS': EPOCHS,
-    }, os.path.join(MODEL_DIR, f'ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt'))
+    }, os.path.join(MODEL_DIR, f'ecm_node_{SAVE_NAME}.pt'))
 
-    print(f"Saved: ecm_node_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps.pt")
+    print(f"Saved: ecm_node_{SAVE_NAME}.pt")
 # %%

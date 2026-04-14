@@ -116,14 +116,14 @@ EPOCHS   = ckpt['EPOCHS']
 history  = ckpt['history']
 # config   = ckpt['config']
 # print(f"Loaded checkpoint with config: {config}")
-config = {
+CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
     'C1_mode': 'const',   # 'net' or 'const'
     'R0_mode': 'func',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
 }
 
-model = BatteryECMM(config, Ue_interp, R0_func, Q0,
+model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0,
                     C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
 model.load_state_dict(ckpt['model'])
 model.eval()
@@ -159,25 +159,27 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions(model, train_trajs, 'Train: ')
+plot_predictions(model, CONFIG, train_trajs, 'Train: ')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions(model, test_trajs, 'Test: ')
+SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+
+plot_predictions(model, CONFIG, test_trajs, 'Test: ')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps_loaded.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES (from saved history)
-# ══════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 plot_loss(history)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps_loaded.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
 
 
@@ -187,7 +189,7 @@ plt.show()
 
 plot_predictions_pulse(model, pulse_trajs, time=False)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps_loaded.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
 
 
