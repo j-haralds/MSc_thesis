@@ -41,14 +41,16 @@ def simulate_DC1(I0, T, T_horizon):
     param = model.default_parameter_values
     param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
 
-
+    def my_DC_current(I0=I0):
+        return pybamm.Scalar(I0)
+    
+    param['Current function [A]'] = my_DC_current
 
     # param = pybamm.ParameterValues("Chen2020_composite")
 
     # for key in param.items():
     #     print(key)
 
-    param["Current function [A]"] = I0 
     param['SEI kinetic rate constant [m.s-1]'] = pybamm.Scalar(0.0)
     param['SEI reaction exchange current density [A.m-2]'] = pybamm.Scalar(0.0)
     param['SEI solvent diffusivity [m2.s-1]'] = pybamm.Scalar(0.0)
