@@ -139,8 +139,8 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
-# plot_predictions(model, CONFIG, train_trajs, 'Train: ')
-# plt.show()
+plot_predictions(model, CONFIG, train_trajs, 'Train: ')
+plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST

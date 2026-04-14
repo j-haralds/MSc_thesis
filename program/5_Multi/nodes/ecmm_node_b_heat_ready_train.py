@@ -128,9 +128,9 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
-# plot_predictions(model, CONFIG, train_trajs, 'Train: ')
-# # plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
-# plt.show()
+plot_predictions(model, CONFIG, train_trajs, 'Train: ')
+# plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
+plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
