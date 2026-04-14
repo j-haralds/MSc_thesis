@@ -651,7 +651,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
 def plot_loss(history):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.semilogy(history['train'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train'][-1]))
-    ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} V'.format(history['train_Fr'][-1]))
+    ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} GN'.format(history['train_Fr'][-1]))
     ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_V'][-1]))
     # ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
     ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()

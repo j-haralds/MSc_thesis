@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_C1500_45.5min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_netR0_netC1_56.9min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -112,14 +112,14 @@ C1_final = ckpt['C1_final']
 N_HIDDEN = ckpt['N_HIDDEN']
 EPOCHS   = ckpt['EPOCHS']
 history  = ckpt['history']
-# config   = ckpt['config']
+CONFIG   = ckpt['config']
 # print(f"Loaded checkpoint with config: {config}")
-CONFIG = {
-    'R1_mode': 'net',   # 'net' or 'const'
-    'C1_mode': 'const',   # 'net' or 'const'
-    'R0_mode': 'func',  # 'net', 'func', or 'const'
-    'n_hidden': N_HIDDEN,
-}
+# CONFIG = {
+#     'R1_mode': 'net',   # 'net' or 'const'
+#     'C1_mode': 'const',   # 'net' or 'const'
+#     'R0_mode': 'func',  # 'net', 'func', or 'const'
+#     'n_hidden': N_HIDDEN,
+# }
 
 model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0,
                     C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
@@ -146,9 +146,9 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
-plot_predictions(model, CONFIG, test_trajs, noise=True, noise_lvl=0.05, title='Test: ')
+plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ', n_show=5)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
@@ -167,7 +167,7 @@ plt.show()
 # Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
+plot_predictions_pulse(model, pulse_trajs, time=True, noise=False, noise_lvl=0.01)
 if SAVE_PULSE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
