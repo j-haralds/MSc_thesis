@@ -510,7 +510,7 @@ def _predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl =
     return V, soc, U1, R1, Fs, Fr, ks, C1, R0
 
 
-def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
+def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3):
     n = min(n_show, len(trajs))
     fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
 
@@ -521,7 +521,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             # Row 0: V
             axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -584,7 +584,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             # Row 0: V
             axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -680,7 +680,7 @@ def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00)
 
     return V, soc, U1, R1, Fs, Fr, ks, C1_t
 
-def plot_predictions_pulse(model, pulse_trajs, time=False, title='', n_show=3):
+def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3):
 
     n = min(n_show, len(pulse_trajs))
     fig, axes = plt.subplots(9, n, figsize=(5 * n, 28), squeeze=False)
@@ -692,7 +692,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, title='', n_show=3):
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -759,7 +759,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, title='', n_show=3):
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])

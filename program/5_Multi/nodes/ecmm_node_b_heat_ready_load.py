@@ -38,11 +38,12 @@ from ecmm_node_b_heat_ready_lib import (
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
-PULSE_FILE  = os.path.join(DATA_DIR, 'pulse_data1.txt')
+PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 MODEL_NAME  = 'ecm_node_C1500_45.5min_1b_32h_100eps.pt'
-SAVE_FIGS   = True
+SAVE_FIGS   = False
+SAVE_PULSE_FIGS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
@@ -129,24 +130,6 @@ model.load_state_dict(ckpt['model'])
 model.eval()
 
 
-# Single-trajectory inference
-idx = 0
-tr = pulse_trajs[idx]
-with torch.no_grad():
-    V, Fr, soc, U1, R1, Fs = model.forward_pulse(tr['I_seq'].unsqueeze(0),           # (1, T)
-                                                torch.tensor([tr['u']]),            # (1,)
-                                                torch.tensor([tr['soc0']]),         # (1,)
-                                                )   
-print(V.shape, Fr.shape, soc.shape, U1.shape, R1.shape)
-V, Fr, soc, U1, R1 = V[0], Fr[0], soc[0], U1[0], R1[0]
-print(V, Fr, soc, U1, R1)
-plt.plot(tr['t'], V.numpy(), label='Predicted V')
-plt.plot(tr['t'], tr['V'].numpy(), '--', label='True V')
-plt.plot(tr['t'], U1.numpy(), label='Predicted U1')
-plt.plot(tr['I_seq'].numpy(), label='I')
-
-
-
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 print(f"  C1: {C1_init:.0f} → {_scalar_C1(model):.0f} F  (saved final: {C1_final:.0f})")
@@ -159,8 +142,8 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TRAIN
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions(model, CONFIG, train_trajs, 'Train: ')
-plt.show()
+# plot_predictions(model, CONFIG, train_trajs, 'Train: ')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
@@ -168,7 +151,7 @@ plt.show()
 
 SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
-plot_predictions(model, CONFIG, test_trajs, 'Test: ')
+plot_predictions(model, CONFIG, test_trajs, noise=True, noise_lvl=0.05, title='Test: ')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
@@ -177,20 +160,28 @@ plt.show()
 #  LOSS CURVES (from saved history)
 # ═════════════════════════════════════════════════════════════
 
-plot_loss(history)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-plt.show()
+# plot_loss(history)
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+# plt.show()
 
 
 # %% ══════════════════════════════════════════════════════════
 # Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions_pulse(model, pulse_trajs, time=False)
-if SAVE_FIGS:
+plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.05)
+if SAVE_PULSE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
+
+
+# %% ══════════════════════════════════════════════════════════
+# NOISY
+# ══════════════════════════════════════════════════════════════
+
+
+
 
 
 # %% ══════════════════════════════════════════════════════════
