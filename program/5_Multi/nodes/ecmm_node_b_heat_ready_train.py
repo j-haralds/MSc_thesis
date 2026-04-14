@@ -29,18 +29,16 @@ import importlib
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
+print(FILE_PATH)
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
-importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
+from ecmm_node_b_heat_ready_lib import *
 
-from ecmm_node_b_heat_ready_lib import (
-    prepare_data, estimate_C1, BatteryECMM, train_model,
-    plot_predictions, extract_ecm_params, R0_func, get_C1, plot_loss
-)
+importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
 # %% ══════════════════════════════════════════════════════════
 #  CONFIGURATION
@@ -63,7 +61,7 @@ BATCH_SIZE  = 1        # Trajectories per batch
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
-    'R0_mode': 'func',  # 'net', 'func', or 'const'
+    'R0_mode': 'net',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
 }
 
@@ -140,7 +138,7 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
-plot_predictions(model, CONFIG, test_trajs, 'Test: ')
+plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')

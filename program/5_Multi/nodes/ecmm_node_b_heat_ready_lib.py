@@ -542,9 +542,9 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[2, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
             axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
-            # Row 3: R1 (+ R0 reference)
+            # Row 3: R1
             if config['R0_mode'] in ('net'):
-                axes[3, j].plot(R0 * 1000, ls='-', color=COLORS[0], label=r'$R_0$', lw=2)
+                axes[3, j].plot(soc_np, R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
             elif config['R0_mode'] in ('func'):
                 R0_val = R0_func(tr['u'], tr['I'])
                 axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
@@ -553,7 +553,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
 
             # Row 4: C1
             if config['C1_mode'] in ('net'):
-                axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
+                axes[4, j].plot(soc_np, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
             else:
                 axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
             axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
@@ -606,8 +606,11 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
             # Row 3: R1 (+ R0 reference)
-            R0_val = R0_func(tr['u'], tr['I'])
-            axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+            if config['R0_mode'] in ('net'):
+                axes[3, j].plot(R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
+            elif config['R0_mode'] in ('func'):
+                R0_val = R0_func(tr['u'], tr['I'])
+                axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
             axes[3, j].plot(R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
