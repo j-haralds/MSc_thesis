@@ -136,7 +136,7 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+SAVE_NAME = f'{CONFIG['R0_mode']}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
 if SAVE_FIGS:
