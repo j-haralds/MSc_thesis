@@ -470,8 +470,9 @@ def gen_noise(i,u,noise_lvl = 0.):
 
     I_noise_std = noise_lvl * I_max
     u_noise_std = noise_lvl * u_max
-    i_noise = torch.normal(0, I_noise_std, size=i.shape, rng=torch.Generator().manual_seed(42))
-    u_noise = torch.normal(0, u_noise_std, size=u.shape, rng=torch.Generator().manual_seed(42))
+    i_noise = torch.normal(0, I_noise_std, size=i.shape)
+    u_noise = torch.normal(0, u_noise_std, size=u.shape)
+    print(i_noise, u_noise)
     return i_noise, u_noise
 
 
@@ -826,18 +827,27 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
 
 
 
-def plot_noisy_inputs(I_val, u_val, noise_lvl = 0.00):
-    I_b    = torch.tensor([I_val],  dtype=torch.float32)
-    u_b    = torch.tensor([u_val],  dtype=torch.float32)
-    i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
-    I_noisy = I_b + i_noise
-    u_noisy = u_b + u_noise
+def plot_noisy_inputs(trajs, noise_lvl = 0.00):
+    tr    = trajs[0]
+    I_val = tr['I']
+    u_val = tr['u']
+    N = 1000  # number of samples
 
+    I_b = torch.full((N,), I_val, dtype=torch.float32)
+    u_b = torch.full((N,), u_val, dtype=torch.float32)
+
+    i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl=noise_lvl)
+    I_plot = I_b + i_noise
+    u_plot = u_b + u_noise
     f, ax = plt.subplots(1, 2, figsize=(10, 4))
-    ax[0].hist(I_noisy.numpy(), bins=20, color=COLORS[0], alpha=0.7, edgecolor='black')
+    ax[0].hist(I_plot.numpy(), bins=20, color=COLORS[0], alpha=0.7, edgecolor='black')
+    ax[0].axvline(I_val, color=COLORS[0], ls='--', label='True I', lw=2)
+    ax[0].legend()
     ax[0].set_xlabel('Current [A]')
     ax[0].set_ylabel('Frequency')
-    ax[1].hist(u_noisy.numpy() * 10, bins=20, color=COLORS[1], alpha=0.7, edgecolor='black')
+    ax[1].hist(u_plot.numpy() * 10, bins=20, color=COLORS[1], alpha=0.7, edgecolor='black')
+    ax[1].axvline(u_val * 10, color=COLORS[1], ls='--', label='True u', lw=2)
+    ax[1].legend()
     ax[1].set_xlabel('Displacement [µm]')
     ax[1].set_ylabel('Frequency')
     plt.tight_layout()

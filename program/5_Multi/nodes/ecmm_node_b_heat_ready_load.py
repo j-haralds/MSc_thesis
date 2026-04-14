@@ -26,10 +26,7 @@ COLORS = plot_settings.colors()
 
 importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
-from ecmm_node_b_heat_ready_lib import (
-    prepare_data, BatteryECMM, plot_predictions, plot_predictions_pulse, 
-    extract_ecm_params, R0_func, plot_loss, _scalar_C1
-)
+from ecmm_node_b_heat_ready_lib import *
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -132,7 +129,7 @@ model.eval()
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
-print(f"  C1: {C1_init:.0f} → {_scalar_C1(model):.0f} F  (saved final: {C1_final:.0f})")
+print(f"  C1: {C1_init:.0f} → {get_C1(model):.0f} F  (saved final: {C1_final:.0f})")
 print(f"  Trained {EPOCHS} epochs, {history.get('time', float('nan')):.1f} min total")
 
 TOTAL_TIME = history.get('time', 0.0)
@@ -170,7 +167,7 @@ plt.show()
 # Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.05)
+plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
 if SAVE_PULSE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
@@ -180,6 +177,8 @@ plt.show()
 # NOISY
 # ══════════════════════════════════════════════════════════════
 
+plot_noisy_inputs(trajs, noise_lvl=0.01)
+plt.show()
 
 
 
