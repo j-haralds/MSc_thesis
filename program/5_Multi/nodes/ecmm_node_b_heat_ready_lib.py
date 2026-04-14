@@ -462,12 +462,31 @@ def train_model(model, train_trajs, test_trajs,
 #  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
 # ══════════════════════════════════════════════════════════════
 
+def gen_noise(i,u,noise_lvl = 0.):
+    C_to_I = 4.72930472709413 / 1.9
+    u_par_to_u = 2.587185069984447 / 18.0
+    I_max = 5.0 * C_to_I
+    u_max = 30. * u_par_to_u
+
+    I_noise_std = noise_lvl * I_max
+    u_noise_std = noise_lvl * u_max
+    i_noise = torch.normal(0, I_noise_std, size=i.shape, rng=torch.Generator().manual_seed(42))
+    u_noise = torch.normal(0, u_noise_std, size=u.shape, rng=torch.Generator().manual_seed(42))
+    return i_noise, u_noise
+
+
 @torch.no_grad()
-def _predict_np(model, config, I_val, u_val, soc0, T):
+def _predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl = 0.00):
     # --- run model ---
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
+
+    # Add noise to inputs
+    if noise:
+        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
+        I_b += i_noise
+        u_b += u_noise
     V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
@@ -637,11 +656,15 @@ def plot_loss(history):
 
 
 @torch.no_grad()
-def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False):
+def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
     # --- run model ---
     I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
     u_b    = torch.tensor([u],    dtype=torch.float32)
     soc0_b = torch.tensor([soc0], dtype=torch.float32)
+    if noise: 
+        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
+        I_b += i_noise
+        u_b += u_noise
     V, Fr, soc, U1, R1, Fs = model.forward_pulse(I_b, u_b, soc0_b)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
@@ -802,17 +825,6 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, title='', n_show=3):
 
 
 
-def gen_noise(i,u,noise_lvl = 0.):
-    C_to_I = 4.72930472709413 / 1.9
-    u_par_to_u = 2.587185069984447 / 18.0
-    I_max = 5.0 * C_to_I
-    u_max = 30. * u_par_to_u
-
-    I_noise_std = noise_lvl * I_max
-    u_noise_std = noise_lvl * u_max
-    i_noise = torch.normal(0, I_noise_std, size=i.shape, rng=torch.Generator().manual_seed(42))
-    u_noise = torch.normal(0, u_noise_std, size=u.shape, rng=torch.Generator().manual_seed(42))
-    return i_noise, u_noise
 
 def plot_noisy_inputs(I_val, u_val, noise_lvl = 0.00):
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
@@ -831,38 +843,37 @@ def plot_noisy_inputs(I_val, u_val, noise_lvl = 0.00):
     plt.tight_layout()
     return f
 
-def _predict_np_noise(model, config, I_val, u_val, soc0, T, noise_lvl = 0.00):
-    # --- run model ---
-    I_b    = torch.tensor([I_val],  dtype=torch.float32)
-    u_b    = torch.tensor([u_val],  dtype=torch.float32)
-    # Add noise to inputs
-    i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
-    I_b += i_noise
-    u_b += u_noise
+# def _predict_np_noise(model, config, I_val, u_val, soc0, T, noise_lvl = 0.00):
+#     # --- run model ---
+#     I_b    = torch.tensor([I_val],  dtype=torch.float32)
+#     u_b    = torch.tensor([u_val],  dtype=torch.float32)
+#     # Add noise to inputs
+#     i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
+#     I_b += i_noise
+#     u_b += u_noise
 
-    soc0_b = torch.tensor([soc0],   dtype=torch.float32)
-    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
-    V   = V[0].numpy();   Fr = Fr[0].numpy()
-    soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy();  Fs = Fs[0].numpy()
+#     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
+#     V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
+#     V   = V[0].numpy();   Fr = Fr[0].numpy()
+#     soc = soc[0].numpy(); U1 = U1[0].numpy()
+#     R1  = R1[0].numpy();  Fs = Fs[0].numpy()
 
-    # ks along the trajectory (not returned by forward)
-    soc_t  = torch.from_numpy(soc)
-    I_norm = torch.full((T,), I_val / model.I_ref)
-    u_t    = torch.full((T,), u_val)
-    ks = model.ks_net(soc_t, I_norm, u_t).numpy()
+#     # ks along the trajectory (not returned by forward)
+#     soc_t  = torch.from_numpy(soc)
+#     I_norm = torch.full((T,), I_val / model.I_ref)
+#     u_t    = torch.full((T,), u_val)
+#     ks = model.ks_net(soc_t, I_norm, u_t).numpy()
 
-    if config['C1_mode'] in ('net'):
-        C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
-    else:
-        C1 = get_C1(model, scalar=True)
+#     if config['C1_mode'] in ('net'):
+#         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
+#     else:
+#         C1 = get_C1(model, scalar=True)
 
-    return V, soc, U1, R1, Fs, Fr, ks, C1
+#     return V, soc, U1, R1, Fs, Fr, ks, C1
 
 
-def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10):
+def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10, pulse = False):
     n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
 
     model.eval()
     k = model.ks_net.k
@@ -873,7 +884,10 @@ def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10):
         for j in trange(n):
             tr = trajs[j]
             for i, noise_lvl in enumerate(noise_lvls):
-                V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np_noise(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise_lvl = noise_lvl)
+                if pulse:
+                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
+                else:
+                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
                 rmse_noise[j,i] = np.sqrt(np.mean((V - tr['V'])**2))
 
     std_noise = rmse_noise.std(axis=0)
