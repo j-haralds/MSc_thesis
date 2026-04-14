@@ -486,7 +486,8 @@ def _predict_np(model, config, I_val, u_val, soc0, T):
 
     if config['R0_mode'] in ('net'):
         R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
-
+    else:
+        R0 = None
     return V, soc, U1, R1, Fs, Fr, ks, C1, R0
 
 
@@ -636,7 +637,7 @@ def plot_loss(history):
 
 
 @torch.no_grad()
-def _predict_pulse_np(model, I_seq, u, soc0, T):
+def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False):
     # --- run model ---
     I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
     u_b    = torch.tensor([u],    dtype=torch.float32)
@@ -821,10 +822,10 @@ def plot_noisy_inputs(I_val, u_val, noise_lvl = 0.00):
     u_noisy = u_b + u_noise
 
     f, ax = plt.subplots(1, 2, figsize=(10, 4))
-    ax[0].hist(I_noisy.numpy(), bins=20, color=colors[0], alpha=0.7, edgecolor='black')
+    ax[0].hist(I_noisy.numpy(), bins=20, color=COLORS[0], alpha=0.7, edgecolor='black')
     ax[0].set_xlabel('Current [A]')
     ax[0].set_ylabel('Frequency')
-    ax[1].hist(u_noisy.numpy() * 10, bins=20, color=colors[1], alpha=0.7, edgecolor='black')
+    ax[1].hist(u_noisy.numpy() * 10, bins=20, color=COLORS[1], alpha=0.7, edgecolor='black')
     ax[1].set_xlabel('Displacement [µm]')
     ax[1].set_ylabel('Frequency')
     plt.tight_layout()
