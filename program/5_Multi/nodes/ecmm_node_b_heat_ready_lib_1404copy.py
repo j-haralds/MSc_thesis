@@ -211,7 +211,6 @@ class BatteryECMM(nn.Module):
 
         U1_steps = [torch.zeros(B)]
         Fs_steps = [torch.zeros(B)]
-
         for n in range(T_max - 1):
             # C1 may be scalar OR (B, T_max) — index only if 2-D
             C1_n = C1[:, n] if C1.ndim == 2 else C1
@@ -483,10 +482,7 @@ def _predict_np(model, config, I_val, u_val, soc0, T):
     else:
         C1 = get_C1(model, scalar=True)
 
-    if config['R0_mode'] in ('net'):
-        R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
-
-    return V, soc, U1, R1, Fs, Fr, ks, C1, R0
+    return V, soc, U1, R1, Fs, Fr, ks, C1
 
 
 def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
@@ -500,7 +496,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             # Row 0: V
             axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -521,11 +517,8 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
             axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
             # Row 3: R1 (+ R0 reference)
-            if config['R0_mode'] in ('net'):
-                axes[3, j].plot(R0 * 1000, ls='-', color=COLORS[0], label=r'$R_0$', lw=2)
-            elif config['R0_mode'] in ('func'):
-                R0_val = R0_func(tr['u'], tr['I'])
-                axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+            R0_val = R0_func(tr['u'], tr['I'])
+            axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
             axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
@@ -563,7 +556,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3):
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             # Row 0: V
             axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -810,7 +803,7 @@ def extract_ecm_params(model, soc_points, I_val, u_val):
     model.eval()
     with torch.no_grad():
         R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
-    C1 = get_C1(model, soc_ref=0.5, I_ref_val=I_val, u_ref=u_val)
+    C1 = _scalar_C1(model, soc_ref=0.5, I_ref_val=I_val, u_ref=u_val)
     R0 = R0_func(u_val, I_val)
     return dict(soc=np.array(soc_points), R0=np.full(T, R0),
                 R1=R1, C1=C1, tau=R1 * C1, U1_ss=R1 * I_val)
