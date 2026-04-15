@@ -70,7 +70,7 @@ class R1Net(nn.Module):
     
 class R1NetConstrained(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=20.0):
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
         super().__init__()
         self.I_ref = I_ref
         self.net = nn.Sequential(
@@ -78,15 +78,18 @@ class R1NetConstrained(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
+        self.R1_min = config.get('R1_min')
+        self.R1_max = config.get('R1_max')
+        print(f'R1 constrained to [{self.R1_min}, {self.R1_max}] Ohm')
 
     def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+        return self.R1_min + s * (self.R1_max - self.R1_min)
     
 # ══════════════════════════════════════════════════════════
 #  C1 NETWORK
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════
 
 class C1Net(nn.Module):
     """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output."""
@@ -145,7 +148,7 @@ class R0Net(nn.Module):
     
 class R0NetConstrained(nn.Module):
     """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=20.0):
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
         super().__init__()
         self.I_ref = I_ref
         self.net = nn.Sequential(
@@ -153,12 +156,15 @@ class R0NetConstrained(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
+        self.R0_min = config.get('R0_min')
+        self.R0_max = config.get('R0_max')
+        print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
 
     def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
-    
+        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+        return self.R0_min + s * (self.R0_max - self.R0_min)
+
 def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
     
@@ -206,9 +212,8 @@ class BatteryECMM(nn.Module):
         # Instantiate according to configurations
         if config['R1_mode'] == 'net':
             # Choose constrained network or not
-            if config.get('R1_constrained', 'true') == 'true':
-                print('R1 constrained')
-                self.r1_net = R1NetConstrained(n_hidden=nh, I_ref=I_ref)
+            if config.get('R1_constrained', 'false') == 'true':     # When key not availably, default to unconstrained
+                self.r1_net = R1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
             else:
                 print('R1 unconstrained')
                 self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
@@ -217,7 +222,7 @@ class BatteryECMM(nn.Module):
             self.R1 = nn.Parameter(torch.tensor((config.get('R1_param', 0.01)), dtype=torch.float32)) 
 
         if config['C1_mode'] == 'net':
-            if config.get('C1_constrained', 'true') == 'true':
+            if config.get('C1_constrained', 'false') == 'true':
                 self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
             else:
                 print('C1 unconstrained')
@@ -229,9 +234,8 @@ class BatteryECMM(nn.Module):
             self.log_C1 = torch.tensor(np.log(C1_init), dtype=torch.float32)
 
         if config['R0_mode'] == 'net':
-            if config.get('R0_constrained', 'true') == 'true':
-                print('R0 constrained')
-                self.R0_net = R0NetConstrained(n_hidden=nh, I_ref=I_ref)
+            if config.get('R0_constrained', 'false') == 'true':
+                self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
             else:
                 print('R0 unconstrained')
                 self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
@@ -1085,11 +1089,14 @@ def plot_param(model, trajs, param='R1', title=''):
                 if m == 'net':
                     y = model.R0_net(soc, I_norm, u_t).numpy() * 1e3
                 # elif m == 'param': ...
-                # elif m == 'func':  ...
+                elif m == 'func': 
+                    y = R0_func(u_t.numpy(), I_norm.numpy()) * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
+    # ax.axhline(1000, color='gray', ls='--', lw=1)
+    # ax.axhline(20000, color='gray', ls='--', lw=1)
     ax.set_xlabel('State of Charge')
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()

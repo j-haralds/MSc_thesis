@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_netR0_netC1_57.5min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_netC1_58.5min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -130,8 +130,14 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+if CONFIG.get('C1_constrained', 'false') == 'true':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R0_constrained', 'false') == 'true':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+else:
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
+print(SAVE_NAME)
 plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ', n_show=3)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
@@ -170,27 +176,9 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 plot_param(model, trajs, param='R0')
-# plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='R1')
-# plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='C1')
-# plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
-
-# %% ══════════════════════════════════════════════════════════
-#  EXTRACT ECM PARAMETERS
-# ═════════════════════════════════════════════════════════════
-
-# soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
-# ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
-
-# print(f"ECM parameters at I=11A:")
-# print(f"  C1 = {ecm['C1']:.0f} F")
-# print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
-#       f"{'τ s':>7s}  {'U1ss V':>7s}")
-# for i, s in enumerate(soc_pts):
-#     print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
-#           f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
-#           f"{ecm['U1_ss'][i]:7.4f}")
-
-# %%
