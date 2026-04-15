@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 import time as _time
@@ -67,6 +68,22 @@ class R1Net(nn.Module):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
     
+class R1NetConstrained(nn.Module):
+    """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
 # ══════════════════════════════════════════════════════════
 #  C1 NETWORK
 # ══════════════════════════════════════════════════════════════
@@ -87,11 +104,46 @@ class C1Net(nn.Module):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000
 
+class C1NetConstrained(nn.Module):
+    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output, linear constraint."""
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        self.C1_min = config.get('C1_min')
+        self.C1_max = config.get('C1_max')
+        print(f'C1 constrained to [{self.C1_min}, {self.C1_max}] F')
+
+    def forward(self, soc, I_norm, u):
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+        return self.C1_min + s * (self.C1_max - self.C1_min)
+
 # ══════════════════════════════════════════════════════════
 #  R0 NETWORK
 # ══════════════════════════════════════════════════════════════
 
 class R0Net(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
+class R0NetConstrained(nn.Module):
     """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
     def __init__(self, n_hidden=32, I_ref=20.0):
         super().__init__()
@@ -153,19 +205,37 @@ class BatteryECMM(nn.Module):
 
         # Instantiate according to configurations
         if config['R1_mode'] == 'net':
-            self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
+            # Choose constrained network or not
+            if config.get('R1_constrained', 'true') == 'true':
+                print('R1 constrained')
+                self.r1_net = R1NetConstrained(n_hidden=nh, I_ref=I_ref)
+            else:
+                print('R1 unconstrained')
+                self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
+
         elif config['R1_mode'] == 'param':
             self.R1 = nn.Parameter(torch.tensor((config.get('R1_param', 0.01)), dtype=torch.float32)) 
 
         if config['C1_mode'] == 'net':
-            self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
+            if config.get('C1_constrained', 'true') == 'true':
+                self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+            else:
+                print('C1 unconstrained')
+                self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
+
         elif config['C1_mode'] == 'param':
             self.log_C1 = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
         elif config['C1_mode'] == 'const':
             self.log_C1 = torch.tensor(np.log(C1_init), dtype=torch.float32)
 
         if config['R0_mode'] == 'net':
-            self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
+            if config.get('R0_constrained', 'true') == 'true':
+                print('R0 constrained')
+                self.R0_net = R0NetConstrained(n_hidden=nh, I_ref=I_ref)
+            else:
+                print('R0 unconstrained')
+                self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
+
         elif config['R0_mode'] == 'func':
             self.R0_func = R0_func
         elif config['R0_mode'] == 'param':
@@ -318,15 +388,34 @@ def prepare_data(data, R0_func):
     for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
         grp = grp.reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])
+        C_val  = float(grp['C'].iloc[0])       
         R0_val = R0_func(u_val, I_val)
         trajs.append(dict(
-            I=I_val, u=u_val, soc0=float(grp['soc'].iloc[0]), T=len(grp),
+            I=I_val, u=u_val, C=C_val,        
+            soc0=float(grp['soc'].iloc[0]), T=len(grp),
             V=torch.tensor(grp['V'].values, dtype=torch.float32),
             F=torch.tensor(grp['F'].values, dtype=torch.float32),
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
-            U1_true=torch.tensor(grp['Ue'].values - I_val * R0_val - grp['V'].values, dtype=torch.float32),
+            U1_true=torch.tensor(grp['Ue'].values - I_val * R0_val - grp['V'].values,
+                                 dtype=torch.float32),
         ))
     return trajs
+
+def prepare_pulse_data(pulse_raw):
+    pulse_trajs = []
+    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
+        grp = grp.reset_index(drop=True)
+        pulse_trajs.append(dict(
+            I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
+            u     = float(grp['u'].iloc[0]),
+            soc0  = float(grp['soc'].iloc[0]),
+            T     = len(grp),
+            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
+            V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
+            F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
+            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
+        ))
+    return pulse_trajs
 
 
 def estimate_C1(trajs):
@@ -942,3 +1031,71 @@ def extract_ecm_params(model, soc_points, I_val, u_val):
     R0 = R0_func(u_val, I_val)
     return dict(soc=np.array(soc_points), R0=np.full(T, R0),
                 R1=R1, C1=C1, tau=R1 * C1, U1_ss=R1 * I_val)
+
+
+# =═════════════════════════════════════════════════════════
+# Plotter for ECM parameters
+# ══════════════════════════════════════════════════════════════
+
+from matplotlib.colors import Normalize
+from matplotlib.cm import ScalarMappable
+
+def plot_param(model, trajs, param='R1', title=''):
+    """
+    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
+
+    Parameters
+    ----------
+    model : BatteryECMM
+    trajs : list of trajectory dicts (e.g. test_trajs)
+    param : 'R0', 'R1', or 'C1'
+    title : prefix for the plot title
+    """
+    assert param in ('R0', 'R1', 'C1'), "param must be 'R0', 'R1', or 'C1'"
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+    C_vals = np.array([tr['C'] for tr in trajs_sorted])
+
+    cmap = plt.cm.copper
+    norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+
+    with torch.no_grad():
+        for tr in trajs_sorted:
+            soc    = tr['soc']
+            I_val  = float(tr['I'])
+            u_val  = float(tr['u'])
+            C_val  = float(tr['C'])
+            I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_t    = torch.full_like(soc, u_val)
+
+            if param == 'R1':
+                y = model._R1(soc, I_norm, u_t).numpy() * 1e3
+                ylabel = r'$R_1$ [m$\Omega$]'
+
+            elif param == 'C1':
+                c1 = model._C1(soc, I_norm, u_t)
+                y  = c1.numpy() # if c1.ndim else np.full(len(soc), c1.item())
+                ylabel = r'$C_1$ [F]'
+
+            else:  # 'R0'
+                m = model.config['R0_mode']
+                if m == 'net':
+                    y = model.R0_net(soc, I_norm, u_t).numpy() * 1e3
+                # elif m == 'param': ...
+                # elif m == 'func':  ...
+                ylabel = r'$R_0$ [m$\Omega$]'
+
+            ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
+
+    ax.set_xlabel('State of Charge')
+    ax.set_ylabel(ylabel)
+    ax.invert_xaxis()
+
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='C-rate [1/h]')
+
+    fig.tight_layout()
+    return fig

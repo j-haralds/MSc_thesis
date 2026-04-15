@@ -48,8 +48,8 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = True
-SAVE_MODELS = True
+SAVE_FIGS   = False
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
@@ -63,6 +63,9 @@ CONFIG = {
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
     'R0_mode': 'net',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
+        'R1_constrained': 'false',
+        'C1_constrained': 'true', 'C1_min': 1000.0, 'C1_max': 20000.0,
+        'R0_constrained': 'false',
 }
 
 
@@ -136,7 +139,7 @@ plt.show()
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-SAVE_NAME = f'{CONFIG['R0_mode']}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{CONFIG["C1_constrained"]}Constrained_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
 if SAVE_FIGS:
