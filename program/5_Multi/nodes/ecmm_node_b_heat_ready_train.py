@@ -54,7 +54,7 @@ SAVE_MODELS = True
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100
+EPOCHS      = 200
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
