@@ -36,9 +36,9 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
+importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 from ecmm_node_b_heat_ready_lib import *
 
-importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
 # %% ══════════════════════════════════════════════════════════
 #  CONFIGURATION
@@ -61,11 +61,11 @@ BATCH_SIZE  = 1        # Trajectories per batch
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
-    'R0_mode': 'net',  # 'net', 'func', or 'const'
+    'R0_mode': 'func',  # 'net', 'func', or 'const'
     'n_hidden': N_HIDDEN,
-        'R1_constrained': 'true', 'R1_min': 0.001, 'R1_max': 0.1,      # Ohm
-        'C1_constrained': 'true', 'C1_min': 100.0, 'C1_max': 25000.0,  # F
-        'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.010,     # Ohm
+        'R1_constrained': 'false', 'R1_min': 0.006, 'R1_max': 0.1,      # Ohm
+        'C1_constrained': 'false', 'C1_min': 100.0, 'C1_max': 25000.0,  # F
+        'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.010,     # Ohm
 }
 
 
@@ -141,13 +141,13 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
 
 if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 else:
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 print(SAVE_NAME)
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
@@ -171,11 +171,24 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 plot_param(model, trajs, param='R0')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='R1')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='C1')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plt.show()
+
+# %% ══════════════════════════════════════════════════════════
+# PLOT PREDICTS
+# ═════════════════════════════════════════════════════════════
+
+sort = 'u_per'  # 'C_rate' or 'u_per'
+plot_predicts(model, CONFIG, test_trajs, predict='F', sort=sort)
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -198,15 +211,15 @@ if SAVE_MODELS:
 #  EXTRACT ECM PARAMETERS
 # ══════════════════════════════════════════════════════════════
 
-soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
-ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
+# soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
+# ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
 
-print(f"ECM parameters at I=11A:")
-print(f"  C1 = {ecm['C1']:.0f} F")
-print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
-      f"{'τ s':>7s}  {'U1ss V':>7s}")
-for i, s in enumerate(soc_pts):
-    print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
-          f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
-          f"{ecm['U1_ss'][i]:7.4f}")
+# print(f"ECM parameters at I=11A:")
+# print(f"  C1 = {ecm['C1']:.0f} F")
+# print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
+#       f"{'τ s':>7s}  {'U1ss V':>7s}")
+# for i, s in enumerate(soc_pts):
+#     print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
+#           f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
+#           f"{ecm['U1_ss'][i]:7.4f}")
 # %%

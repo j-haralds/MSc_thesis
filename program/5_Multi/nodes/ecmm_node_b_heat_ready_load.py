@@ -25,7 +25,6 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
-
 from ecmm_node_b_heat_ready_lib import *
 
 
@@ -38,7 +37,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_netC1_58.5min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_funcR0_netC1_104.3731min_1b_32h_200eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -130,14 +129,16 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-if CONFIG.get('C1_constrained', 'false') == 'true':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-elif CONFIG.get('R0_constrained', 'false') == 'true':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 else:
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 print(SAVE_NAME)
+
 plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ', n_show=3)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
@@ -176,9 +177,20 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 plot_param(model, trajs, param='R0')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='R1')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plot_param(model, trajs, param='C1')
-plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
+
+# %% ══════════════════════════════════════════════════════════
+# PLOT PREDICTS
+# ═════════════════════════════════════════════════════════════
+
+plot_predicts(model, CONFIG, trajs, predict='V')
+
+# %%

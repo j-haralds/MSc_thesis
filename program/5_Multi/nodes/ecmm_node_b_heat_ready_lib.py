@@ -15,6 +15,7 @@
 
 import os
 import sys
+from networkx import config
 import torch
 import torch.nn as nn
 import numpy as np
@@ -22,6 +23,7 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from matplotlib.colors import LinearSegmentedColormap
 import time as _time
 from tqdm import trange
 
@@ -37,8 +39,6 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = False
-SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
@@ -290,8 +290,13 @@ class BatteryECMM(nn.Module):
         for n in range(T_max - 1):
             # C1 may be scalar OR (B, T_max) — index only if 2-D
             C1_n = C1[:, n] if C1.ndim == 2 else C1
+            # Euler forward 
             dU1 = I_batch / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
             U1_steps.append(U1_steps[n] + dU1)
+
+            # # Semi-implicit Euler forward
+            # U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+            # U1_steps.append(U1_next)
 
             ks = self.ks_net(soc[:, n], I_norm[:, n], u_exp[:, n])
             dFs = ks * (-I_batch / self.Q0)
@@ -392,10 +397,11 @@ def prepare_data(data, R0_func):
     for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
         grp = grp.reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])
-        C_val  = float(grp['C'].iloc[0])       
+        C_val  = float(grp['C'].iloc[0])
+        u_per = float(grp['u_par'].iloc[0])      
         R0_val = R0_func(u_val, I_val)
         trajs.append(dict(
-            I=I_val, u=u_val, C=C_val,        
+            I=I_val, u=u_val, C=C_val, u_per=u_per,
             soc0=float(grp['soc'].iloc[0]), T=len(grp),
             V=torch.tensor(grp['V'].values, dtype=torch.float32),
             F=torch.tensor(grp['F'].values, dtype=torch.float32),
@@ -412,6 +418,7 @@ def prepare_pulse_data(pulse_raw):
         pulse_trajs.append(dict(
             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
             u     = float(grp['u'].iloc[0]),
+            u_per = float(grp['u_par'].iloc[0]),    
             soc0  = float(grp['soc'].iloc[0]),
             T     = len(grp),
             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
@@ -480,7 +487,8 @@ def train_model(model, train_trajs, test_trajs,
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
 
-    history = {'train': [], 'train_V': [], 'train_Fr': [], 'test': [], 'time': []}
+    history = {'train': [], 'train_V': [], 'train_Fr': [], 'test': [], 'time': [],
+               'train_rmse': [], 'train_rmse_V': [], 'train_rmse_Fr': [], 'test_rmse': []}
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
@@ -489,6 +497,9 @@ def train_model(model, train_trajs, test_trajs,
         epoch_loss = 0.0
         epoch_loss_V = 0.0
         epoch_loss_Fr = 0.0
+        epoch_loss_rmse_V = 0.0
+        epoch_loss_rmse_Fr = 0.0
+        epoch_loss_rmse = 0.0
         n_batches  = 0
 
         # ── mini-batch loop ──
@@ -501,51 +512,69 @@ def train_model(model, train_trajs, test_trajs,
             optimizer.zero_grad()
             V_pred, Fr_pred, soc_pred, U1_pred, R1_pred, Fs_pred = model(I_b, u_b, soc0_b, T_max)
 
-            # Masked RMSE — only score real (non-padded) timesteps
+            # Masked MSE — only score real (non-padded) timesteps
             sq_err_V = (V_pred - V_true) ** 2
-            loss_V = torch.sqrt(sq_err_V[mask].mean())
+            loss_V = sq_err_V[mask].mean() 
             sq_err_Fr = (Fr_pred - Fr_true) ** 2
-            loss_Fr = torch.sqrt(sq_err_Fr[mask].mean())
+            loss_Fr = sq_err_Fr[mask].mean()
             loss = loss_V + loss_Fr
 
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+            
+            # Masked RMSE for reporting
+            loss_Fr_rmse = torch.sqrt(sq_err_Fr[mask].mean())
+            loss_V_rmse = torch.sqrt(sq_err_V[mask].mean())
 
             epoch_loss += loss.item()
             epoch_loss_V += loss_V.item()
             epoch_loss_Fr += loss_Fr.item()
-
+            epoch_loss_rmse += loss_V_rmse.item() + loss_Fr_rmse.item()
+            epoch_loss_rmse_V += loss_V_rmse.item()
+            epoch_loss_rmse_Fr += loss_Fr_rmse.item()
             n_batches += 1
 
         epoch_loss /= n_batches
         epoch_loss_V /= n_batches
         epoch_loss_Fr /= n_batches
+        epoch_loss_rmse /= n_batches
+        epoch_loss_rmse_V /= n_batches
+        epoch_loss_rmse_Fr /= n_batches
         history['train'].append(epoch_loss)
         history['train_V'].append(epoch_loss_V)
         history['train_Fr'].append(epoch_loss_Fr)
+        history['train_rmse'].append(epoch_loss_rmse)
+        history['train_rmse_V'].append(epoch_loss_rmse_V)
+        history['train_rmse_Fr'].append(epoch_loss_rmse_Fr)
 
         model.eval()
         with torch.no_grad():
             test_loss = 0.0
+            test_loss_rmse = 0.0
             for tr in test_trajs:
                 I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
                 u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
                 soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
                 V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'])
-                test_loss += torch.sqrt(torch.mean((V_pred[0] - tr['V'])**2)).item()
+                test_loss += (torch.mean((V_pred[0] - tr['V'])**2)).item()
+                test_loss_rmse += (torch.mean((V_pred[0] - tr['V'])**2)).item()
             test_loss /= len(test_trajs)
+            test_loss_rmse /= len(test_trajs)
         history['test'].append(test_loss)
+        history['test_rmse'].append(test_loss_rmse)
         scheduler.step(epoch_loss)
 
         if epoch % print_every == 0 or epoch == 1:
             C1 = get_C1(model, scalar=True)
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
             lr_now = optimizer.param_groups[0]['lr']
-            print(f"  {epoch:4d}/{n_epochs} | train {epoch_loss:.4f} "
-                  f"| train_V {epoch_loss_V:.4f} V | train_Fr {epoch_loss_Fr:.4f} N "
-                  f"| test {test_loss:.4f} | C1={C1:.0f}F "
-                  f"| lr {lr_now:.1e} | ETA {eta:.1f}m")
+            print(f"  {epoch:4d}/{n_epochs} "
+                  f"| ETA {eta:.1f}m "
+                  f"| MSE train {epoch_loss} | train_V {epoch_loss_V} V | train_Fr {epoch_loss_Fr} GN "
+                  f"| RMSE train {epoch_loss_rmse:.4f} | train_V {epoch_loss_rmse_V:.4f} V | train_Fr {epoch_loss_rmse_Fr:.4f} GN "
+                  f"| test {test_loss_rmse:.4f} V | C1={C1:.0f}F "
+                  )
 
     history['time'] = (_time.time() - t0) / 60
 
@@ -743,10 +772,10 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
 
 def plot_loss(history):
     fig, ax = plt.subplots(figsize=(6, 4))
-    ax.semilogy(history['train'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train'][-1]))
-    ax.semilogy(history['train_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} GN'.format(history['train_Fr'][-1]))
-    ax.semilogy(history['train_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_V'][-1]))
-    # ax.semilogy(history['test'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test'][-1]))
+    ax.semilogy(history['train_rmse'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train_rmse'][-1]))
+    ax.semilogy(history['train_rmse_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} GN'.format(history['train_rmse_Fr'][-1]))
+    ax.semilogy(history['train_rmse_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_rmse_V'][-1]))
+    # ax.semilogy(history['test_rmse'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test_rmse'][-1]))
     ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
     fig.tight_layout()
     return fig
@@ -1063,7 +1092,21 @@ def plot_param(model, trajs, param='R1', title=''):
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
     C_vals = np.array([tr['C'] for tr in trajs_sorted])
 
-    cmap = plt.cm.copper
+    # base = plt.get_cmap("RdBu_r")  # reversed so blue = low C, red = high C
+    # blue_only = LinearSegmentedColormap.from_list(
+    #     "RdBu_blue",
+    #     base(np.linspace(0.0, 0.4, 256))
+    # )
+    # cmap = blue_only
+    # cmap = plt.cm.Blues # magma # RdBu_r    # coolwarm
+
+    base = plt.cm.Blues_r
+    Blues_cut = LinearSegmentedColormap.from_list(
+        "Blues_custom",
+        base(np.linspace(0.0, 0.8, 256))
+    )
+    cmap = Blues_cut
+    # cmap = plt.cm.copper
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
 
     with torch.no_grad():
@@ -1096,13 +1139,111 @@ def plot_param(model, trajs, param='R1', title=''):
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
     # ax.axhline(1000, color='gray', ls='--', lw=1)
-    # ax.axhline(20000, color='gray', ls='--', lw=1)
+    # ax.axhline(5.0, color='gray', ls='--', lw=1)
     ax.set_xlabel('State of Charge')
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
 
     sm = ScalarMappable(cmap=cmap, norm=norm)
-    fig.colorbar(sm, ax=ax, label='C-rate [1/h]')
+    fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
 
     fig.tight_layout()
+    return fig
+
+# =═════════════════════════════════════════════════════════
+# Plotter for predictions
+# ══════════════════════════════════════════════════════════════
+
+def plot_predicts(model, config, trajs, predict='R1', sort='C_rate'):
+    """
+    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
+
+    Parameters
+    ----------
+    model : BatteryECMM
+    trajs : list of trajectory dicts (e.g. test_trajs)
+    predict : 'V', or 'F'
+    sort : 'C_rate' or 'u_par'
+    """
+    assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4))
+    model.eval()
+    k = model.ks_net.k
+
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+        C_vals = np.array([tr['C'] for tr in trajs_sorted])
+        norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+        bar_name = 'C-rate [a.u.]'
+
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
+        u_per_vals = np.array([tr['u_per'] for tr in trajs_sorted])
+        norm = Normalize(vmin=u_per_vals.min(), vmax=u_per_vals.max())
+        bar_name = r'$u$ $[\%]$'
+
+    
+    base = plt.cm.Blues_r
+    Blues_cut = LinearSegmentedColormap.from_list(
+        "Blues_custom",
+        base(np.linspace(0.0, 0.8, 256))
+    )
+    cmap_b = Blues_cut
+    base = plt.cm.Reds_r
+    Reds_cut = LinearSegmentedColormap.from_list(
+        "Reds_custom",
+        base(np.linspace(0.0, 0.8, 256))
+    )
+    cmap_r = Reds_cut
+
+    with torch.no_grad():
+        for tr in trajs_sorted:
+            soc    = tr['soc']
+            I_val  = float(tr['I'])
+            u_val  = float(tr['u'])
+            C_val  = float(tr['C'])
+            u_per_val = float(tr['u_per'])
+            I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_t    = torch.full_like(soc, u_val)
+
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+
+            if predict == 'V':
+                y_true = tr['V'].numpy()
+                y_pred = V
+                ylabel = r'$V$ [V]'
+
+            elif predict == 'F':
+                y_true = tr['F'].numpy()
+                y_pred = Fr
+                ylabel = r'$F$ [GN]'
+
+            if sort == 'C_rate':
+                bar_val = C_val
+            elif sort == 'u_per':
+                bar_val = u_per_val
+
+            axes[0].plot(soc_np, y_true, '-', label=f'True {ylabel}', color=cmap_r(norm(bar_val)), lw=2)
+            axes[1].plot(soc_np, y_pred, '-', label=f'Predicted {ylabel}', color=cmap_b(norm(bar_val)), lw=2)
+            axes[2].plot(soc_np, y_pred, '-', label=f'Predicted {ylabel}', color=cmap_b(norm(bar_val)), lw=2)
+            axes[2].plot(soc_np, y_true, '--', label=f'True {ylabel}', color=cmap_r(norm(bar_val)), lw=2)
+
+
+    # axes[0].set_ylabel(ylabel)
+    for ax in axes:
+        ax.set_xlabel('State of Charge')
+        ax.set_ylabel(ylabel)
+        ax.invert_xaxis()
+
+    # cheat legend
+    from matplotlib.lines import Line2D
+    # mid-color of each cmap
+    axes[0].legend(handles=[Line2D([0], [0], color='tab:red', lw=2, label='True')])
+    axes[1].legend(handles=[Line2D([0], [0], color='tab:blue', lw=2, label='Predicted')])
+    axes[2].legend(handles=[Line2D([0], [0], color='tab:red', lw=2, label='True'), Line2D([0], [0], color='tab:blue', lw=2, label='Predicted')])
+
+    fig.tight_layout()
+    sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
+    fig.colorbar(sm_true, ax=axes, label=bar_name, pad=0.02)
     return fig
