@@ -25,6 +25,7 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
+
 from ecmm_node_b_heat_ready_lib import *
 
 
@@ -37,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_netR0_Constr_netC1_Constr_netR1_Constr_53.7961min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_C1500_45.5min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -54,12 +55,12 @@ print(f"Checkpoint: {os.path.basename(CKPT_FILE)}")
 
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
-# print(data.columns)
+print(data.columns)
 data['eta'] = -data['eta']
-I_MAX = data['I'].max()     # TODO: Same as been trained on. Is it problematic?
+I_MAX = data['I'].max()
 
 pulse_raw = pd.read_csv(PULSE_FILE, sep=',', comment='%')
-# print(pulse_raw.columns)
+print(pulse_raw.columns)
 pulse_raw['eta'] = -pulse_raw['eta']
 
 
@@ -82,6 +83,22 @@ trajs = prepare_data(data, R0_func)
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
+
+def prepare_pulse_data(pulse_raw):
+    pulse_trajs = []
+    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
+        grp = grp.reset_index(drop=True)
+        pulse_trajs.append(dict(
+            I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
+            u     = float(grp['u'].iloc[0]),
+            soc0  = float(grp['soc'].iloc[0]),
+            T     = len(grp),
+            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
+            V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
+            F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
+            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
+        ))
+    return pulse_trajs
 
 pulse_trajs = prepare_pulse_data(pulse_raw)
 
@@ -129,17 +146,9 @@ BATCH_SIZE = 1  # only used in filenames below
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-else:
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
-print(SAVE_NAME)
+SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
-plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ', n_show=3)
+plot_predictions(model, CONFIG, test_trajs, noise=True, noise_lvl=0.05, title='Test: ')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
@@ -156,12 +165,12 @@ plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 # Plot PULSES
-# ═════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
-# plot_predictions_pulse(model, pulse_trajs, time=True, noise=False, noise_lvl=0.01)
-# # if SAVE_PULSE_FIGS:
-# #     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-# plt.show()
+plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
+if SAVE_PULSE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.show()
 
 rmse_pulses = rmse_pulse(model, pulse_trajs)
 
@@ -216,31 +225,33 @@ print(f'Mean RMSE for test trajectories: {np.mean(rmse):.3f} V')
 
 # %% ══════════════════════════════════════════════════════════
 # NOISY
-# ═════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
-# plot_noisy_inputs(trajs, noise_lvl=0.01)
-# plt.show()
+plot_noisy_inputs(trajs, noise_lvl=0.01)
 
-
-# %% ══════════════════════════════════════════════════════════
-# PLOT PARAMS
-# ═════════════════════════════════════════════════════════════
-
-plot_param(model, trajs, param='R0')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='R1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='C1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
-# PLOT PREDICTS
-# ═════════════════════════════════════════════════════════════
+# NOISE ROBUSTNESS
+# ══════════════════════════════════════════════════════════════
 
-plot_predicts(model, CONFIG, trajs, predict='V')
+
+
+
+# %% ══════════════════════════════════════════════════════════
+#  EXTRACT ECM PARAMETERS
+# ══════════════════════════════════════════════════════════════
+
+soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
+ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
+
+print(f"ECM parameters at I=11A:")
+print(f"  C1 = {ecm['C1']:.0f} F")
+print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
+      f"{'τ s':>7s}  {'U1ss V':>7s}")
+for i, s in enumerate(soc_pts):
+    print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
+          f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
+          f"{ecm['U1_ss'][i]:7.4f}")
 
 # %%
