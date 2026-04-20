@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_netR0_netC1_56.9min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_net_no_socR0_Constr_netC1_60.7239min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -84,21 +84,21 @@ split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
-def prepare_pulse_data(pulse_raw):
-    pulse_trajs = []
-    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
-        pulse_trajs.append(dict(
-            I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
-            u     = float(grp['u'].iloc[0]),
-            soc0  = float(grp['soc'].iloc[0]),
-            T     = len(grp),
-            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
-            V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
-            F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
-            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
-        ))
-    return pulse_trajs
+# def prepare_pulse_data(pulse_raw):
+#     pulse_trajs = []
+#     for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
+#         grp = grp.reset_index(drop=True)
+#         pulse_trajs.append(dict(
+#             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
+#             u     = float(grp['u'].iloc[0]),
+#             soc0  = float(grp['soc'].iloc[0]),
+#             T     = len(grp),
+#             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
+#             V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
+#             F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
+#             soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
+#         ))
+#     return pulse_trajs
 
 pulse_trajs = prepare_pulse_data(pulse_raw)
 
@@ -148,6 +148,8 @@ BATCH_SIZE = 1  # only used in filenames below
 if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'

@@ -322,13 +322,14 @@ class BatteryECMM(nn.Module):
         for n in range(T_max - 1):
             # C1 may be scalar OR (B, T_max) — index only if 2-D
             C1_n = C1[:, n] if C1.ndim == 2 else C1
-            # Euler forward 
-            dU1 = I_batch / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
-            U1_steps.append(U1_steps[n] + dU1)
+
+            # # Euler forward 
+            # dU1 = I_batch / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
+            # U1_steps.append(U1_steps[n] + dU1)
 
             # # Semi-implicit Euler forward
-            # U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
-            # U1_steps.append(U1_next)
+            U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+            U1_steps.append(U1_next)
 
             ks = self.ks_net(soc[:, n], I_norm[:, n], u_exp[:, n])
             dFs = ks * (-I_batch / self.Q0)
@@ -1265,6 +1266,7 @@ def plot_param(model, trajs, param='R1', title=''):
     ax.set_xlabel('State of Charge')
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
+    ax.ticklabel_format(useOffset=False, style='plain')
 
     sm = ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')

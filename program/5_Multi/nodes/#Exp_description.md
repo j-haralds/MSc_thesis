@@ -49,3 +49,9 @@ Paste the constrained networks here and the name of the model. För att hålla k
             x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.C1_min + s * (self.C1_max - self.C1_min)
+
+
+### Exp 2
+ecm_node_net_no_socR0_netC1_60.4089min_1b_32h_100eps.pt
+R0(i, u)
+With semi-implicit euler

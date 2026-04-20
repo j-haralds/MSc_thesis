@@ -54,7 +54,7 @@ SAVE_MODELS = True
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 40
+EPOCHS      = 100
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
@@ -63,9 +63,9 @@ CONFIG = {
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
     'R0_mode': 'net_no_soc',  # 'net', 'func', 'net_no_soc' or 'const'
     'n_hidden': N_HIDDEN,
-        'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
-        'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-        'R0_constrained': 'false', 'R0_min': 0.001, 'R0_max': 0.50,     # Ohm
+        'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
+        'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
+        'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.010,     # Ohm
 }
 
 
@@ -143,6 +143,8 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
     SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
