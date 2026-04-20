@@ -2,4 +2,5 @@ venv/
 program/.venv/
 program/venv/
 program/__pycache__/
+program/5_Multi/nodes/__pycache__/
 __pycache__/*.pyc
