@@ -1225,7 +1225,6 @@ def plot_param(model, trajs, param='R1', title=''):
         base(np.linspace(0.0, 0.8, 256))
     )
     cmap = Blues_cut
-    cmap = plt.cm.ylgn_r
     # cmap = plt.cm.copper
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
 

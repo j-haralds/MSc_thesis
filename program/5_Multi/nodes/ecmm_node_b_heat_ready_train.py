@@ -63,8 +63,8 @@ CONFIG = {
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
     'R0_mode': 'net_no_soc',  # 'net', 'func', 'net_no_soc' or 'const'
     'n_hidden': N_HIDDEN,
-        'R1_constrained': 'false', 'R1_min': 0.006, 'R1_max': 0.1,      # Ohm
-        'C1_constrained': 'false', 'C1_min': 100.0, 'C1_max': 25000.0,  # F
+        'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
+        'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
         'R0_constrained': 'false', 'R0_min': 0.001, 'R0_max': 0.50,     # Ohm
 }
 
