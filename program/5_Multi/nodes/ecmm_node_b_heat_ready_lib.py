@@ -167,6 +167,32 @@ class R0NetConstrained(nn.Module):
 
 def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
+
+class R0NetNoSOC(nn.Module):
+    """(I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.config = config
+        self.net = nn.Sequential(
+            nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        self.R0_min = config.get('R0_min')
+        self.R0_max = config.get('R0_max')
+        if config.get('R0_constrained', 'false') == 'true':
+            print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
+        else:
+            print('R0 unconstrained')
+
+    def forward(self, I_norm, u):
+        x = torch.stack([I_norm, u], dim=-1)   # (..., 2)
+        if self.config.get('R0_constrained', 'false') == 'true':
+            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.R0_min + s * (self.R0_max - self.R0_min)
+        else:
+            return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
     
 # ══════════════════════════════════════════════════════════
 #  ks NETWORK
@@ -221,6 +247,7 @@ class BatteryECMM(nn.Module):
         elif config['R1_mode'] == 'param':
             self.R1 = nn.Parameter(torch.tensor((config.get('R1_param', 0.01)), dtype=torch.float32)) 
 
+        # ------
         if config['C1_mode'] == 'net':
             if config.get('C1_constrained', 'false') == 'true':
                 self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
@@ -233,6 +260,7 @@ class BatteryECMM(nn.Module):
         elif config['C1_mode'] == 'const':
             self.log_C1 = torch.tensor(np.log(C1_init), dtype=torch.float32)
 
+        # ------
         if config['R0_mode'] == 'net':
             if config.get('R0_constrained', 'false') == 'true':
                 self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
@@ -244,6 +272,8 @@ class BatteryECMM(nn.Module):
             self.R0_func = R0_func
         elif config['R0_mode'] == 'param':
             self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))  
+        elif config['R0_mode'] == 'net_no_soc':
+            self.R0_net = R0NetNoSOC(config, n_hidden=nh, I_ref=I_ref)
 
         # Dispatchers
     def _R1(self, soc, I_norm, u):
@@ -259,7 +289,7 @@ class BatteryECMM(nn.Module):
         if m == 'param': return torch.exp(self.log_C1)
         elif m == 'const': return torch.exp(self.log_C1)
 
-    def _R0(self, soc, I_norm, u, I_batch, u_batch):
+    def _R0(self, soc, I_norm, u, I_batch, u_batch, config=config):
         """Returns R0 broadcastable to (B, T)."""
         m = self.config['R0_mode']
         if m == 'net':
@@ -272,6 +302,8 @@ class BatteryECMM(nn.Module):
             return torch.tensor(
                 [self.R0_func(u_batch[b].item(), I_batch[b].item()) for b in range(B)],
                 dtype=torch.float32).unsqueeze(1)
+        if m == 'net_no_soc':
+            return self.R0_net(I_norm, u)
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max):
         B = I_batch.shape[0]
@@ -348,6 +380,8 @@ class BatteryECMM(nn.Module):
             R0 = nn.functional.softplus(self.R0).expand_as(soc)    # (B, T)
         elif m == 'func':
             R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
+        elif m == 'net_no_soc':
+            R0 = self.R0_net(config, I_norm, u_exp)
 
         U1_steps = [torch.zeros(B)]
         Fs_steps = [torch.zeros(B)]
@@ -626,9 +660,8 @@ def predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl = 
     else:
         C1 = get_C1(model, scalar=True)
 
-    if config['R0_mode'] in ('net'):
-        R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
-    elif config['R0_mode'] in ('param'):
+
+    if config['R0_mode'] in ('net', 'net_no_soc', 'param'):
         R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
     else:
         R0 = None
@@ -668,7 +701,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
 
             # Row 3: R1
-            if config['R0_mode'] in ('net'):
+            if config['R0_mode'] in ('net', 'net_no_soc'):
                 axes[3, j].plot(soc_np, R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
             elif config['R0_mode'] in ('func'):
                 R0_val = R0_func(tr['u'], tr['I'])
@@ -677,6 +710,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
                 axes[3, j].axhline(R0[0] * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0[0]*1000:.1f} m$\Omega$', lw=2)
             axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+
 
             # Row 4: C1
             if config['C1_mode'] in ('net'):
@@ -1191,6 +1225,7 @@ def plot_param(model, trajs, param='R1', title=''):
         base(np.linspace(0.0, 0.8, 256))
     )
     cmap = Blues_cut
+    cmap = plt.cm.ylgn_r
     # cmap = plt.cm.copper
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
 
@@ -1220,6 +1255,8 @@ def plot_param(model, trajs, param='R1', title=''):
                     y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
                 elif m == 'func': 
                     y = R0_func(u_t.numpy(), I_norm.numpy()) * 1e3
+                elif m in ('net', 'net_no_soc'):
+                    y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
@@ -1268,7 +1305,7 @@ def data_param(model, trajs):
 
             R1 = model._R1(soc, I_norm, u_t).numpy()       # Ohm
             C1 = model._C1(soc, I_norm, u_t).numpy()       # F
-            R0 = model.R0_net(soc, I_norm, u_t).numpy()    # Ohm
+            R0 = model._R0(soc, I_norm, u_t, 0, 0).numpy()    # Ohm
 
             frames.append(pd.DataFrame({
                 'trajectory': i,

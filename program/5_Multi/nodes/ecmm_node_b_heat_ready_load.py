@@ -196,7 +196,7 @@ plt.plot(df['soc'][df['trajectory'] == 0], df['R0'][df['trajectory'] == 0], labe
 
 
 PARAM_DATA_DIR = os.path.join(FILE_PATH, '..', 'symbols/data')
-df.to_csv(os.path.join(PARAM_DATA_DIR, f'ecm_elements_{SAVE_NAME}.txt'), index=False)
+# df.to_csv(os.path.join(PARAM_DATA_DIR, f'ecm_elements_{SAVE_NAME}.txt'), index=False)
 
 # %% ══════════════════════════════════════════════════════════
 # Plot PULSES

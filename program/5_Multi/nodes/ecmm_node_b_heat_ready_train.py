@@ -36,8 +36,8 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
-from ecmm_node_b_heat_ready_lib import *
 importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
+from ecmm_node_b_heat_ready_lib import *
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -54,18 +54,18 @@ SAVE_MODELS = True
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100
+EPOCHS      = 40
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
-    'R0_mode': 'net',  # 'net', 'func', or 'const'
+    'R0_mode': 'net_no_soc',  # 'net', 'func', 'net_no_soc' or 'const'
     'n_hidden': N_HIDDEN,
-        'R1_constrained': 'true', 'R1_min': 0.006, 'R1_max': 0.1,      # Ohm
-        'C1_constrained': 'true', 'C1_min': 100.0, 'C1_max': 25000.0,  # F
-        'R0_constrained': 'true', 'R0_min': 0.001, 'R0_max': 0.50,     # Ohm
+        'R1_constrained': 'false', 'R1_min': 0.006, 'R1_max': 0.1,      # Ohm
+        'C1_constrained': 'false', 'C1_min': 100.0, 'C1_max': 25000.0,  # F
+        'R0_constrained': 'false', 'R0_min': 0.001, 'R0_max': 0.50,     # Ohm
 }
 
 
