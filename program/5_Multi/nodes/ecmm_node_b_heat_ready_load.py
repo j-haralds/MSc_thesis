@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_netR0_Constr_netC1_Constr_netR1_Constr_53.7961min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_netR0_netC1_56.9min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -145,8 +145,15 @@ BATCH_SIZE = 1  # only used in filenames below
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
-
-SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+else:
+    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+print(SAVE_NAME)
 
 plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ')
 if SAVE_FIGS:
@@ -185,7 +192,7 @@ plt.show()
 df = data_param(model, trajs)
 print(df.head())
 
-plt.plot(df['soc'][df['traj'] == 0], df['R0'][df['traj'] == 0], label='R0')
+plt.plot(df['soc'][df['trajectory'] == 0], df['R0'][df['trajectory'] == 0], label='R0')
 
 
 PARAM_DATA_DIR = os.path.join(FILE_PATH, '..', 'symbols/data')

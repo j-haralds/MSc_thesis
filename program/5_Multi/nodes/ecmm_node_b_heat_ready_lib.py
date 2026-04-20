@@ -1266,9 +1266,9 @@ def data_param(model, trajs):
             u_t    = torch.full_like(soc, u_val)
 
 
-            R1 = model._R1(soc, I_norm, u_t).numpy() * 1e3   # mOhm
-            C1 = model._C1(soc, I_norm, u_t).numpy()
-            R0 = model.R0_net(soc, I_norm, u_t).numpy() * 1e3    #mOhm
+            R1 = model._R1(soc, I_norm, u_t).numpy()       # Ohm
+            C1 = model._C1(soc, I_norm, u_t).numpy()       # F
+            R0 = model.R0_net(soc, I_norm, u_t).numpy()    # Ohm
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
