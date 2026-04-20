@@ -10,7 +10,7 @@ def setup_model(its = 500, pop = 25, selection = "best",run_id = None):
         model_selection=selection,
         niterations=its,
         binary_operators=["+", "*", '-','/'],
-        unary_operators=['sqrt','square', 'cube','exp','log'],
+        unary_operators=['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan'],
         elementwise_loss="loss(x, y) = (x - y)^2",
         populations=pop,
         verbosity=0, 
