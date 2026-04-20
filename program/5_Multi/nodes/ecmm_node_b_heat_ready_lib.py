@@ -1236,6 +1236,53 @@ def plot_param(model, trajs, param='R1', title=''):
     fig.tight_layout()
     return fig
 
+
+def data_param(model, trajs):
+    """
+    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
+
+    Parameters
+    ----------
+    model : BatteryECMM
+    trajs : list of trajectory dicts (e.g. test_trajs)
+    param : 'R0', 'R1', or 'C1'
+    """
+
+    model.eval()
+
+    trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+    # C_vals = np.array([tr['C'] for tr in trajs_sorted])
+
+    frames = []
+
+    with torch.no_grad():
+        for i, tr in enumerate(trajs_sorted):
+            soc    = tr['soc']
+            I_val  = float(tr['I'])
+            u_val  = float(tr['u'])
+            u_per_val = float(tr['u_per'])
+            C_val  = float(tr['C'])
+            I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_t    = torch.full_like(soc, u_val)
+
+
+            R1 = model._R1(soc, I_norm, u_t).numpy() * 1e3   # mOhm
+            C1 = model._C1(soc, I_norm, u_t).numpy()
+            R0 = model.R0_net(soc, I_norm, u_t).numpy() * 1e3    #mOhm
+
+            frames.append(pd.DataFrame({
+                'trajectory': i,
+                'soc': soc.numpy(),
+                'R1': R1,
+                'C1': C1,
+                'R0': R0,
+                'C': C_val,
+                'u_per': u_per_val}))
+            
+    df = pd.concat(frames, ignore_index=True)
+
+    return df
+
 # =═════════════════════════════════════════════════════════
 # Plotter for predictions
 # ══════════════════════════════════════════════════════════════

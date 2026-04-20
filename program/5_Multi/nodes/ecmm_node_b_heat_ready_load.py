@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_C1500_45.5min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_netR0_Constr_netC1_Constr_netR1_Constr_53.7961min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -148,7 +148,7 @@ BATCH_SIZE = 1  # only used in filenames below
 
 SAVE_NAME = f'{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.1f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 
-plot_predictions(model, CONFIG, test_trajs, noise=True, noise_lvl=0.05, title='Test: ')
+plot_predictions(model, CONFIG, test_trajs, noise=False, noise_lvl=0.05, title='Test: ')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 plt.show()
@@ -162,42 +162,70 @@ plt.show()
 #     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 # plt.show()
 
+# %% ══════════════════════════════════════════════════════════
+# PLOT PARAMS
+# ═════════════════════════════════════════════════════════════
+
+plot_param(model, trajs, param='R0')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(model, trajs, param='R1')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(model, trajs, param='C1')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plt.show()
+
+# %% ══════════════════════════════════════════════════════════
+# DATA PARAMS
+# ═════════════════════════════════════════════════════════════
+
+# Only when 'net' for all three elements
+df = data_param(model, trajs)
+print(df.head())
+
+plt.plot(df['soc'][df['traj'] == 0], df['R0'][df['traj'] == 0], label='R0')
+
+
+PARAM_DATA_DIR = os.path.join(FILE_PATH, '..', 'symbols/data')
+df.to_csv(os.path.join(PARAM_DATA_DIR, f'ecm_elements_{SAVE_NAME}.txt'), index=False)
 
 # %% ══════════════════════════════════════════════════════════
 # Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
-if SAVE_PULSE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-plt.show()
+# plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
+# if SAVE_PULSE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+# plt.show()
 
-rmse_pulses = rmse_pulse(model, pulse_trajs)
+# rmse_pulses = rmse_pulse(model, pulse_trajs)
 
-# %%
+# %% ══════════════════════════════════════════════════════════
 
-rmse_pulses = rmse_pulses[:19] + rmse_pulses[20:]  # Remove spec 20, which is very high and messes up the plot
-# plt.hist(rmse_pulses, bins=50, color=COLORS[0], alpha=0.7);
+# rmse_pulses = rmse_pulses[:19] + rmse_pulses[20:]  # Remove spec 20, which is very high and messes up the plot
+# # plt.hist(rmse_pulses, bins=50, color=COLORS[0], alpha=0.7);
 
-# plot_predictions_pulse(model, pulse_trajs, time=True, n_show=1, spec=19)
+# # plot_predictions_pulse(model, pulse_trajs, time=True, n_show=1, spec=19)
 
-rmse = []
-I = []
-u = []
-for i,tr in enumerate(pulse_trajs):
-    V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
-    rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
-    I.append(tr['I_seq'].max() / Q0 * 3600)
-    u.append(tr['u'])
+# rmse = []
+# I = []
+# u = []
+# for i,tr in enumerate(pulse_trajs):
+#     V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+#     rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
+#     I.append(tr['I_seq'].max() / Q0 * 3600)
+#     u.append(tr['u'])
 
 
-rmse = rmse[:19] + rmse[20:]  # Remove spec 20, which is very high and messes up the plot
-I = I[:19] + I[20:]
-u = u[:19] + u[20:]
-plt.scatter(I,u, marker='o', c = rmse, cmap='copper',s = 50)
-plt.xlabel('C-rate [Ah]')
-plt.ylabel(r'$\Delta u$ [a.u.]')
-plt.colorbar(label = r'RMSE [V]')
+# rmse = rmse[:19] + rmse[20:]  # Remove spec 20, which is very high and messes up the plot
+# I = I[:19] + I[20:]
+# u = u[:19] + u[20:]
+# plt.scatter(I,u, marker='o', c = rmse, cmap='copper',s = 50)
+# plt.xlabel('C-rate [Ah]')
+# plt.ylabel(r'$\Delta u$ [a.u.]')
+# plt.colorbar(label = r'RMSE [V]')
 
 
 # %% =══════════════════════════════════════════════════════════
@@ -227,31 +255,12 @@ print(f'Mean RMSE for test trajectories: {np.mean(rmse):.3f} V')
 # NOISY
 # ══════════════════════════════════════════════════════════════
 
-plot_noisy_inputs(trajs, noise_lvl=0.01)
+# plot_noisy_inputs(trajs, noise_lvl=0.01)
 
-plt.show()
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 # NOISE ROBUSTNESS
 # ══════════════════════════════════════════════════════════════
-
-
-
-
-# %% ══════════════════════════════════════════════════════════
-#  EXTRACT ECM PARAMETERS
-# ══════════════════════════════════════════════════════════════
-
-soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
-ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
-
-print(f"ECM parameters at I=11A:")
-print(f"  C1 = {ecm['C1']:.0f} F")
-print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
-      f"{'τ s':>7s}  {'U1ss V':>7s}")
-for i, s in enumerate(soc_pts):
-    print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
-          f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
-          f"{ecm['U1_ss'][i]:7.4f}")
 
 # %%
