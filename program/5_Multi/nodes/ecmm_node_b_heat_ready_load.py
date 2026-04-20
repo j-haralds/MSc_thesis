@@ -37,7 +37,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_funcR0_netC1_104.3731min_1b_32h_200eps.pt'
+MODEL_NAME  = 'ecm_node_netR0_Constr_netC1_Constr_netR1_Constr_53.7961min_1b_32h_100eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -96,13 +96,13 @@ N_HIDDEN = ckpt['N_HIDDEN']
 EPOCHS   = ckpt['EPOCHS']
 history  = ckpt['history']
 CONFIG   = ckpt['config']
-print(f"Loaded checkpoint with config: {CONFIG}")
 # CONFIG = {
 #     'R1_mode': 'net',   # 'net' or 'const'
 #     'C1_mode': 'const',   # 'net' or 'const'
 #     'R0_mode': 'func',  # 'net', 'func', or 'const'
 #     'n_hidden': N_HIDDEN,
 # }
+print(f"Loaded checkpoint with config: {CONFIG}")
 
 model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0,
                     C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
@@ -159,10 +159,60 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 # plot_predictions_pulse(model, pulse_trajs, time=True, noise=False, noise_lvl=0.01)
-# if SAVE_PULSE_FIGS:
-#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+# # if SAVE_PULSE_FIGS:
+# #     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
 # plt.show()
 
+rmse_pulses = rmse_pulse(model, pulse_trajs)
+
+# %%
+
+rmse_pulses = rmse_pulses[:19] + rmse_pulses[20:]  # Remove spec 20, which is very high and messes up the plot
+# plt.hist(rmse_pulses, bins=50, color=COLORS[0], alpha=0.7);
+
+# plot_predictions_pulse(model, pulse_trajs, time=True, n_show=1, spec=19)
+
+rmse = []
+I = []
+u = []
+for i,tr in enumerate(pulse_trajs):
+    V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'])
+    rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
+    I.append(tr['I_seq'].max() / Q0 * 3600)
+    u.append(tr['u'])
+
+
+rmse = rmse[:19] + rmse[20:]  # Remove spec 20, which is very high and messes up the plot
+I = I[:19] + I[20:]
+u = u[:19] + u[20:]
+plt.scatter(I,u, marker='o', c = rmse, cmap='copper',s = 50)
+plt.xlabel('C-rate [Ah]')
+plt.ylabel(r'$\Delta u$ [a.u.]')
+plt.colorbar(label = r'RMSE [V]')
+
+
+# %% =══════════════════════════════════════════════════════════
+rmse = []
+I = []
+u = []
+for i,tr in enumerate(test_trajs):
+    V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = predict_np(model, CONFIG, tr['I'], tr['u'], tr['soc0'], tr['T'])
+    rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
+    I.append(tr['C'])
+    u.append(tr['u_per'])
+
+
+rmse = rmse[:19] + rmse[20:]  # Remove spec 20, which is very high and messes up the plot
+I = I[:19] + I[20:]
+u = u[:19] + u[20:]
+plt.scatter(I,u, marker='o', c = rmse, cmap='copper',s = 50)
+plt.xlabel('C-rate [a.u.]')
+plt.ylabel(r'$\Delta u$ [a.u.]')
+plt.colorbar(label = r'RMSE [V]')
+plt.tight_layout()
+# plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_rmse_train_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+
+print(f'Mean RMSE for test trajectories: {np.mean(rmse):.3f} V')
 
 # %% ══════════════════════════════════════════════════════════
 # NOISY

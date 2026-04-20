@@ -243,7 +243,7 @@ class BatteryECMM(nn.Module):
         elif config['R0_mode'] == 'func':
             self.R0_func = R0_func
         elif config['R0_mode'] == 'param':
-            self.R0 = nn.Parameter(torch.tensor((config.get('R0_param', 0.01)), dtype=torch.float32))  
+            self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))  
 
         # Dispatchers
     def _R1(self, soc, I_norm, u):
@@ -265,7 +265,7 @@ class BatteryECMM(nn.Module):
         if m == 'net':
             return self.R0_net(soc, I_norm, u)
         if m == 'param':
-            return nn.functional.softplus(self.R0).expand_as(soc)
+            return torch.exp(self.log_R0).expand_as(soc)
         if m == 'func':
             # scalar-per-trajectory → (B, 1), broadcasts over T
             B = I_batch.shape[0]
@@ -599,7 +599,7 @@ def gen_noise(i,u,noise_lvl = 0.):
 
 
 @torch.no_grad()
-def _predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl = 0.00):
+def predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl = 0.00):
     # --- run model ---
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
@@ -628,8 +628,11 @@ def _predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl =
 
     if config['R0_mode'] in ('net'):
         R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
+    elif config['R0_mode'] in ('param'):
+        R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
     else:
         R0 = None
+
     return V, soc, U1, R1, Fs, Fr, ks, C1, R0
 
 
@@ -644,7 +647,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             # Row 0: V
             axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -670,6 +673,8 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             elif config['R0_mode'] in ('func'):
                 R0_val = R0_func(tr['u'], tr['I'])
                 axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+            elif config['R0_mode'] in ('param'):
+                axes[3, j].axhline(R0[0] * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0[0]*1000:.1f} m$\Omega$', lw=2)
             axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
@@ -707,7 +712,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
         for j in range(n):
             tr = trajs[j]
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             # Row 0: V
             axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
@@ -782,7 +787,7 @@ def plot_loss(history):
 
 
 @torch.no_grad()
-def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
+def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
     # --- run model ---
     I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
     u_b    = torch.tensor([u],    dtype=torch.float32)
@@ -806,19 +811,19 @@ def _predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00)
 
     return V, soc, U1, R1, Fs, Fr, ks, C1_t
 
-def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3):
+def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3, spec=None):
 
     n = min(n_show, len(pulse_trajs))
     fig, axes = plt.subplots(9, n, figsize=(5 * n, 28), squeeze=False)
     model.eval()
     k = model.ks_net.k
 
-    if not time:
+    if not time and spec == None:
         for j in range(n):
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -880,12 +885,12 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             if ax.get_xlabel() != 'Time [s]':
                 ax.set_xlabel('State of Charge')
                 ax.invert_xaxis()
-    else:
+    elif time and spec == None:
         for j in range(n):
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -944,7 +949,72 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
-    
+    elif spec is not None:
+        j = 0
+        n = spec
+        tr = pulse_trajs[n]
+        T  = tr['T']
+
+        V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+
+        I_np = tr['I_seq'].numpy()
+        u_np = np.full(T, tr['u'])
+
+        # TODO: Switch to R0 from config
+        R0_np = R0_func(u_np, I_np)
+        Ue_np = model.Ue_interp(soc)
+        U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
+
+        # Row 0: I profile vs SOC
+        axes[0, j].plot(I_np, '-', color=COLORS[0], lw=2)
+        axes[0, j].set_ylabel(r'$I$ [A]')
+        axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
+
+        # Row 1: V
+        axes[1, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+        axes[1, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
+        axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
+
+        # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
+        # (keep this one on a sample index since both curves ARE soc)
+        axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
+        axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
+        axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
+
+        # Row 3: U1
+        axes[3, j].plot(U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+        axes[3, j].plot(U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+        axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
+
+        # Row 4: R1 (+ R0, time-varying via I)
+        axes[4, j].plot(R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
+        axes[4, j].plot(R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
+        axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
+
+        # Row 5: C1
+        C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
+        axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
+        axes[5, j].set_ylabel(r'$C_1$ [F]')
+
+        # Row 6: Fr
+        axes[6, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+        axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+        axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
+
+        # Row 7: Fs
+        Fs_true = tr['F'].numpy() + k * tr['u']
+        Fs_plot = Fs 
+        axes[7, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+        axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+        axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
+
+        # Row 8: ks
+        axes[8, j].plot(ks_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+        axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+
+        for ax in axes.flat:
+            ax.set_xlabel('Time [s]')
+
 
     fig.tight_layout()
     return fig
@@ -1020,9 +1090,9 @@ def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10, puls
             tr = trajs[j]
             for i, noise_lvl in enumerate(noise_lvls):
                 if pulse:
-                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
+                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
                 else:
-                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
+                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
                 rmse_noise[j,i] = np.sqrt(np.mean((V - tr['V'])**2))
 
     std_noise = rmse_noise.std(axis=0)
@@ -1064,6 +1134,21 @@ def extract_ecm_params(model, soc_points, I_val, u_val):
     R0 = R0_func(u_val, I_val)
     return dict(soc=np.array(soc_points), R0=np.full(T, R0),
                 R1=R1, C1=C1, tau=R1 * C1, U1_ss=R1 * I_val)
+
+
+# =════════════════════════════════════════════════════════════════
+# RMSE CALC FOR PULSES
+# =════════════════════════════════════════════════════════════════
+
+def rmse_pulse(model, pulse_trajs, noise=False, noise_lvl=0.00):
+    rmse = []
+    for j in range(len(pulse_trajs)):
+        tr = pulse_trajs[j]
+
+        V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+        rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
+    
+    return rmse
 
 
 # =═════════════════════════════════════════════════════════
@@ -1131,7 +1216,8 @@ def plot_param(model, trajs, param='R1', title=''):
                 m = model.config['R0_mode']
                 if m == 'net':
                     y = model.R0_net(soc, I_norm, u_t).numpy() * 1e3
-                # elif m == 'param': ...
+                elif m == 'param':
+                    y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
                 elif m == 'func': 
                     y = R0_func(u_t.numpy(), I_norm.numpy()) * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
@@ -1207,7 +1293,7 @@ def plot_predicts(model, config, trajs, predict='R1', sort='C_rate'):
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = _predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             if predict == 'V':
                 y_true = tr['V'].numpy()
