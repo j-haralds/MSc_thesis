@@ -65,7 +65,7 @@ CONFIG = {
     'n_hidden': N_HIDDEN,
         'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
         'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-        'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.010,     # Ohm
+        'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,     # Ohm
 }
 
 

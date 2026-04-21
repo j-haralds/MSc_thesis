@@ -815,7 +815,7 @@ def plot_loss(history):
     ax.semilogy(history['train_rmse'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train_rmse'][-1]))
     ax.semilogy(history['train_rmse_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} GN'.format(history['train_rmse_Fr'][-1]))
     ax.semilogy(history['train_rmse_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_rmse_V'][-1]))
-    # ax.semilogy(history['test_rmse'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test_rmse'][-1]))
+    ax.semilogy(history['test_rmse'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test_rmse'][-1]))
     ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
     fig.tight_layout()
     return fig
