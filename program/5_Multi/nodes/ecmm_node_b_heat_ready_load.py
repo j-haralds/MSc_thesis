@@ -24,8 +24,8 @@ import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
 
-importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 
+importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
 from ecmm_node_b_heat_ready_lib import *
 
 
@@ -38,7 +38,7 @@ DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-MODEL_NAME  = 'ecm_node_net_no_socR0_Constr_netC1_60.7239min_1b_32h_100eps.pt'
+MODEL_NAME  = 'ecm_node_funcR0_netC1_104.3731min_1b_32h_200eps.pt'
 SAVE_FIGS   = False
 SAVE_PULSE_FIGS = False
 
@@ -166,10 +166,10 @@ plt.show()
 #  LOSS CURVES (from saved history)
 # ═════════════════════════════════════════════════════════════
 
-# plot_loss(history)
-# if SAVE_FIGS:
-#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-# plt.show()
+plot_loss(history)
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 # PLOT PARAMS
@@ -187,27 +187,26 @@ if SAVE_FIGS:
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
-# DATA PARAMS
+# DATA PARAMS Only when 'net' for all three elements
 # ═════════════════════════════════════════════════════════════
 
-# Only when 'net' for all three elements
-df = data_param(model, trajs)
-print(df.head())
+# df = data_param(model, trajs)
+# print(df.head())
 
-plt.plot(df['soc'][df['trajectory'] == 0], df['R0'][df['trajectory'] == 0], label='R0')
+# plt.plot(df['soc'][df['trajectory'] == 0], df['R0'][df['trajectory'] == 0], label='R0')
 
 
-PARAM_DATA_DIR = os.path.join(FILE_PATH, '..', 'symbols/data')
+# PARAM_DATA_DIR = os.path.join(FILE_PATH, '..', 'symbols/data')
 # df.to_csv(os.path.join(PARAM_DATA_DIR, f'ecm_elements_{SAVE_NAME}.txt'), index=False)
 
 # %% ══════════════════════════════════════════════════════════
 # Plot PULSES
 # ══════════════════════════════════════════════════════════════
 
-# plot_predictions_pulse(model, pulse_trajs, time=True, noise=True, noise_lvl=0.01)
-# if SAVE_PULSE_FIGS:
-#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
-# plt.show()
+plot_predictions_pulse(model, pulse_trajs, time=True, noise=False, noise_lvl=0.01, n_show=4, spec=3)
+if SAVE_PULSE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}_loaded.pdf'), bbox_inches='tight')
+plt.show()
 
 # rmse_pulses = rmse_pulse(model, pulse_trajs)
 

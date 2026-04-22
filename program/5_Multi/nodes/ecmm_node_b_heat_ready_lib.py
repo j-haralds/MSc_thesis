@@ -849,7 +849,7 @@ def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
 def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3, spec=None):
 
     n = min(n_show, len(pulse_trajs))
-    fig, axes = plt.subplots(9, n, figsize=(5 * n, 28), squeeze=False)
+    fig, axes = plt.subplots(9, n, figsize=(4.5 * n, 32), squeeze=False)
     model.eval()
     k = model.ks_net.k
 
