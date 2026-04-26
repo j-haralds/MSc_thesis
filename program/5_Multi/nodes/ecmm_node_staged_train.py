@@ -59,8 +59,8 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 1     # Stage 1: V static, train R1 (+R0 if net), kdot
-EPOCHS_DYNAMIC    = 1     # Stage 2: V dynamic, train C1, kdot (R1/R0 frozen)
+EPOCHS_STATIC     = 30     # Stage 1: V static, train R1 (+R0 if net), kdot
+EPOCHS_DYNAMIC    = 30     # Stage 2: V dynamic, train C1, kdot (R1/R0 frozen)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 BATCH_SIZE        = 1     # Trajectories per batch
@@ -128,9 +128,16 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 print(f"\nStaged training: S1={EPOCHS_STATIC}ep static, S2={EPOCHS_DYNAMIC}ep dynamic, batch_size={BATCH_SIZE}")
 
 def _post_stage1(model, history):
-    """Plot test predictions at the end of Stage 1, before Stage 2 starts."""
-    plot_predictions(model, CONFIG, test_trajs, time=False, title='Post-Stage-1: ')
-    plt.suptitle(f'After Stage 1 ({history["stage1_epochs"]} static epochs)', y=1.0)
+    """Plot test predictions at the end of Stage 1, before Stage 2 starts.
+
+    V_mode='static' so the plot reflects how Stage 1 was actually trained
+    (U1 = I·R1, no C1) — and the C1 panel is omitted entirely since C1
+    has not been trained yet.
+    """
+    plot_predictions(model, CONFIG, test_trajs, time=False,
+                     title='Post-Stage-1: ', V_mode='static')
+    plt.suptitle(f'After Stage 1 ({history["stage1_epochs"]} static epochs) — '
+                 f'C1 not yet trained, omitted', y=1.0)
     plt.show()
 
 history = train_staged(model, train_trajs, test_trajs,
@@ -167,7 +174,7 @@ constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
 SAVE_NAME = (f'kdot_staged_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h'
-             f'_{EPOCHS_STATIC}+{EPOCHS_DYNAMIC}eps_{TIMESTAMP}')
+             f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}eps_{TIMESTAMP}')
 print(SAVE_NAME)
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')

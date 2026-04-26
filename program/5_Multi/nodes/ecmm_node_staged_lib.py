@@ -299,6 +299,8 @@ class BatteryECMM(nn.Module):
         """
         V_mode : 'dynamic' — full Euler U1 integration  (Stage 2 / production)
                  'static'  — algebraic U1 = I·R1        (Stage 1 / Brucker)
+                             C1_net is NOT called in this mode — guarantees
+                             C1 plays no role during Stage 1 training.
         F is dynamic in both modes (k integrated via Euler).
         """
         B = I_batch.shape[0]
@@ -308,9 +310,8 @@ class BatteryECMM(nn.Module):
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
 
         # Parameters along the trajectory  (B, T_max)
-        R1 = self._R1(soc, I_norm, u_exp)
-        C1 = self._C1(soc, I_norm, u_exp)
-        R0 = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
+        R1   = self._R1(soc, I_norm, u_exp)
+        R0   = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
         kdot = self.kdot_net(soc, I_norm, u_exp)
 
         # ── F is always dynamic: integrate k(t) via Euler ──
@@ -322,9 +323,10 @@ class BatteryECMM(nn.Module):
 
         # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
-            # Steady-state of the RC: U1 = I · R1
+            # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
             U1 = I_batch.unsqueeze(1) * R1
-        else:  # 'dynamic'
+        elif V_mode == 'dynamic':
+            C1 = self._C1(soc, I_norm, u_exp)
             U1_steps = [torch.zeros(B)]
             for n in range(T_max - 1):
                 C1_n = C1[:, n] if C1.ndim == 2 else C1
@@ -332,6 +334,8 @@ class BatteryECMM(nn.Module):
                 U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
+        else:
+            raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
         with torch.no_grad():
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
@@ -340,7 +344,7 @@ class BatteryECMM(nn.Module):
         Fr = -k * u_exp
         # Fs = swelling-induced part beyond the elastic baseline (-k0·u),
         # so Fs_pred matches Fs_true_plot = F_data + k0·u
-        Fs = (self.kdot_net.k - k) * u_exp      # Is this always correct?
+        Fs = (self.kdot_net.k - k) * u_exp
 
         return V, Fr, soc, U1, R1, Fs
 
@@ -708,8 +712,13 @@ def gen_noise(i,u,noise_lvl = 0.):
 
 
 @torch.no_grad()
-def predict_np(model, config, I_val, u_val, soc0, T, noise=False, noise_lvl=0.00):
-    """Single-trajectory rollout in default (dynamic) V_mode for plotting."""
+def predict_np(model, config, I_val, u_val, soc0, T,
+               noise=False, noise_lvl=0.00, V_mode='dynamic'):
+    """Single-trajectory rollout for plotting.
+
+    V_mode='static' uses the Stage-1 V equation (U1 = I·R1) and returns C1=None
+    so plotting can omit any C1-dependent panels.
+    """
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
@@ -719,7 +728,7 @@ def predict_np(model, config, I_val, u_val, soc0, T, noise=False, noise_lvl=0.00
         I_b += i_noise
         u_b += u_noise
 
-    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T, V_mode='dynamic')
+    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T, V_mode=V_mode)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
     R1  = R1[0].numpy();  Fs = Fs[0].numpy()
@@ -728,7 +737,11 @@ def predict_np(model, config, I_val, u_val, soc0, T, noise=False, noise_lvl=0.00
     I_norm = torch.full((T,), I_val / model.I_ref)
     u_t    = torch.full((T,), u_val)
     kdot   = model.kdot_net(soc_t, I_norm, u_t).numpy()
-    C1     = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
+
+    if V_mode == 'static':
+        C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
+    else:
+        C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
 
     if config['R0_mode'] in ('net', 'net_no_soc', 'param'):
         R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
@@ -738,134 +751,100 @@ def predict_np(model, config, I_val, u_val, soc0, T, noise=False, noise_lvl=0.00
     return V, soc, U1, R1, Fs, Fr, kdot, C1, R0
 
 
-def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3):
-    n = min(n_show, len(trajs))
-    fig, axes = plt.subplots(8, n, figsize=(5 * n, 26), squeeze=False)
+def plot_predictions(model, config, trajs, time=False, noise=False,
+                     noise_lvl=0.00, title='', n_show=3, V_mode='dynamic'):
+    """Per-trajectory diagnostic grid.
 
+    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, Fs, k_dot)
+    V_mode='static'  → 6 rows (V, U1, R, Fr, Fs, k_dot)
+                       — dU1/dt and C1 are omitted because they have no
+                         meaning in Stage 1 (U1 is algebraic, C1 unused).
+    """
+    if V_mode == 'static':
+        rows = ['V', 'U1', 'R', 'Fr', 'Fs', 'kdot']
+    elif V_mode == 'dynamic':
+        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'Fs', 'kdot']
+    else:
+        raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
+
+    n = min(n_show, len(trajs))
+    n_rows = len(rows)
+    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
     model.eval()
     k = model.kdot_net.k
 
-    if not time:
-        for j in range(n):
-            tr = trajs[j]
+    for j in range(n):
+        tr = trajs[j]
+        V, soc_np, U1, R1, Fs, Fr, kdot, C1, R0 = predict_np(
+            model, config, tr['I'], tr['u'], tr['soc0'], tr['T'],
+            noise=noise, noise_lvl=noise_lvl, V_mode=V_mode)
 
-            V, soc_np, U1, R1, Fs, Fr, kdot, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+        # x-axis: SOC (default) or sample index (time=True)
+        x = soc_np if not time else np.arange(tr['T'])
 
-            # Row 0: V
-            axes[0, j].plot(soc_np, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-            axes[0, j].plot(soc_np, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-            axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
-            axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+        for r, name in enumerate(rows):
+            ax = axes[r, j]
 
-            # Row 1: U1
-            axes[1, j].plot(soc_np, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-            axes[1, j].plot(soc_np, U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-            axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
+            if name == 'V':
+                ax.plot(x, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+                ax.plot(x, V,               '-',  color=COLORS[0], label=r'Predicted $V$', lw=2)
+                ax.set_ylabel(r'$V$ [V]'); ax.legend()
+                ax.set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
 
-            # Row 2: dU1/dt
-            dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-            dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-            axes[2, j].plot(soc_np, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-            axes[2, j].plot(soc_np, dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-            axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
+            elif name == 'U1':
+                ax.plot(x, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+                ax.plot(x, U1,                    '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+                ax.set_ylabel(r'$U_1$ [V]'); ax.legend()
 
-            # Row 3: R1
-            if config['R0_mode'] in ('net', 'net_no_soc'):
-                axes[3, j].plot(soc_np, R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
-            elif config['R0_mode'] in ('func'):
-                R0_val = R0_func(tr['u'], tr['I'])
-                axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
-            elif config['R0_mode'] in ('param'):
-                axes[3, j].axhline(R0[0] * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0[0]*1000:.1f} m$\Omega$', lw=2)
-            axes[3, j].plot(soc_np, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
-            axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
+            elif name == 'dU1':
+                # Only reachable in V_mode='dynamic' → C1 is not None
+                dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
+                dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+                ax.plot(x, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
+                ax.plot(x, dU1_rc,   '-',  color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
+                ax.set_ylabel(r'$dU_1/dt$ [V/s]')
 
+            elif name == 'R':
+                if config['R0_mode'] in ('net', 'net_no_soc'):
+                    ax.plot(x, R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
+                elif config['R0_mode'] == 'func':
+                    R0_val = R0_func(tr['u'], tr['I'])
+                    ax.axhline(R0_val * 1000, ls='--', color=COLORS[0],
+                               label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+                elif config['R0_mode'] == 'param':
+                    ax.axhline(R0[0] * 1000, ls='--', color=COLORS[0],
+                               label=r'$R_0$' + fr' = {R0[0]*1000:.1f} m$\Omega$', lw=2)
+                ax.plot(x, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
+                ax.set_ylabel(r'$R$ [m$\Omega$]'); ax.legend()
 
-            # Row 4: C1
-            axes[4, j].plot(soc_np, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
-            axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
+            elif name == 'C1':
+                ax.plot(x, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
+                ax.set_ylabel(r'$C_1$ [F]'); ax.legend()
 
-            # Row 5: Fr (reaction force)
-            axes[5, j].plot(soc_np, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-            axes[5, j].plot(soc_np, Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-            axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
+            elif name == 'Fr':
+                ax.plot(x, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
+                ax.plot(x, Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
+                ax.set_ylabel(r'$F_r$ [GN]'); ax.legend()
 
-            # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
-            Fs_true = tr['F'].numpy() + k * tr['u']
-            axes[6, j].plot(soc_np, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-            axes[6, j].plot(soc_np, Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-            axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
+            elif name == 'Fs':
+                Fs_true = tr['F'].numpy() + k * tr['u']
+                ax.plot(x, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
+                ax.plot(x, Fs,      '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
+                ax.set_ylabel(r'$F_s$ [GN]'); ax.legend()
 
-            # Row 7: ks — compare to empirical slope dFs/dSOC from data
-            dSOC     = np.gradient(soc_np)
-            dFs_true = np.gradient(Fs_true)
-            # ks_true = dFs/dSOC
-            ks_true = dFs_true / dSOC
-            axes[7, j].plot(soc_np, ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
-            axes[7, j].plot(soc_np, kdot, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
+            elif name == 'kdot':
+                k_true    = -tr['F'].numpy() / tr['u']
+                kdot_true = np.gradient(k_true, 1.0)
+                ax.plot(x, kdot_true, '--', color=COLORS[1], label=r'Empirical $\dot{k}$', lw=2, alpha=0.7)
+                ax.plot(x, kdot,      '-',  color=COLORS[0], label=r'Predicted $\dot{k}$', lw=2)
+                ax.set_ylabel(r'$\dot{k}$ [GN/(mm$\cdot$s)]'); ax.legend()
 
-        for ax in axes.flat:
+    # x-label + axis direction handled per-mode
+    for ax in axes.flat:
+        if not time:
             ax.set_xlabel('State of Charge')
             ax.invert_xaxis()
-    else:
-        for j in range(n):
-            tr = trajs[j]
-
-            V, soc_np, U1, R1, Fs, Fr, kdot, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
-
-            # Row 0: V
-            axes[0, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-            axes[0, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-            axes[0, j].set_ylabel(r'$V$ [V]'); axes[0, j].legend()
-            axes[0, j].set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
-
-            # Row 1: U1
-            axes[1, j].plot(tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-            axes[1, j].plot(U1, '-', color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-            axes[1, j].set_ylabel(r'$U_1$ [V]'); axes[1, j].legend()
-
-            # Row 2: dU1/dt
-            dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-            dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
-            axes[2, j].plot(dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-            axes[2, j].plot(dU1_rc, '-', color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-            axes[2, j].set_ylabel(r'$dU_1/dt$ [V/s]')
-
-            # Row 3: R1 (+ R0 reference)
-            if config['R0_mode'] in ('net'):
-                axes[3, j].plot(R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
-            elif config['R0_mode'] in ('func'):
-                R0_val = R0_func(tr['u'], tr['I'])
-                axes[3, j].axhline(R0_val * 1000, ls='--', color=COLORS[0], label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
-            axes[3, j].plot(R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
-            axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
-
-            # Row 4: C1
-            axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
-            axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
-
-            # Row 5: Fr (reaction force)
-            axes[5, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-            axes[5, j].plot(Fr, '-', color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-            axes[5, j].set_ylabel(r'$F_r$ [GN]'); axes[5, j].legend()
-
-            # Row 6: Fs (swelling force) — true Fs reconstructed from data: Fs_true = F + k*u
-            Fs_true = tr['F'].numpy() + k * tr['u']
-            axes[6, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-            axes[6, j].plot(Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-            axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
-
-            # Row 7: kdot — compare to empirical slope dFs/dSOC from data
-            dSOC     = np.gradient(soc_np)
-            dFs_true = np.gradient(Fs_true)
-            # kdot_true = dFs/dSOC
-            kdot_true = dFs_true / dSOC
-            axes[7, j].plot(kdot_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
-            axes[7, j].plot(kdot, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
-
-        for ax in axes.flat:
+        else:
             ax.set_xlabel('Time [s]')
 
     fig.tight_layout()
@@ -890,9 +869,7 @@ def plot_loss(history):
     if n_s1 > 0 and n_s2 > 0:
         boundary = n_s1 + 0.5
         ax.axvline(boundary, color='0.4', ls=':', lw=1.2)
-        # Light shading + labels
         ymin, ymax = ax.get_ylim()
-        ax.axvspan(0.5, boundary, color='0.85', alpha=0.35, zorder=0)
         ax.text(0.5 + n_s1 / 2, ymax, 'Stage 1\n(static $V$)',
                 ha='center', va='top', fontsize=9, color='0.3')
         ax.text(boundary + n_s2 / 2, ymax, 'Stage 2\n(dynamic $V$)',
