@@ -1,5 +1,5 @@
 # %% ══════════════════════════════════════════════════════════
-#  BATTERY ECM + EMM NODE — BATCHED VERSION – READY FOR HEATS
+#  BATTERY ECM + EMM NODE — with kdot=NN
 # ══════════════════════════════════════════════════════════════
 #
 #  Same physics as the original, but with batched training:
@@ -37,9 +37,11 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library --- 
-importlib.reload(sys.modules['ecmm_node_b_heat_ready_lib'])
-from ecmm_node_b_heat_ready_lib import *
+importlib.reload(sys.modules['ecmm_node_netkdot_lib'])
+from ecmm_node_netkdot_lib import *
 
+from datetime import datetime
+TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -50,24 +52,24 @@ DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = True
-SAVE_MODELS = True
+SAVE_FIGS   = False
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
-EPOCHS      = 100
+EPOCHS      = 2
 LR          = 1e-3
 BATCH_SIZE  = 1        # Trajectories per batch
 
 CONFIG = {
     'R1_mode': 'net',   # 'net' or 'const'
     'C1_mode': 'net',   # 'net' or 'const' or 'param'
-    'R0_mode': 'net_no_soc',  # 'net', 'func', 'net_no_soc' or 'const'
+    'R0_mode': 'func',  # 'net', 'func', 'net_no_soc' or 'const'
     'n_hidden': N_HIDDEN,
         'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
         'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-        'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,     # Ohm
+        'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,     # Ohm
 }
 
 
@@ -141,17 +143,16 @@ print(f"\n  C1: {C1_init:.0f} → {C1_final:.0f} F")
 #  PREDICTIONS — TEST
 # ══════════════════════════════════════════════════════════════
 
-
 if CONFIG.get('C1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('R1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'kdot_{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('R1_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'kdot_{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'false' and CONFIG.get('C1_constrained', 'false') == 'false':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'kdot_{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 elif CONFIG.get('R1_constrained', 'false') == 'true' and CONFIG.get('R0_constrained', 'false') == 'true' and CONFIG.get('C1_constrained', 'false') == 'true':
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'kdot_{CONFIG["R0_mode"]}R0_Constr_{CONFIG["C1_mode"]}C1_Constr_{CONFIG["R1_mode"]}R1_Constr_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 else:
-    SAVE_NAME = f'{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
+    SAVE_NAME = f'kdot_{CONFIG["R0_mode"]}R0_{CONFIG["C1_mode"]}C1_{TOTAL_TIME:.4f}min_{BATCH_SIZE}b_{N_HIDDEN}h_{EPOCHS}eps'
 print(SAVE_NAME)
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
@@ -166,7 +167,7 @@ plt.show()
 
 plot_loss(history)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TIMESTAMP}_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
 plt.show()
 
@@ -208,9 +209,9 @@ if SAVE_MODELS:
         'C1_final': C1_final,
         'N_HIDDEN': N_HIDDEN,
         'EPOCHS': EPOCHS,
-    }, os.path.join(MODEL_DIR, f'ecm_node_{SAVE_NAME}.pt'))
+    }, os.path.join(MODEL_DIR, f'ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt'))
 
-    print(f"Saved: ecm_node_{SAVE_NAME}.pt")
+    print(f"Saved: ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt")
 # %% ══════════════════════════════════════════════════════════
 #  EXTRACT ECM PARAMETERS
 # ══════════════════════════════════════════════════════════════
