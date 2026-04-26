@@ -1,3 +1,4 @@
+
 #  Same physics as the original, but with batched training:
 #  all trajectories (padded to equal length) are integrated
 #  simultaneously, giving ~5-10× speedup on CPU.
@@ -14,16 +15,16 @@
 
 import os
 import sys
+
 import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
+from tqdm import trange
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from matplotlib.colors import LinearSegmentedColormap
 import time as _time
-from tqdm import trange
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
@@ -197,11 +198,14 @@ class R0NetNoSOC(nn.Module):
 # ══════════════════════════════════════════════════════════════
 
 class kdotNet(nn.Module):
-    """(SOC, I, u) → kdot > 0  [GN].  One hidden layer, softplus output."""
+    """(SOC, I, u) → kdot ≤ 0  [GN/(mm·s)].  Negative softplus, scaled.
+
+    Models monotonic stiffness decrease from initial k0 over discharge.
+    """
     def __init__(self, n_hidden=32, k=53, kdot_scale=1e-4):
         super().__init__()
         self.k = k
-        self.kdot_scale = kdot_scale    # kdet in the range ~1e-4
+        self.kdot_scale = kdot_scale
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
@@ -210,7 +214,8 @@ class kdotNet(nn.Module):
 
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return - nn.functional.softplus(self.net(x).squeeze(-1)) * self.kdot_scale # Negative kdot reduces k from its initial value
+        # Negative kdot — k decreases from k0
+        return - nn.functional.softplus(self.net(x).squeeze(-1)) * self.kdot_scale
 
 # ══════════════════════════════════════════════════════════
 #  BATCHED ECMM MODEL
@@ -232,61 +237,48 @@ class BatteryECMM(nn.Module):
         self.k         = k
         self.config    = config
         nh = config.get('n_hidden', 32)
-        self.kdot_net    = kdotNet(n_hidden=nh, k=k)
 
-        # Instantiate according to configurations
-        if config['R1_mode'] == 'net':
-            # Choose constrained network or not
-            if config.get('R1_constrained', 'false') == 'true':     # When key not availably, default to unconstrained
-                self.r1_net = R1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
-            else:
-                print('R1 unconstrained')
-                self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
+        # ── kdot network (always) ──
+        kdot_scale = config.get('kdot_scale', 1e-4)
+        self.kdot_net = kdotNet(n_hidden=nh, k=k, kdot_scale=kdot_scale)
 
-        elif config['R1_mode'] == 'param':
-            self.R1 = nn.Parameter(torch.tensor((config.get('R1_param', 0.01)), dtype=torch.float32)) 
+        # ── R1 net — always network, optionally constrained ──
+        if config.get('R1_constrained', 'false') == 'true':
+            self.r1_net = R1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+        else:
+            print('R1 unconstrained')
+            self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
 
-        # ------
-        if config['C1_mode'] == 'net':
-            if config.get('C1_constrained', 'false') == 'true':
-                self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
-            else:
-                print('C1 unconstrained')
-                self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
+        # ── C1 net — always network, optionally constrained ──
+        if config.get('C1_constrained', 'false') == 'true':
+            self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+        else:
+            print('C1 unconstrained')
+            self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
 
-        elif config['C1_mode'] == 'param':
-            self.log_C1 = nn.Parameter(torch.tensor(np.log(C1_init), dtype=torch.float32))
-        elif config['C1_mode'] == 'const':
-            self.log_C1 = torch.tensor(np.log(C1_init), dtype=torch.float32)
-
-        # ------
-        if config['R0_mode'] == 'net':
+        # ── R0 — multiple modes still supported ──
+        m = config['R0_mode']
+        if m == 'net':
             if config.get('R0_constrained', 'false') == 'true':
                 self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
             else:
                 print('R0 unconstrained')
                 self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
-
-        elif config['R0_mode'] == 'func':
+        elif m == 'func':
             self.R0_func = R0_func
-        elif config['R0_mode'] == 'param':
-            self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))  
-        elif config['R0_mode'] == 'net_no_soc':
+        elif m == 'param':
+            self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))
+        elif m == 'net_no_soc':
             self.R0_net = R0NetNoSOC(config, n_hidden=nh, I_ref=I_ref)
+        else:
+            raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
 
-        # Dispatchers
+    # ── Dispatchers ──
     def _R1(self, soc, I_norm, u):
-        m = self.config['R1_mode']
-        if m == 'net':
-            return self.r1_net(soc, I_norm, u)
-        if m == 'param':
-            return nn.functional.softplus(self.R1).expand_as(soc)
+        return self.r1_net(soc, I_norm, u)
 
     def _C1(self, soc, I_norm, u):
-        m = self.config['C1_mode']
-        if m == 'net': return self.C1_net(soc, I_norm, u)
-        if m == 'param': return torch.exp(self.log_C1)
-        elif m == 'const': return torch.exp(self.log_C1)
+        return self.C1_net(soc, I_norm, u)
 
     def _R0(self, soc, I_norm, u, I_batch, u_batch):
         """Returns R0 broadcastable to (B, T)."""
@@ -296,7 +288,6 @@ class BatteryECMM(nn.Module):
         if m == 'param':
             return torch.exp(self.log_R0).expand_as(soc)
         if m == 'func':
-            # scalar-per-trajectory → (B, 1), broadcasts over T
             B = I_batch.shape[0]
             return torch.tensor(
                 [self.R0_func(u_batch[b].item(), I_batch[b].item()) for b in range(B)],
@@ -304,52 +295,52 @@ class BatteryECMM(nn.Module):
         if m == 'net_no_soc':
             return self.R0_net(I_norm, u)
 
-    def forward(self, I_batch, u_batch, soc0_batch, T_max):
+    def forward(self, I_batch, u_batch, soc0_batch, T_max, V_mode='dynamic'):
+        """
+        V_mode : 'dynamic' — full Euler U1 integration  (Stage 2 / production)
+                 'static'  — algebraic U1 = I·R1        (Stage 1 / Brucker)
+        F is dynamic in both modes (k integrated via Euler).
+        """
         B = I_batch.shape[0]
         t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)
         soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
         I_norm = (I_batch / self.I_ref).unsqueeze(1).expand(B, T_max)
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
 
-        # Predict R1 for all trajectories and timesteps at once – (B, T_max)
-        R1 = self._R1(soc, I_norm, u_exp)     
-        C1 = self._C1(soc, I_norm, u_exp)        
+        # Parameters along the trajectory  (B, T_max)
+        R1 = self._R1(soc, I_norm, u_exp)
+        C1 = self._C1(soc, I_norm, u_exp)
         R0 = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
         kdot = self.kdot_net(soc, I_norm, u_exp)
 
-        U1_steps = [torch.zeros(B)]
-        k_steps = [torch.full((B,), self.kdot_net.k)]   # Initial k = k(u0) at t=0
-
+        # ── F is always dynamic: integrate k(t) via Euler ──
+        k_steps = [torch.full((B,), self.kdot_net.k)]   # k(0) = k0
+        dt = 1.0
         for n in range(T_max - 1):
-            # C1 may be scalar OR (B, T_max) — index only if 2-D
-            C1_n = C1[:, n] if C1.ndim == 2 else C1
-
-            # # Euler forward 
-            # dU1 = I_batch / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
-            # U1_steps.append(U1_steps[n] + dU1)
-
-            # # Semi-implicit Euler forward
-            U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
-            U1_steps.append(U1_next)
-
-            # Euler forward
-            dt = 1
-            k_next = k_steps[n] + kdot[:, n] * dt
-            k_steps.append(k_next)
-
-        U1 = torch.stack(U1_steps, dim=1)
+            k_steps.append(k_steps[n] + kdot[:, n] * dt)
         k = torch.stack(k_steps, dim=1)
+
+        # ── V branch: static or dynamic U1 ──
+        if V_mode == 'static':
+            # Steady-state of the RC: U1 = I · R1
+            U1 = I_batch.unsqueeze(1) * R1
+        else:  # 'dynamic'
+            U1_steps = [torch.zeros(B)]
+            for n in range(T_max - 1):
+                C1_n = C1[:, n] if C1.ndim == 2 else C1
+                # Semi-implicit Euler — unconditionally stable
+                U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+                U1_steps.append(U1_next)
+            U1 = torch.stack(U1_steps, dim=1)
 
         with torch.no_grad():
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
 
-        # V from electrical branch
-        V = Ue - I_batch.unsqueeze(1) * R0 - U1
-        # Total reaction force
+        V  = Ue - I_batch.unsqueeze(1) * R0 - U1
         Fr = -k * u_exp
-        # Fs = swelling-induced force beyond the initial-elastic baseline (-k0*u)
-        # so that Fs_pred matches Fs_true_plot = F_data + k0*u
-        Fs = (self.kdot_net.k - k) * u_exp
+        # Fs = swelling-induced part beyond the elastic baseline (-k0·u),
+        # so Fs_pred matches Fs_true_plot = F_data + k0·u
+        Fs = (self.kdot_net.k - k) * u_exp      # Is this always correct?
 
         return V, Fr, soc, U1, R1, Fs
 
@@ -377,60 +368,57 @@ class BatteryECMM(nn.Module):
         I_norm = I_seq / self.I_ref
         u_exp  = u_batch.unsqueeze(1).expand(B, T)
 
-        R1 = self._R1(soc, I_norm, u_exp)           # local, not self.R1
-        C1 = self._C1(soc, I_norm, u_exp)           # local, not self.C1
-        
+        R1 = self._R1(soc, I_norm, u_exp)
+        C1 = self._C1(soc, I_norm, u_exp)
+
         m = self.config['R0_mode']
         if m == 'net':
-            R0 = self.R0_net(soc, I_norm, u_exp)                   # (B, T)
+            R0 = self.R0_net(soc, I_norm, u_exp)
         elif m == 'param':
-            R0 = nn.functional.softplus(self.R0).expand_as(soc)    # (B, T)
+            R0 = torch.exp(self.log_R0).expand_as(soc)
         elif m == 'func':
             R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
         elif m == 'net_no_soc':
             R0 = self.R0_net(I_norm, u_exp)
 
-        kdot = self.kdot_net(soc, I_norm, u_exp)  # (B, T)
+        kdot = self.kdot_net(soc, I_norm, u_exp)
 
         U1_steps = [torch.zeros(B)]
-        k_steps = [torch.full((B,), self.kdot_net.k)]   # Initial k = k0 at t=0
-
+        k_steps  = [torch.full((B,), self.kdot_net.k)]   # k(0) = k0
+        dt = 1.0
         for n in range(T - 1):
-            # C1 may be scalar OR (B, T_max) — index only if 2-D
             C1_n = C1[:, n] if C1.ndim == 2 else C1
-            dU1 = I_seq[:, n] / C1_n - U1_steps[n] / (R1[:, n] * C1_n)
-            U1_steps.append(U1_steps[n] + dU1)
-
-            # Euler forward
-            dt = 1
-            k_next = k_steps[n] + kdot[:, n] * dt
-            k_steps.append(k_next)
+            # Semi-implicit Euler for U1
+            U1_next = (U1_steps[n] + I_seq[:, n] / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+            U1_steps.append(U1_next)
+            k_steps.append(k_steps[n] + kdot[:, n] * dt)
 
         U1 = torch.stack(U1_steps, dim=1)
-        k = torch.stack(k_steps, dim=1)
+        k  = torch.stack(k_steps,  dim=1)
 
         with torch.no_grad():
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
 
-        V = Ue - I_seq * R0 - U1
+        V  = Ue - I_seq * R0 - U1
         Fr = -k * u_exp
         Fs = (self.kdot_net.k - k) * u_exp
 
         return V, Fr, soc, U1, R1, Fs
 
-def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06, soc=0, I_norm=0, u_exp=0):
-    """Return a representative scalar C1 for display purposes."""
-    if model.config['C1_mode'] in ('const', 'param'):
-        return torch.exp(model.log_C1).item()
-    
-    if model.config['C1_mode'] in ('net') and scalar:
+def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06,
+           soc=None, I_norm=None, u_exp=None):
+    """Return a representative C1 value.
+
+    scalar=True  → a single float at the (soc_ref, I_ref_val, u_ref) reference point
+    scalar=False → trajectory-shape numpy array, evaluated at the given (soc, I_norm, u_exp)
+    """
+    if scalar:
         soc_t  = torch.tensor([soc_ref], dtype=torch.float32)
-        I_norm = torch.tensor([I_ref_val / model.I_ref], dtype=torch.float32)
+        I_norm_t = torch.tensor([I_ref_val / model.I_ref], dtype=torch.float32)
         u_t    = torch.tensor([u_ref], dtype=torch.float32)
         with torch.no_grad():
-            return model._C1(soc_t, I_norm, u_t).mean().item()
-        
-    elif model.config['C1_mode'] in ('net'):
+            return model._C1(soc_t, I_norm_t, u_t).mean().item()
+    else:
         return model._C1(soc, I_norm, u_exp).detach().numpy()
 
 # ══════════════════════════════════════════════════════════
@@ -527,102 +515,178 @@ def collate_batch(trajs):
 #  TRAINING FUNCTION  (batched)
 # ══════════════════════════════════════════════════════════════
 
-def train_model(model, train_trajs, test_trajs,
-                n_epochs=200, lr=1e-3, batch_size=16, print_every=10):
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
+# ══════════════════════════════════════════════════════════
+#  TRAINING FUNCTIONS  (batched, with staged option)
+# ══════════════════════════════════════════════════════════════
 
-    history = {'train': [], 'train_V': [], 'train_Fr': [], 'test': [], 'time': [],
-               'train_rmse': [], 'train_rmse_V': [], 'train_rmse_Fr': [], 'test_rmse': []}
+def _empty_history():
+    return {'train': [], 'train_V': [], 'train_Fr': [],
+            'test': [], 'time': 0.0,
+            'train_rmse': [], 'train_rmse_V': [], 'train_rmse_Fr': [],
+            'test_rmse': [],
+            'stage': []}                       # which stage produced each epoch
+
+
+def _train_inner(model, train_trajs, test_trajs,
+                 optimizer, scheduler, n_epochs, batch_size, print_every,
+                 V_mode='dynamic', stage_label='', history=None):
+    """
+    One training pass with the given optimizer over n_epochs.
+    V_mode is forwarded to model() so the same loop fits Stage 1 (static V)
+    and Stage 2 (dynamic V).  F is dynamic in both modes.
+    """
+    if history is None:
+        history = _empty_history()
+    epoch_offset = len(history['train'])
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
         model.train()
         order = np.random.permutation(len(train_trajs))
-        epoch_loss = 0.0
-        epoch_loss_V = 0.0
-        epoch_loss_Fr = 0.0
-        epoch_loss_rmse_V = 0.0
-        epoch_loss_rmse_Fr = 0.0
-        epoch_loss_rmse = 0.0
-        n_batches  = 0
+        ep_mse = ep_mse_V = ep_mse_Fr = 0.0
+        ep_rmse = ep_rmse_V = ep_rmse_Fr = 0.0
+        n_batches = 0
 
-        # ── mini-batch loop ──
         for start in range(0, len(train_trajs), batch_size):
             idxs  = order[start : start + batch_size]
             batch = [train_trajs[i] for i in idxs]
-
             I_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch(batch)
 
             optimizer.zero_grad()
-            V_pred, Fr_pred, soc_pred, U1_pred, R1_pred, Fs_pred = model(I_b, u_b, soc0_b, T_max)
+            V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T_max, V_mode=V_mode)
 
-            # Masked MSE — only score real (non-padded) timesteps
-            sq_err_V = (V_pred - V_true) ** 2
-            loss_V = sq_err_V[mask].mean() 
+            sq_err_V  = (V_pred  - V_true ) ** 2
             sq_err_Fr = (Fr_pred - Fr_true) ** 2
+            loss_V  = sq_err_V[mask].mean()
             loss_Fr = sq_err_Fr[mask].mean()
             loss = loss_V + loss_Fr
 
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            
-            # Masked RMSE for reporting
-            loss_Fr_rmse = torch.sqrt(sq_err_Fr[mask].mean())
-            loss_V_rmse = torch.sqrt(sq_err_V[mask].mean())
 
-            epoch_loss += loss.item()
-            epoch_loss_V += loss_V.item()
-            epoch_loss_Fr += loss_Fr.item()
-            epoch_loss_rmse += loss_V_rmse.item() + loss_Fr_rmse.item()
-            epoch_loss_rmse_V += loss_V_rmse.item()
-            epoch_loss_rmse_Fr += loss_Fr_rmse.item()
+            with torch.no_grad():
+                rmse_V  = torch.sqrt(loss_V).item()
+                rmse_Fr = torch.sqrt(loss_Fr).item()
+
+            ep_mse    += loss.item()
+            ep_mse_V  += loss_V.item()
+            ep_mse_Fr += loss_Fr.item()
+            ep_rmse   += rmse_V + rmse_Fr
+            ep_rmse_V += rmse_V
+            ep_rmse_Fr+= rmse_Fr
             n_batches += 1
 
-        epoch_loss /= n_batches
-        epoch_loss_V /= n_batches
-        epoch_loss_Fr /= n_batches
-        epoch_loss_rmse /= n_batches
-        epoch_loss_rmse_V /= n_batches
-        epoch_loss_rmse_Fr /= n_batches
-        history['train'].append(epoch_loss)
-        history['train_V'].append(epoch_loss_V)
-        history['train_Fr'].append(epoch_loss_Fr)
-        history['train_rmse'].append(epoch_loss_rmse)
-        history['train_rmse_V'].append(epoch_loss_rmse_V)
-        history['train_rmse_Fr'].append(epoch_loss_rmse_Fr)
+        ep_mse /= n_batches; ep_mse_V /= n_batches; ep_mse_Fr /= n_batches
+        ep_rmse /= n_batches; ep_rmse_V /= n_batches; ep_rmse_Fr /= n_batches
 
+        history['train'].append(ep_mse)
+        history['train_V'].append(ep_mse_V)
+        history['train_Fr'].append(ep_mse_Fr)
+        history['train_rmse'].append(ep_rmse)
+        history['train_rmse_V'].append(ep_rmse_V)
+        history['train_rmse_Fr'].append(ep_rmse_Fr)
+        history['stage'].append(stage_label)
+
+        # Test eval — uses same V_mode as training stage
         model.eval()
         with torch.no_grad():
-            test_loss = 0.0
-            test_loss_rmse = 0.0
+            test_mse = 0.0
             for tr in test_trajs:
                 I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
                 u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
                 soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
-                V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'])
-                test_loss += (torch.mean((V_pred[0] - tr['V'])**2)).item()
-                test_loss_rmse += (torch.mean((V_pred[0] - tr['V'])**2)).item()
-            test_loss /= len(test_trajs)
-            test_loss_rmse /= len(test_trajs)
-        history['test'].append(test_loss)
-        history['test_rmse'].append(test_loss_rmse)
-        scheduler.step(epoch_loss)
+                V_pred, _, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'], V_mode=V_mode)
+                test_mse += torch.mean((V_pred[0] - tr['V']) ** 2).item()
+            test_mse /= len(test_trajs)
+            test_rmse = float(np.sqrt(test_mse))
+        history['test'].append(test_mse)
+        history['test_rmse'].append(test_rmse)
+
+        if scheduler is not None:
+            scheduler.step(ep_mse)
 
         if epoch % print_every == 0 or epoch == 1:
             C1 = get_C1(model, scalar=True)
             eta = (_time.time() - t0) / epoch * (n_epochs - epoch) / 60
-            lr_now = optimizer.param_groups[0]['lr']
-            print(f"  {epoch:4d}/{n_epochs} "
-                  f"| ETA {eta:.1f}m "
-                  f"| MSE train {epoch_loss} | train_V {epoch_loss_V} V | train_Fr {epoch_loss_Fr} GN "
-                  f"| RMSE train {epoch_loss_rmse:.4f} | train_V {epoch_loss_rmse_V:.4f} V | train_Fr {epoch_loss_rmse_Fr:.4f} GN "
-                  f"| test {test_loss_rmse:.4f} V | C1={C1:.0f}F "
-                  )
+            tag = f"[{stage_label}] " if stage_label else ""
+            print(f"  {tag}{epoch:4d}/{n_epochs} | ETA {eta:.1f}m "
+                  f"| RMSE V {ep_rmse_V:.4f} Fr {ep_rmse_Fr:.4f} "
+                  f"| test V {test_rmse:.4f} | C1={C1:.0f}F")
 
-    history['time'] = (_time.time() - t0) / 60
+    history['time'] = history.get('time', 0.0) + (_time.time() - t0) / 60
+    return history
 
+
+def train_model(model, train_trajs, test_trajs,
+                n_epochs=200, lr=1e-3, batch_size=16, print_every=10,
+                V_mode='dynamic'):
+    """Single-stage training (default behaviour: dynamic V from epoch 1)."""
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
+    return _train_inner(model, train_trajs, test_trajs,
+                        optimizer, scheduler, n_epochs, batch_size, print_every,
+                        V_mode=V_mode, stage_label='single')
+
+
+def train_staged(model, train_trajs, test_trajs,
+                 n_epochs_static=100, n_epochs_dynamic=200,
+                 lr_static=1e-3, lr_dynamic=1e-3,
+                 batch_size=16, print_every=10,
+                 on_stage1_done=None):
+    """
+    Brucker-style two-stage training.
+
+    Stage 1  (static V):
+        V = Ue − I·R0 − I·R1     (algebraic; no U1 dynamics)
+        F dynamic (k integrated via Euler)
+        Trains: r1_net, R0_net (if R0_mode is a net), kdot_net
+        Frozen: C1_net
+
+    Stage 2  (dynamic V):
+        V uses full Euler U1 integration with dU1/dt = I/C1 − U1/(R1·C1)
+        F dynamic (unchanged)
+        Trains: C1_net, kdot_net
+        Frozen: r1_net, R0_net (if a net)
+
+    on_stage1_done : optional callable(model, history) invoked between stages,
+                     useful for plotting the post-Stage-1 state before Stage 2 alters it.
+
+    History is concatenated across stages; the 'stage' key marks each epoch.
+    """
+    history = _empty_history()
+
+    # ── Stage 1 ──
+    print(f"\n========== STAGE 1: static V  ({n_epochs_static} epochs) ==========")
+    s1_params = [p for name, p in model.named_parameters() if 'C1_net' not in name]
+    n_s1 = sum(p.numel() for p in s1_params)
+    print(f"  Stage 1 trainable params: {n_s1}  (C1_net frozen)")
+    opt1 = torch.optim.Adam(s1_params, lr=lr_static)
+    sched1 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt1, patience=40, factor=0.5)
+    _train_inner(model, train_trajs, test_trajs,
+                 opt1, sched1, n_epochs_static, batch_size, print_every,
+                 V_mode='static', stage_label='S1', history=history)
+
+    history['stage1_epochs'] = n_epochs_static
+
+    # ── Optional callback between stages ──
+    if on_stage1_done is not None:
+        print("\n---- post-Stage-1 callback ----")
+        on_stage1_done(model, history)
+
+    # ── Stage 2 ──
+    print(f"\n========== STAGE 2: dynamic V  ({n_epochs_dynamic} epochs) ==========")
+    freeze_kw = ('r1_net', 'R0_net')   # R0_net only exists if R0_mode is net or net_no_soc
+    s2_params = [p for name, p in model.named_parameters()
+                 if not any(kw in name for kw in freeze_kw)]
+    n_s2 = sum(p.numel() for p in s2_params)
+    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''} frozen)")
+    opt2 = torch.optim.Adam(s2_params, lr=lr_dynamic)
+    sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=40, factor=0.5)
+    _train_inner(model, train_trajs, test_trajs,
+                 opt2, sched2, n_epochs_dynamic, batch_size, print_every,
+                 V_mode='dynamic', stage_label='S2', history=history)
+
+    history['stage2_epochs'] = n_epochs_dynamic
     return history
 
 # ══════════════════════════════════════════════════════════
@@ -644,38 +708,32 @@ def gen_noise(i,u,noise_lvl = 0.):
 
 
 @torch.no_grad()
-def predict_np(model, config, I_val, u_val, soc0, T, noise = False, noise_lvl = 0.00):
-    # --- run model ---
+def predict_np(model, config, I_val, u_val, soc0, T, noise=False, noise_lvl=0.00):
+    """Single-trajectory rollout in default (dynamic) V_mode for plotting."""
     I_b    = torch.tensor([I_val],  dtype=torch.float32)
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
 
-    # Add noise to inputs
     if noise:
-        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
+        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl=noise_lvl)
         I_b += i_noise
         u_b += u_noise
-    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
+
+    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T, V_mode='dynamic')
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
     R1  = R1[0].numpy();  Fs = Fs[0].numpy()
 
-    # ks along the trajectory (not returned by forward)
     soc_t  = torch.from_numpy(soc)
     I_norm = torch.full((T,), I_val / model.I_ref)
     u_t    = torch.full((T,), u_val)
-    kdot = model.kdot_net(soc_t, I_norm, u_t).numpy()
-
-    if config['C1_mode'] in ('net'):
-        C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
-    else:
-        C1 = get_C1(model, scalar=True)
-
+    kdot   = model.kdot_net(soc_t, I_norm, u_t).numpy()
+    C1     = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
 
     if config['R0_mode'] in ('net', 'net_no_soc', 'param'):
         R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
     else:
-        R0 = None
+        R0 = None  # plotting path uses R0_func directly when None
 
     return V, soc, U1, R1, Fs, Fr, kdot, C1, R0
 
@@ -724,10 +782,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
 
 
             # Row 4: C1
-            if config['C1_mode'] in ('net'):
-                axes[4, j].plot(soc_np, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
-            else:
-                axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            axes[4, j].plot(soc_np, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
             axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
 
             # Row 5: Fr (reaction force)
@@ -741,12 +796,14 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[6, j].plot(soc_np, Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
             axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
 
-            # Row 7: dk/dt — compare to empirical dk_true/dt where k_true = -F/u
-            k_true   = -tr['F'].numpy() / tr['u']           # GN/mm, scalar u per traj
-            kdot_true = np.gradient(k_true, 1.0)            # dt = 1 s
-            axes[7, j].plot(soc_np, kdot_true, '--', color=COLORS[1], label=r'Empirical $\dot{k} = dk/dt$', lw=2, alpha=0.7)
-            axes[7, j].plot(soc_np, kdot, '-', color=COLORS[0], label=r'Predicted $\dot{k}$', lw=2)
-            axes[7, j].set_ylabel(r'$\dot{k}$ [GN/(mm$\cdot$s)]'); axes[7, j].legend()
+            # Row 7: ks — compare to empirical slope dFs/dSOC from data
+            dSOC     = np.gradient(soc_np)
+            dFs_true = np.gradient(Fs_true)
+            # ks_true = dFs/dSOC
+            ks_true = dFs_true / dSOC
+            axes[7, j].plot(soc_np, ks_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
+            axes[7, j].plot(soc_np, kdot, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('State of Charge')
@@ -785,10 +842,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[3, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[3, j].legend()
 
             # Row 4: C1
-            if config['C1_mode'] in ('net'):
-                axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
-            else:
-                axes[4, j].axhline(C1, ls='--', color=COLORS[0], label=r'$C_1=$' + f'{C1:.0f} F', lw=2)
+            axes[4, j].plot(C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
             axes[4, j].set_ylabel(r'$C_1$ [F]'); axes[4, j].legend()
 
             # Row 5: Fr (reaction force)
@@ -802,12 +856,14 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
             axes[6, j].plot(Fs, '-', color=COLORS[0], label=r'Predicted $F_s$', lw=2)
             axes[6, j].set_ylabel(r'$F_s$ [GN]'); axes[6, j].legend()
 
-            # Row 7: dk/dt — compare to empirical dk_true/dt where k_true = -F/u
-            k_true    = -tr['F'].numpy() / tr['u']
-            kdot_true = np.gradient(k_true, 1.0)
-            axes[7, j].plot(kdot_true, '--', color=COLORS[1], label=r'Empirical $\dot{k} = dk/dt$', lw=2, alpha=0.7)
-            axes[7, j].plot(kdot, '-', color=COLORS[0], label=r'Predicted $\dot{k}$', lw=2)
-            axes[7, j].set_ylabel(r'$\dot{k}$ [GN/(mm$\cdot$s)]'); axes[7, j].legend()
+            # Row 7: kdot — compare to empirical slope dFs/dSOC from data
+            dSOC     = np.gradient(soc_np)
+            dFs_true = np.gradient(Fs_true)
+            # kdot_true = dFs/dSOC
+            kdot_true = dFs_true / dSOC
+            axes[7, j].plot(kdot_true, '--', color=COLORS[1], label=r'Empirical $k_s = dF_s/d\mathrm{SOC}$', lw=2, alpha=0.7)
+            axes[7, j].plot(kdot, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
+            axes[7, j].set_ylabel(r'$k_s$ [GN]'); axes[7, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
@@ -817,12 +873,34 @@ def plot_predictions(model, config, trajs, time=False, noise=False, noise_lvl=0.
 
 
 def plot_loss(history):
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.semilogy(history['train_rmse'], color=COLORS[0], label='Loss last RMSE: {:.4f} V'.format(history['train_rmse'][-1]))
-    ax.semilogy(history['train_rmse_Fr'], color=COLORS[1], ls='--', label='Loss $F_r$ last RMSE: {:.4f} GN'.format(history['train_rmse_Fr'][-1]))
-    ax.semilogy(history['train_rmse_V'], color=COLORS[2], ls='--', label='Loss $V$ last RMSE: {:.4f} V'.format(history['train_rmse_V'][-1]))
-    ax.semilogy(history['test_rmse'], color=COLORS[1], label='Test \n Last RMSE: {:.4f} V'.format(history['test_rmse'][-1]))
-    ax.set_xlabel('epoch'); ax.set_ylabel('RMSE'); ax.legend()
+    """Plot RMSE curves with a Stage 1 → Stage 2 divider when staged training was used."""
+    fig, ax = plt.subplots(figsize=(7, 4.2))
+    epochs = np.arange(1, len(history['train_rmse']) + 1)
+
+    ax.semilogy(epochs, history['train_rmse_V'],  color=COLORS[0], lw=2,
+                label=r'Train $V$  (final {:.4f} V)'.format(history['train_rmse_V'][-1]))
+    ax.semilogy(epochs, history['train_rmse_Fr'], color=COLORS[1], lw=2,
+                label=r'Train $F_r$ (final {:.4f} GN)'.format(history['train_rmse_Fr'][-1]))
+    ax.semilogy(epochs, history['test_rmse'],     color=COLORS[2], lw=2, ls='--',
+                label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse'][-1]))
+
+    # Stage divider (only present if staged training was used)
+    n_s1 = history.get('stage1_epochs', 0)
+    n_s2 = history.get('stage2_epochs', 0)
+    if n_s1 > 0 and n_s2 > 0:
+        boundary = n_s1 + 0.5
+        ax.axvline(boundary, color='0.4', ls=':', lw=1.2)
+        # Light shading + labels
+        ymin, ymax = ax.get_ylim()
+        ax.axvspan(0.5, boundary, color='0.85', alpha=0.35, zorder=0)
+        ax.text(0.5 + n_s1 / 2, ymax, 'Stage 1\n(static $V$)',
+                ha='center', va='top', fontsize=9, color='0.3')
+        ax.text(boundary + n_s2 / 2, ymax, 'Stage 2\n(dynamic $V$)',
+                ha='center', va='top', fontsize=9, color='0.3')
+
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('RMSE')
+    ax.legend(loc='lower left')
     fig.tight_layout()
     return fig
 
@@ -1088,34 +1166,6 @@ def plot_noisy_inputs(trajs, noise_lvl = 0.00):
     ax[1].set_ylabel('Frequency')
     plt.tight_layout()
     return f
-
-# def _predict_np_noise(model, config, I_val, u_val, soc0, T, noise_lvl = 0.00):
-#     # --- run model ---
-#     I_b    = torch.tensor([I_val],  dtype=torch.float32)
-#     u_b    = torch.tensor([u_val],  dtype=torch.float32)
-#     # Add noise to inputs
-#     i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
-#     I_b += i_noise
-#     u_b += u_noise
-
-#     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
-#     V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T)
-#     V   = V[0].numpy();   Fr = Fr[0].numpy()
-#     soc = soc[0].numpy(); U1 = U1[0].numpy()
-#     R1  = R1[0].numpy();  Fs = Fs[0].numpy()
-
-#     # ks along the trajectory (not returned by forward)
-#     soc_t  = torch.from_numpy(soc)
-#     I_norm = torch.full((T,), I_val / model.I_ref)
-#     u_t    = torch.full((T,), u_val)
-#     ks = model.ks_net(soc_t, I_norm, u_t).numpy()
-
-#     if config['C1_mode'] in ('net'):
-#         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
-#     else:
-#         C1 = get_C1(model, scalar=True)
-
-#     return V, soc, U1, R1, Fs, Fr, ks, C1
 
 
 def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10, pulse = False):
