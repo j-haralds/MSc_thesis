@@ -209,7 +209,7 @@ class kdotNet(nn.Module):
 
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return self.net(x).squeeze(-1)
+        return - nn.functional.softplus(self.net(x).squeeze(-1))
 
 # ══════════════════════════════════════════════════════════
 #  BATCHED ECMM MODEL
