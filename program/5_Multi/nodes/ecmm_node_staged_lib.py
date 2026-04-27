@@ -677,7 +677,7 @@ def train_staged(model, train_trajs, test_trajs,
 
     # ── Stage 2 ──
     print(f"\n========== STAGE 2: dynamic V  ({n_epochs_dynamic} epochs) ==========")
-    freeze_kw = ('r1_net', 'R0_net')   # R0_net only exists if R0_mode is net or net_no_soc
+    freeze_kw = ('r1_net', 'R0_net', 'k_net')   # R0_net only exists if R0_mode is net or net_no_soc
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
@@ -795,7 +795,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
                 ax.set_ylabel(r'$U_1$ [V]'); ax.legend()
 
             elif name == 'dU1':
-                # Only reachable in V_mode='dynamic' → C1 is not None
+                # Only reachable in V_mode='dynamic' – C1 is not None
                 dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
                 dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
                 ax.plot(x, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
@@ -835,7 +835,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
                 k_true = -tr['F'].numpy() / tr['u']
                 ax.plot(x, k_true, '--', color=COLORS[1], label=r'Empirical $k = -F/u$', lw=2, alpha=0.7)
                 ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
-                ax.axhline(k0, color='0.6', ls=':', lw=1, label=fr'$k_0 = {k0:.1f}$')
+                # ax.axhline(k0, color='0.6', ls=':', lw=1, label=fr'$k_0 = {k0:.1f}$')
                 ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
 
     # x-label + axis direction handled per-mode
