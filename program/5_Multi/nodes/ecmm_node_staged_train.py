@@ -59,8 +59,8 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 30     # Stage 1: V static, train R1 (+R0 if net), kdot
-EPOCHS_DYNAMIC    = 30     # Stage 2: V dynamic, train C1, kdot (R1/R0 frozen)
+EPOCHS_STATIC     = 500     # Stage 1: V static, train R1 (+R0 if net), kdot
+EPOCHS_DYNAMIC    = 50     # Stage 2: V dynamic, train C1, kdot (R1/R0 frozen)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 BATCH_SIZE        = 1     # Trajectories per batch
@@ -70,7 +70,7 @@ CONFIG = {
     'C1_mode': 'net',   # 'net' 
     'R0_mode': 'func',           # 'net', 'func', 'net_no_soc', 'param'
     'n_hidden': N_HIDDEN,
-    'kdot_scale': 1e-4,          # output magnitude for kdotNet
+    'k_scale': None,          # output magnitude for kNet
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm

@@ -194,18 +194,26 @@ class R0NetNoSOC(nn.Module):
             return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
     
 # ══════════════════════════════════════════════════════════
-#  kdot NETWORK
+#  k NETWORK (static)
 # ══════════════════════════════════════════════════════════════
 
-class kdotNet(nn.Module):
-    """(SOC, I, u) → kdot ≤ 0  [GN/(mm·s)].  Negative softplus, scaled.
+class kNet(nn.Module):
+    """(SOC, I, u) → k > 0  [GN/mm].  Algebraic — no integration.
 
-    Models monotonic stiffness decrease from initial k0 over discharge.
+    Predicts the instantaneous stiffness k(SOC, I, u).  The reaction force
+    follows directly as F_r = -k * u.
+
+    The reference k0 (initial elastic baseline from the data, e.g. -F(0)/u(0))
+    is stored as `self.k` so the swelling decomposition F_s = (k0 - k)*u and
+    plotting code can refer to it.  k0 is NOT used as an initial condition —
+    there is no longer any state to initialise.
     """
-    def __init__(self, n_hidden=32, k=53, kdot_scale=1e-4):
+    def __init__(self, n_hidden=32, k=53.0, k_scale=None):
         super().__init__()
-        self.k = k
-        self.kdot_scale = kdot_scale
+        self.k = float(k)                           # reference k0 from data
+        # If k_scale not given, default to k0 itself so softplus output ~ O(1)
+        # gives k values around k0.
+        self.k_scale = float(k_scale) if k_scale is not None else float(k)
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
@@ -214,8 +222,7 @@ class kdotNet(nn.Module):
 
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        # Negative kdot — k decreases from k0
-        return - nn.functional.softplus(self.net(x).squeeze(-1)) * self.kdot_scale
+        return self.net(x).squeeze(-1) * self.k_scale
 
 # ══════════════════════════════════════════════════════════
 #  BATCHED ECMM MODEL
@@ -238,9 +245,9 @@ class BatteryECMM(nn.Module):
         self.config    = config
         nh = config.get('n_hidden', 32)
 
-        # ── kdot network (always) ──
-        kdot_scale = config.get('kdot_scale', 1e-4)
-        self.kdot_net = kdotNet(n_hidden=nh, k=k, kdot_scale=kdot_scale)
+        # ── k network (always; static algebraic stiffness) ──
+        k_scale = config.get('k_scale', None)        # default = k0
+        self.k_net = kNet(n_hidden=nh, k=k, k_scale=k_scale)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -310,16 +317,11 @@ class BatteryECMM(nn.Module):
         u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
 
         # Parameters along the trajectory  (B, T_max)
-        R1   = self._R1(soc, I_norm, u_exp)
-        R0   = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
-        kdot = self.kdot_net(soc, I_norm, u_exp)
+        R1 = self._R1(soc, I_norm, u_exp)
+        R0 = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
 
-        # ── F is always dynamic: integrate k(t) via Euler ──
-        k_steps = [torch.full((B,), self.kdot_net.k)]   # k(0) = k0
-        dt = 1.0
-        for n in range(T_max - 1):
-            k_steps.append(k_steps[n] + kdot[:, n] * dt)
-        k = torch.stack(k_steps, dim=1)
+        # ── F branch (static): k is an algebraic function, no state ──
+        k = self.k_net(soc, I_norm, u_exp)              # (B, T_max)
 
         # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
@@ -344,7 +346,7 @@ class BatteryECMM(nn.Module):
         Fr = -k * u_exp
         # Fs = swelling-induced part beyond the elastic baseline (-k0·u),
         # so Fs_pred matches Fs_true_plot = F_data + k0·u
-        Fs = (self.kdot_net.k - k) * u_exp
+        Fs = (self.k_net.k - k) * u_exp
 
         return V, Fr, soc, U1, R1, Fs
 
@@ -385,27 +387,23 @@ class BatteryECMM(nn.Module):
         elif m == 'net_no_soc':
             R0 = self.R0_net(I_norm, u_exp)
 
-        kdot = self.kdot_net(soc, I_norm, u_exp)
+        # k is algebraic (static)
+        k = self.k_net(soc, I_norm, u_exp)              # (B, T)
 
         U1_steps = [torch.zeros(B)]
-        k_steps  = [torch.full((B,), self.kdot_net.k)]   # k(0) = k0
-        dt = 1.0
         for n in range(T - 1):
             C1_n = C1[:, n] if C1.ndim == 2 else C1
             # Semi-implicit Euler for U1
             U1_next = (U1_steps[n] + I_seq[:, n] / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
             U1_steps.append(U1_next)
-            k_steps.append(k_steps[n] + kdot[:, n] * dt)
-
         U1 = torch.stack(U1_steps, dim=1)
-        k  = torch.stack(k_steps,  dim=1)
 
         with torch.no_grad():
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
 
         V  = Ue - I_seq * R0 - U1
         Fr = -k * u_exp
-        Fs = (self.kdot_net.k - k) * u_exp
+        Fs = (self.k_net.k - k) * u_exp
 
         return V, Fr, soc, U1, R1, Fs
 
@@ -642,14 +640,14 @@ def train_staged(model, train_trajs, test_trajs,
 
     Stage 1  (static V):
         V = Ue − I·R0 − I·R1     (algebraic; no U1 dynamics)
-        F dynamic (k integrated via Euler)
-        Trains: r1_net, R0_net (if R0_mode is a net), kdot_net
+        F = -k(SOC, I, u) · u    (algebraic — no integration)
+        Trains: r1_net, R0_net (if R0_mode is a net), k_net
         Frozen: C1_net
 
     Stage 2  (dynamic V):
         V uses full Euler U1 integration with dU1/dt = I/C1 − U1/(R1·C1)
-        F dynamic (unchanged)
-        Trains: C1_net, kdot_net
+        F unchanged (still algebraic)
+        Trains: C1_net, k_net
         Frozen: r1_net, R0_net (if a net)
 
     on_stage1_done : optional callable(model, history) invoked between stages,
@@ -736,7 +734,7 @@ def predict_np(model, config, I_val, u_val, soc0, T,
     soc_t  = torch.from_numpy(soc)
     I_norm = torch.full((T,), I_val / model.I_ref)
     u_t    = torch.full((T,), u_val)
-    kdot   = model.kdot_net(soc_t, I_norm, u_t).numpy()
+    k      = model.k_net(soc_t, I_norm, u_t).numpy()
 
     if V_mode == 'static':
         C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
@@ -748,22 +746,22 @@ def predict_np(model, config, I_val, u_val, soc0, T,
     else:
         R0 = None  # plotting path uses R0_func directly when None
 
-    return V, soc, U1, R1, Fs, Fr, kdot, C1, R0
+    return V, soc, U1, R1, Fs, Fr, k, C1, R0
 
 
 def plot_predictions(model, config, trajs, time=False, noise=False,
                      noise_lvl=0.00, title='', n_show=3, V_mode='dynamic'):
     """Per-trajectory diagnostic grid.
 
-    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, Fs, k_dot)
-    V_mode='static'  → 6 rows (V, U1, R, Fr, Fs, k_dot)
+    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, Fs, k)
+    V_mode='static'  → 6 rows (V, U1, R, Fr, Fs, k)
                        — dU1/dt and C1 are omitted because they have no
                          meaning in Stage 1 (U1 is algebraic, C1 unused).
     """
     if V_mode == 'static':
-        rows = ['V', 'U1', 'R', 'Fr', 'Fs', 'kdot']
+        rows = ['V', 'U1', 'R', 'Fr', 'Fs', 'k']
     elif V_mode == 'dynamic':
-        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'Fs', 'kdot']
+        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'Fs', 'k']
     else:
         raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
@@ -771,11 +769,11 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
     n_rows = len(rows)
     fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
     model.eval()
-    k = model.kdot_net.k
+    k0 = model.k_net.k                      # scalar reference k0 from data
 
     for j in range(n):
         tr = trajs[j]
-        V, soc_np, U1, R1, Fs, Fr, kdot, C1, R0 = predict_np(
+        V, soc_np, U1, R1, Fs, Fr, k_pred, C1, R0 = predict_np(
             model, config, tr['I'], tr['u'], tr['soc0'], tr['T'],
             noise=noise, noise_lvl=noise_lvl, V_mode=V_mode)
 
@@ -827,17 +825,18 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
                 ax.set_ylabel(r'$F_r$ [GN]'); ax.legend()
 
             elif name == 'Fs':
-                Fs_true = tr['F'].numpy() + k * tr['u']
+                Fs_true = tr['F'].numpy() + k0 * tr['u']
                 ax.plot(x, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
                 ax.plot(x, Fs,      '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
                 ax.set_ylabel(r'$F_s$ [GN]'); ax.legend()
 
-            elif name == 'kdot':
-                k_true    = -tr['F'].numpy() / tr['u']
-                kdot_true = np.gradient(k_true, 1.0)
-                ax.plot(x, kdot_true, '--', color=COLORS[1], label=r'Empirical $\dot{k}$', lw=2, alpha=0.7)
-                ax.plot(x, kdot,      '-',  color=COLORS[0], label=r'Predicted $\dot{k}$', lw=2)
-                ax.set_ylabel(r'$\dot{k}$ [GN/(mm$\cdot$s)]'); ax.legend()
+            elif name == 'k':
+                # Empirical stiffness directly from the data: k_true = -F/u
+                k_true = -tr['F'].numpy() / tr['u']
+                ax.plot(x, k_true, '--', color=COLORS[1], label=r'Empirical $k = -F/u$', lw=2, alpha=0.7)
+                ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
+                ax.axhline(k0, color='0.6', ls=':', lw=1, label=fr'$k_0 = {k0:.1f}$')
+                ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
 
     # x-label + axis direction handled per-mode
     for ax in axes.flat:
@@ -902,24 +901,24 @@ def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
     soc_t = torch.from_numpy(soc.astype(np.float32))
     In_t  = torch.from_numpy((I_np / model.I_ref).astype(np.float32))
     u_t   = torch.from_numpy(u_np.astype(np.float32))
-    kdot  = model.kdot_net(soc_t, In_t, u_t).numpy()
+    k     = model.k_net(soc_t, In_t, u_t).numpy()
     C1_t  = model._C1(soc_t, In_t, u_t)
 
-    return V, soc, U1, R1, Fs, Fr, kdot, C1_t
+    return V, soc, U1, R1, Fs, Fr, k, C1_t
 
 def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3, spec=None):
 
     n = min(n_show, len(pulse_trajs))
     fig, axes = plt.subplots(9, n, figsize=(4.5 * n, 32), squeeze=False)
     model.eval()
-    k = model.kdot_net.k
+    k = model.k_net.k
 
     if not time and spec == None:
         for j in range(n):
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, kdot_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -973,9 +972,9 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             axes[7, j].plot(soc, Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
             axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
 
-            # Row 8: kdot
-            axes[8, j].plot(soc, kdot_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-            axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+            # Row 8: k
+            axes[8, j].plot(soc, k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+            axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
 
         for ax in axes.flat:
             if ax.get_xlabel() != 'Time [s]':
@@ -986,7 +985,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, kdot_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -1039,9 +1038,9 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
             axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
 
-            # Row 8: kdot
-            axes[8, j].plot(kdot_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-            axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+            # Row 8: k
+            axes[8, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+            axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
@@ -1051,7 +1050,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
         tr = pulse_trajs[n]
         T  = tr['T']
 
-        V, soc, U1, R1, Fs, Fr, kdot_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+        V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
         I_np = tr['I_seq'].numpy()
         u_np = np.full(T, tr['u'])
@@ -1104,9 +1103,9 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
         axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
         axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
 
-        # Row 8: kdot
-        axes[8, j].plot(kdot_pred, '-', color=COLORS[0], label=r'Predicted $k_s$', lw=2)
-        axes[8, j].set_ylabel(r'$k_s$ [GN]'); axes[8, j].legend()
+        # Row 8: k
+        axes[8, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+        axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
@@ -1149,7 +1148,7 @@ def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10, puls
     n = min(n_show, len(trajs))
 
     model.eval()
-    k = model.kdot_net.k
+    k = model.k_net.k
     noise_max = 0.1
     noise_lvls = np.linspace(0, noise_max, n)
     rmse_noise = np.zeros((n, len(noise_lvls))) # (traj, noise_lvl)
@@ -1373,7 +1372,7 @@ def plot_predicts(model, config, trajs, predict='R1', sort='C_rate'):
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 4))
     model.eval()
-    k = model.kdot_net.k
+    k = model.k_net.k
 
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
