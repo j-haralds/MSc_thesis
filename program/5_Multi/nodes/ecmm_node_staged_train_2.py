@@ -37,9 +37,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_staged_lib as _lib
+import ecmm_node_staged_lib_2 as _lib
 importlib.reload(_lib)
-from ecmm_node_staged_lib import *
+from ecmm_node_staged_lib_2 import *
 
 from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
@@ -124,9 +124,9 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 
 if USE_PULSE:
     print(f"\nLoading pulse data from {os.path.basename(PULSE_FILE)} ...")
-    pulse_data = pd.read_csv(PULSE_FILE, sep=';', comment='%')
-    if 'eta' in pulse_data.columns:
-        pulse_data['eta'] = -pulse_data['eta']
+    pulse_data = pd.read_csv(PULSE_FILE, sep=',', comment='%')
+    # if 'eta' in pulse_data.columns:
+    pulse_data['eta'] = -pulse_data['eta']
     pulse_trajs = prepare_pulse_data(pulse_data)
     split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
     pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
@@ -251,22 +251,22 @@ if SAVE_FIGS:
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
-#  PREDICTIONS — PULSE TEST (only if pulse data was used in Stage 2)
+#  PREDICTIONS — PULSE TEST 
 # ══════════════════════════════════════════════════════════════
 
-if USE_PULSE and pulse_test:
-    plot_predictions_pulse(model, pulse_test, time=False, title='Pulse test: ',
-                           n_show=min(3, len(pulse_test)))
-    if SAVE_FIGS:
-        plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}.pdf'),
-                    bbox_inches='tight')
-    plt.show()
 
-    # Numeric RMSE summary across the pulse test set
-    rmses = rmse_pulse(model, pulse_test)
-    print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
-          f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
-          f"({len(rmses)} trajs)")
+plot_predictions_pulse(model, pulse_test, time=True, title='Pulse test: ',
+                        n_show=min(3, len(pulse_test)))
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}.pdf'),
+                bbox_inches='tight')
+plt.show()
+
+# Numeric RMSE summary across the pulse test set
+rmses = rmse_pulse(model, pulse_test)
+print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
+        f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
+        f"({len(rmses)} trajs)")
 
 # %% ══════════════════════════════════════════════════════════
 #  SAVE
