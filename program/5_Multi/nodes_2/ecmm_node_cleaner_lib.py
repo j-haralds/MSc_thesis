@@ -84,6 +84,7 @@ class C1Net(nn.Module):
 
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        # C1 initialized around softplus(0) = ln(1 + e^0) = ln(2) = 0.693.  0.693 × 2000 = 1386 F
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000      # [F]
 
 class C1NetConstrained(nn.Module):
@@ -222,11 +223,12 @@ class BatteryECMM(nn.Module):
         else:
             raise ValueError(f"I_batch must be 1D or 2D, got shape {tuple(I_batch.shape)}")
 
-        # ── SOC integration (cumsum form works for both CC and pulse) ──
+        # ── SOC integration ──
         # We want soc[:, 0] = soc0, soc[:, n] = soc0 + sum_{k<n} dsoc[k]
         # cumsum gives sum_{k≤n}; subtract dsoc[:, :1] to shift the index.
+        # soc[:, 0] = soc0_batch + dsoc[:,0] - dsoc[:,0] = soc0_batch
         dsoc = -I_seq / self.Q0
-        soc  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]
+        soc  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
 
         I_norm = I_seq / self.I_ref
         u_exp  = u_batch.unsqueeze(1).expand(B, T)
