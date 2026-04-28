@@ -50,8 +50,8 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 # ════════════════════════════════════════════════════════════
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
-PULSE_FILE  = os.path.join(DATA_DIR, 'data_pulse1.txt')
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/2_merged_data.txt')
+PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/data_pulse1.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
