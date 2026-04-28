@@ -763,7 +763,7 @@ def train_staged(model, train_trajs, test_trajs,
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
-    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''}, k_net frozen)")
+    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''})")
     opt2 = torch.optim.Adam(s2_params, lr=lr_dynamic)
     sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=40, factor=0.5)
     _train_inner(model, s2_train, s2_test,
@@ -788,7 +788,7 @@ def train_staged(model, train_trajs, test_trajs,
                       if not any(kw in name for kw in freeze_kw_b)]
         n_s2b = sum(p.numel() for p in s2b_params)
         print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen; "
-              f"{'R0_net, ' if hasattr(model,'R0_net') else ''}k_net still frozen)")
+              f"{'R0_net, ' if hasattr(model,'R0_net') else ''}k_net frozen)")
         opt2b = torch.optim.Adam(s2b_params, lr=lr_b)
         sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=40, factor=0.5)
         _train_inner(model, s2_train, s2_test,

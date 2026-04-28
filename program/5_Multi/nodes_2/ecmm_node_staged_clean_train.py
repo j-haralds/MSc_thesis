@@ -1,20 +1,6 @@
 # %% ══════════════════════════════════════════════════════════
 #  BATTERY ECM + EMM NODE — with kdot=NN
 # ══════════════════════════════════════════════════════════════
-#
-#  Same physics as the original, but with batched training:
-#  all trajectories (padded to equal length) are integrated
-#  simultaneously, giving ~5-10× speedup on CPU.
-#
-#  Physics:
-#      SOC(t)  = SOC0 − I·t/Q0                     (analytical)
-#      U1(0)   = 0
-#      U1(n+1) = U1(n) + I/C1 − U1(n)/(R1(n)·C1)  (Euler, dt=1s)
-#      V(n)    = Ue(SOC(n)) − I·R0 − U1(n)
-#
-#  Learned:  R1Net(SOC, I, u) → R1 > 0   (small feedforward NN)
-#            C1                            (one scalar)
-#  Known:    Ue(SOC) from data,  R0(u, I) fitted function
 
 import os
 import sys
@@ -60,12 +46,12 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 50     # Stage 1 : V static, train R1 (+R0 if net), kdot
-EPOCHS_DYNAMIC    = 10       # Stage 2 : V dynamic, train C1 only (R1 frozen)
-EPOCHS_UNFREEZE   = 10       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_STATIC     = 50     # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 5       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 1       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
-LR_UNFREEZE       = 5e-4    # smaller LR once R1 is being refined
+LR_UNFREEZE       = 1e-3    # smaller LR once R1 is being refined
 BATCH_SIZE        = 1       # Trajectories per batch
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
@@ -74,9 +60,8 @@ USE_PULSE         = True
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net' 
-    'R0_mode': 'func',           # 'net', 'func', 'net_no_soc', 'param'
+    'R0_mode': 'func',           # 'func'
     'n_hidden': N_HIDDEN,
-    'k_scale': None,          # output magnitude for kNet
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
@@ -91,7 +76,7 @@ CONFIG = {
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
-data['eta'] = -data['eta']
+data['eta'] = -data['eta']      # TODO: remove for new data
 I_MAX = data['I'].max()
 
 # TODO: Replace with existing GP 
@@ -99,6 +84,7 @@ _s, _u = data['soc'].values, data['Ue'].values
 _i = np.argsort(_s)
 Ue_interp = interp1d(_s[_i], _u[_i], kind='linear', fill_value='extrapolate')
 
+# TODO: Remove
 F_first = data.groupby('u')['F'].first()
 FORCE_CONST = abs(F_first / data.groupby('u')['u'].first()).values[0]  # GN/mm
 print(f'Force constant: {100 * FORCE_CONST:.2f} GN/mm')
@@ -122,24 +108,21 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 #  PREPARE PULSE TRAJECTORIES  (for Stage 2 / 2b)
 # ══════════════════════════════════════════════════════════════
 
-if USE_PULSE:
-    print(f"\nLoading pulse data from {os.path.basename(PULSE_FILE)} ...")
-    pulse_data = pd.read_csv(PULSE_FILE, sep=',', comment='%')
-    # if 'eta' in pulse_data.columns:
-    pulse_data['eta'] = -pulse_data['eta']
-    pulse_trajs = prepare_pulse_data(pulse_data)
-    split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
-    pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
-    print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
-          f"(T per traj: {pulse_trajs[0]['T']})")
-else:
-    pulse_train, pulse_test = None, None
+# print(f"\nLoading pulse data from {os.path.basename(PULSE_FILE)} ...")
+pulse_data = pd.read_csv(PULSE_FILE, sep=',', comment='%')
+pulse_data['eta'] = -pulse_data['eta']      # TODO: remove for new data
+pulse_trajs = prepare_pulse_data(pulse_data)
+split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
+pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
+print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
+        f"(T per traj: {pulse_trajs[0]['T']})")
+
 
 # %% ══════════════════════════════════════════════════════════
 #  BUILD MODEL
 # ══════════════════════════════════════════════════════════════
 
-model  = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0, C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
+model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0, C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
 
 n_params = sum(p.numel() for p in model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -182,13 +165,6 @@ TOTAL_TIME = history['time']
 print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 print(f"  C1: {C1_init:.0f} → {C1_final:.0f} F")
 
-# %% ══════════════════════════════════════════════════════════
-#  PREDICTIONS — TRAIN
-# ══════════════════════════════════════════════════════════════
-
-# plot_predictions(model, CONFIG, train_trajs, 'Train: ')
-# # plt.savefig('nodes_figs/ecm_node_train.pdf', bbox_inches='tight')
-# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — TEST
@@ -201,12 +177,12 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'kdot_staged_{CONFIG["R0_mode"]}R0_{constr}'
+SAVE_NAME = (f'staged_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{"pulse" if USE_PULSE else "CC"}'
              f'_{TOTAL_TIME:.2f}min_{BATCH_SIZE}b_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
              f'{f"_S2b{EPOCHS_UNFREEZE}" if EPOCHS_UNFREEZE > 0 else ""}'
-             f'eps_{TIMESTAMP}')
+             f'eps')
 print(SAVE_NAME)
 
 plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
@@ -229,6 +205,7 @@ plt.show()
 # PLOT PARAMS
 # ═════════════════════════════════════════════════════════════
 
+# TODO: switch param to element
 plot_param(model, trajs, param='R0')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
@@ -241,7 +218,9 @@ if SAVE_FIGS:
 plot_param(model, trajs, param='k')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='Fu')
+plt.show()
+
+plot_force(model, trajs)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
@@ -293,19 +272,3 @@ if SAVE_MODELS:
     }, os.path.join(MODEL_DIR, f'ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt'))
 
     print(f"Saved: ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt")
-# %% ══════════════════════════════════════════════════════════
-#  EXTRACT ECM PARAMETERS
-# ══════════════════════════════════════════════════════════════
-
-# soc_pts = [0.95, 0.80, 0.50, 0.20, 0.10, 0.05]
-# ecm = extract_ecm_params(model, soc_pts, I_val=11.0, u_val=-0.06)
-
-# print(f"ECM parameters at I=11A:")
-# print(f"  C1 = {ecm['C1']:.0f} F")
-# print(f"  {'SOC':>5s}  {'R0 mΩ':>7s}  {'R1 mΩ':>7s}  "
-#       f"{'τ s':>7s}  {'U1ss V':>7s}")
-# for i, s in enumerate(soc_pts):
-#     print(f"  {s:5.2f}  {ecm['R0'][i]*1e3:7.2f}  "
-#           f"{ecm['R1'][i]*1e3:7.2f}  {ecm['tau'][i]:7.0f}  "
-#           f"{ecm['U1_ss'][i]:7.4f}")
-# %%

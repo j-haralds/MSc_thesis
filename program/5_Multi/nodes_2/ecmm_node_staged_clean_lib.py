@@ -1,20 +1,7 @@
 
-#  Same physics as the original, but with batched training:
-#  all trajectories (padded to equal length) are integrated
-#  simultaneously, giving ~5-10× speedup on CPU.
-#
-#  Physics:
-#      SOC(t)  = SOC0 − I·t/Q0                     (analytical)
-#      U1(0)   = 0
-#      U1(n+1) = U1(n) + I/C1 − U1(n)/(R1(n)·C1)  (Euler, dt=1s)
-#      V(n)    = Ue(SOC(n)) − I·R0 − U1(n)
-#
-#  Learned:  R1Net(SOC, I, u) → R1 > 0   (small feedforward NN)
-#            C1                            (one scalar)
-#  Known:    Ue(SOC) from data,  R0(u, I) fitted function
-
 import os
 import sys
+from xml.parsers.expat import model
 
 import torch
 import torch.nn as nn
@@ -34,17 +21,17 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
-DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
-FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
-MODEL_DIR   = os.path.join(FILE_PATH, 'models')
+# DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
+# DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+# FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
+# MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 
-Q0          = 17921.57581
-TRAIN_SPLIT = 0.8
-N_HIDDEN    = 32
-EPOCHS      = 2
-LR          = 1e-3
-BATCH_SIZE  = 1        # Trajectories per batch
+# Q0          = 17921.57581
+# TRAIN_SPLIT = 0.8
+# N_HIDDEN    = 32
+# EPOCHS      = 2
+# LR          = 1e-3
+# BATCH_SIZE  = 1        # Trajectories per batch
 
 
 # ══════════════════════════════════════════════════════════
@@ -63,9 +50,9 @@ class R1Net(nn.Module):
         )
 
     def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+        # scale output to typical R1 range (mOhm·m)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01  # if softplus = 1, out = 10 [mOhm * m]
     
 class R1NetConstrained(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
@@ -102,9 +89,8 @@ class C1Net(nn.Module):
         )
 
     def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000      # [F]
 
 class C1NetConstrained(nn.Module):
     """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output, linear constraint."""
@@ -126,94 +112,22 @@ class C1NetConstrained(nn.Module):
         return self.C1_min + s * (self.C1_max - self.C1_min)
 
 # ══════════════════════════════════════════════════════════
-#  R0 NETWORK
+#  R0
 # ══════════════════════════════════════════════════════════════
-
-class R0Net(nn.Module):
-    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=20.0):
-        super().__init__()
-        self.I_ref = I_ref
-        self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1),
-        )
-
-    def forward(self, soc, I_norm, u):
-        # Works for any shape — just needs matching last dims
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
-    
-class R0NetConstrained(nn.Module):
-    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, config, n_hidden=32, I_ref=20.0):
-        super().__init__()
-        self.I_ref = I_ref
-        self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1),
-        )
-        self.R0_min = config.get('R0_min')
-        self.R0_max = config.get('R0_max')
-        print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
-
-    def forward(self, soc, I_norm, u):
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
-        return self.R0_min + s * (self.R0_max - self.R0_min)
 
 def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
-class R0NetNoSOC(nn.Module):
-    """(I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, config, n_hidden=32, I_ref=20.0):
-        super().__init__()
-        self.I_ref = I_ref
-        self.config = config
-        self.net = nn.Sequential(
-            nn.Linear(2, n_hidden),
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1),
-        )
-        self.R0_min = config.get('R0_min')
-        self.R0_max = config.get('R0_max')
-        if config.get('R0_constrained', 'false') == 'true':
-            print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
-        else:
-            print('R0 unconstrained')
-
-    def forward(self, I_norm, u):
-        x = torch.stack([I_norm, u], dim=-1)   # (..., 2)
-        if self.config.get('R0_constrained', 'false') == 'true':
-            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
-            return self.R0_min + s * (self.R0_max - self.R0_min)
-        else:
-            return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
-    
 # ══════════════════════════════════════════════════════════
 #  k NETWORK (static)
 # ══════════════════════════════════════════════════════════════
 
 class kNet(nn.Module):
     """(SOC, I, u) → k > 0  [GN/mm].  Algebraic — no integration.
-
-    Predicts the instantaneous stiffness k(SOC, I, u).  The reaction force
-    follows directly as F_r = -k * u.
-
-    The reference k0 (initial elastic baseline from the data, e.g. -F(0)/u(0))
-    is stored as `self.k` so the swelling decomposition F_s = (k0 - k)*u and
-    plotting code can refer to it.  k0 is NOT used as an initial condition —
-    there is no longer any state to initialise.
     """
-    def __init__(self, n_hidden=32, k=53.0, k_scale=None):
+    def __init__(self, n_hidden=32, k=53.0):
         super().__init__()
         self.k = float(k)                           # reference k0 from data
-        # If k_scale not given, default to k0 itself so softplus output ~ O(1)
-        # gives k values around k0.
-        self.k_scale = float(k_scale) if k_scale is not None else float(k)
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
@@ -222,7 +136,7 @@ class kNet(nn.Module):
 
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
-        return self.net(x).squeeze(-1) * self.k_scale
+        return self.net(x).squeeze(-1)
 
 # ══════════════════════════════════════════════════════════
 #  BATCHED ECMM MODEL
@@ -236,7 +150,7 @@ class BatteryECMM(nn.Module):
     The Euler loop steps ALL trajectories simultaneously at each
     timestep — no per-trajectory Python loop.
     """
-    def __init__(self, config, Ue_interp, R0_func, Q0, C1_init=1500.0, I_ref=20.0, k=53.0):
+    def __init__(self, config, Ue_interp, R0_func, Q0, I_ref=20.0, k=53.0):
         super().__init__()
         self.Ue_interp = Ue_interp
         self.Q0        = Q0
@@ -246,8 +160,7 @@ class BatteryECMM(nn.Module):
         nh = config.get('n_hidden', 32)
 
         # ── k network (always; static algebraic stiffness) ──
-        k_scale = config.get('k_scale', None)        # default = k0
-        self.k_net = kNet(n_hidden=nh, k=k, k_scale=k_scale)
+        self.k_net = kNet(n_hidden=nh, k=k)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -264,21 +177,7 @@ class BatteryECMM(nn.Module):
             self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
 
         # ── R0 — multiple modes still supported ──
-        m = config['R0_mode']
-        if m == 'net':
-            if config.get('R0_constrained', 'false') == 'true':
-                self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
-            else:
-                print('R0 unconstrained')
-                self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
-        elif m == 'func':
-            self.R0_func = R0_func
-        elif m == 'param':
-            self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))
-        elif m == 'net_no_soc':
-            self.R0_net = R0NetNoSOC(config, n_hidden=nh, I_ref=I_ref)
-        else:
-            raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
+        self.R0_func = R0_func
 
     # ── Dispatchers ──
     def _R1(self, soc, I_norm, u):
@@ -290,17 +189,13 @@ class BatteryECMM(nn.Module):
     def _R0(self, soc, I_norm, u, I_batch, u_batch):
         """Returns R0 broadcastable to (B, T)."""
         m = self.config['R0_mode']
-        if m == 'net':
-            return self.R0_net(soc, I_norm, u)
-        if m == 'param':
-            return torch.exp(self.log_R0).expand_as(soc)
         if m == 'func':
             B = I_batch.shape[0]
             return torch.tensor(
                 [self.R0_func(u_batch[b].item(), I_batch[b].item()) for b in range(B)],
                 dtype=torch.float32).unsqueeze(1)
-        if m == 'net_no_soc':
-            return self.R0_net(I_norm, u)
+        # if m == 'net_no_soc':
+        #     return self.R0_net(I_norm, u)
 
     def forward(self, I_batch, u_batch, soc0_batch, T_max, V_mode='dynamic'):
         """
@@ -310,6 +205,9 @@ class BatteryECMM(nn.Module):
                              C1 plays no role during Stage 1 training.
         F is dynamic in both modes (k integrated via Euler).
         """
+
+        # TODO: Integrate SOC
+        # TODO: Use stop ccondition instead of fixed T_max
         B = I_batch.shape[0]
         t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)
         soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
@@ -333,7 +231,8 @@ class BatteryECMM(nn.Module):
             for n in range(T_max - 1):
                 C1_n = C1[:, n] if C1.ndim == 2 else C1
                 # Semi-implicit Euler — unconditionally stable
-                U1_next = (U1_steps[n] + I_batch / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+                dt = 1.0
+                U1_next = (U1_steps[n] + dt * I_batch / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
         else:
@@ -344,21 +243,18 @@ class BatteryECMM(nn.Module):
 
         V  = Ue - I_batch.unsqueeze(1) * R0 - U1
         Fr = -k * u_exp
-        # Fs = swelling-induced part beyond the elastic baseline (-k0·u),
-        # so Fs_pred matches Fs_true_plot = F_data + k0·u
-        Fs = (self.k_net.k - k) * u_exp
 
-        return V, Fr, soc, U1, R1, Fs
+        return V, Fr, soc, U1, R1
 
     # Keep single-trajectory forward for inference / plotting
     def forward_single(self, I_val, u_val, soc0_val, T):
-        """Convenience wrapper matching the original forward() signature."""
         I_b    = torch.tensor([I_val], dtype=torch.float32)
         u_b    = torch.tensor([u_val], dtype=torch.float32)
         soc0_b = torch.tensor([soc0_val], dtype=torch.float32)
-        V, Fr, soc, U1, R1, Fs = self.forward(I_b, u_b, soc0_b, T)
-        return V[0], Fr[0], soc[0], U1[0], R1[0], Fs[0]
+        V, Fr, soc, U1, R1 = self.forward(I_b, u_b, soc0_b, T)
+        return V[0], Fr[0], soc[0], U1[0], R1[0]
     
+    # TODO: Merge with forward
     def forward_pulse(self, I_seq, u_batch, soc0_batch):
         """
         I_seq      : (B, T) — current per trajectory per timestep
@@ -377,15 +273,16 @@ class BatteryECMM(nn.Module):
         R1 = self._R1(soc, I_norm, u_exp)
         C1 = self._C1(soc, I_norm, u_exp)
 
-        m = self.config['R0_mode']
-        if m == 'net':
-            R0 = self.R0_net(soc, I_norm, u_exp)
-        elif m == 'param':
-            R0 = torch.exp(self.log_R0).expand_as(soc)
-        elif m == 'func':
-            R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
-        elif m == 'net_no_soc':
-            R0 = self.R0_net(I_norm, u_exp)
+        # m = self.config['R0_mode']
+        # if m == 'net':
+        #     R0 = self.R0_net(soc, I_norm, u_exp)
+        # elif m == 'param':
+        #     R0 = torch.exp(self.log_R0).expand_as(soc)
+        # elif m == 'func':
+        #     R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
+        # elif m == 'net_no_soc':
+        #     R0 = self.R0_net(I_norm, u_exp)
+        R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
 
         # k is algebraic (static)
         k = self.k_net(soc, I_norm, u_exp)              # (B, T)
@@ -394,7 +291,8 @@ class BatteryECMM(nn.Module):
         for n in range(T - 1):
             C1_n = C1[:, n] if C1.ndim == 2 else C1
             # Semi-implicit Euler for U1
-            U1_next = (U1_steps[n] + I_seq[:, n] / C1_n) / (1.0 + 1.0 / (R1[:, n] * C1_n))
+            dt = 1.0
+            U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
             U1_steps.append(U1_next)
         U1 = torch.stack(U1_steps, dim=1)
 
@@ -403,9 +301,8 @@ class BatteryECMM(nn.Module):
 
         V  = Ue - I_seq * R0 - U1
         Fr = -k * u_exp
-        Fs = (self.k_net.k - k) * u_exp
 
-        return V, Fr, soc, U1, R1, Fs
+        return V, Fr, soc, U1, R1
 
 def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06,
            soc=None, I_norm=None, u_exp=None):
@@ -464,17 +361,17 @@ def prepare_pulse_data(pulse_raw):
     return pulse_trajs
 
 
-def estimate_C1(trajs):
-    ests = []
-    for tr in trajs:
-        U1 = tr['U1_true'].numpy()
-        U1_ss = np.mean(U1[-max(20, len(U1)//20):])
-        R1_ss = U1_ss / tr['I'] if tr['I'] > 0 else np.nan
-        target = 0.632 * U1_ss
-        idx = np.argmax(U1 > target)
-        if idx > 0 and R1_ss > 1e-6:
-            ests.append(idx / R1_ss)
-    return float(np.median(ests)) if ests else 30000.0
+# def estimate_C1(trajs):
+#     ests = []
+#     for tr in trajs:
+#         U1 = tr['U1_true'].numpy()
+#         U1_ss = np.mean(U1[-max(20, len(U1)//20):])
+#         R1_ss = U1_ss / tr['I'] if tr['I'] > 0 else np.nan
+#         target = 0.632 * U1_ss
+#         idx = np.argmax(U1 > target)
+#         if idx > 0 and R1_ss > 1e-6:
+#             ests.append(idx / R1_ss)
+#     return float(np.median(ests)) if ests else 30000.0
 
 # ══════════════════════════════════════════════════════════
 #  BATCH COLLATION
@@ -548,9 +445,6 @@ def collate_batch_pulse(trajs):
 
     return I_seq_batch, u_batch, soc0_batch, V_batch, Fr_batch, mask, T_max
 
-# ══════════════════════════════════════════════════════════
-#  TRAINING FUNCTION  (batched)
-# ══════════════════════════════════════════════════════════════
 
 # ══════════════════════════════════════════════════════════
 #  TRAINING FUNCTIONS  (batched, with staged option)
@@ -580,7 +474,7 @@ def _train_inner(model, train_trajs, test_trajs,
     """
     if history is None:
         history = _empty_history()
-    epoch_offset = len(history['train'])
+
     t0 = _time.time()
 
     for epoch in range(1, n_epochs + 1):
@@ -597,10 +491,10 @@ def _train_inner(model, train_trajs, test_trajs,
             optimizer.zero_grad()
             if pulse:
                 I_seq_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch_pulse(batch)
-                V_pred, Fr_pred, _, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
+                V_pred, Fr_pred, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
             else:
                 I_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch(batch)
-                V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T_max, V_mode=V_mode)
+                V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max, V_mode=V_mode)
 
             sq_err_V  = (V_pred  - V_true ) ** 2
             sq_err_Fr = (Fr_pred - Fr_true) ** 2
@@ -643,12 +537,12 @@ def _train_inner(model, train_trajs, test_trajs,
                     I_seq_b = tr['I_seq'].unsqueeze(0)
                     u_b     = torch.tensor([tr['u']],    dtype=torch.float32)
                     soc0_b  = torch.tensor([tr['soc0']], dtype=torch.float32)
-                    V_pred, _, _, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
+                    V_pred, _, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
                 else:
                     I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
                     u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
                     soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
-                    V_pred, _, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'], V_mode=V_mode)
+                    V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'], V_mode=V_mode)
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2).item()
             test_mse /= len(test_trajs)
             test_rmse = float(np.sqrt(test_mse))
@@ -788,7 +682,7 @@ def train_staged(model, train_trajs, test_trajs,
                       if not any(kw in name for kw in freeze_kw_b)]
         n_s2b = sum(p.numel() for p in s2b_params)
         print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen; "
-              f"{'R0_net, ' if hasattr(model,'R0_net') else ''}k_net still frozen)")
+              f"{'R0_net, ' if hasattr(model,'R0_net') else ''}k_net frozen)")
         opt2b = torch.optim.Adam(s2b_params, lr=lr_b)
         sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=40, factor=0.5)
         _train_inner(model, s2_train, s2_test,
@@ -799,22 +693,12 @@ def train_staged(model, train_trajs, test_trajs,
 
     return history
 
+
+
 # ══════════════════════════════════════════════════════════
 #  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
 # ══════════════════════════════════════════════════════════════
 
-def gen_noise(i,u,noise_lvl = 0.):
-    C_to_I = 4.72930472709413 / 1.9
-    u_par_to_u = 2.587185069984447 / 18.0
-    I_max = 5.0 * C_to_I
-    u_max = 30. * u_par_to_u
-
-    I_noise_std = noise_lvl * I_max
-    u_noise_std = noise_lvl * u_max
-    i_noise = torch.normal(0, I_noise_std, size=i.shape)
-    u_noise = torch.normal(0, u_noise_std, size=u.shape)
-    print(i_noise, u_noise)
-    return i_noise, u_noise
 
 
 @torch.no_grad()
@@ -829,15 +713,11 @@ def predict_np(model, config, I_val, u_val, soc0, T,
     u_b    = torch.tensor([u_val],  dtype=torch.float32)
     soc0_b = torch.tensor([soc0],   dtype=torch.float32)
 
-    if noise:
-        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl=noise_lvl)
-        I_b += i_noise
-        u_b += u_noise
 
-    V, Fr, soc, U1, R1, Fs = model(I_b, u_b, soc0_b, T, V_mode=V_mode)
+    V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T, V_mode=V_mode)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy();  Fs = Fs[0].numpy()
+    R1  = R1[0].numpy();
 
     soc_t  = torch.from_numpy(soc)
     I_norm = torch.full((T,), I_val / model.I_ref)
@@ -854,22 +734,22 @@ def predict_np(model, config, I_val, u_val, soc0, T,
     else:
         R0 = None  # plotting path uses R0_func directly when None
 
-    return V, soc, U1, R1, Fs, Fr, k, C1, R0
+    return V, soc, U1, R1, Fr, k, C1, R0
 
 
 def plot_predictions(model, config, trajs, time=False, noise=False,
                      noise_lvl=0.00, title='', n_show=3, V_mode='dynamic'):
     """Per-trajectory diagnostic grid.
 
-    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, Fs, k)
-    V_mode='static'  → 6 rows (V, U1, R, Fr, Fs, k)
+    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, k)
+    V_mode='static'  → 6 rows (V, U1, R, Fr, k)
                        — dU1/dt and C1 are omitted because they have no
                          meaning in Stage 1 (U1 is algebraic, C1 unused).
     """
     if V_mode == 'static':
-        rows = ['V', 'U1', 'R', 'Fr', 'Fs', 'k']
+        rows = ['V', 'U1', 'R', 'Fr', 'k']
     elif V_mode == 'dynamic':
-        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'Fs', 'k']
+        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'k']
     else:
         raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
@@ -881,7 +761,7 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
 
     for j in range(n):
         tr = trajs[j]
-        V, soc_np, U1, R1, Fs, Fr, k_pred, C1, R0 = predict_np(
+        V, soc_np, U1, R1, Fr, k_pred, C1, R0 = predict_np(
             model, config, tr['I'], tr['u'], tr['soc0'], tr['T'],
             noise=noise, noise_lvl=noise_lvl, V_mode=V_mode)
 
@@ -931,12 +811,6 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
                 ax.plot(x, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
                 ax.plot(x, Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
                 ax.set_ylabel(r'$F_r$ [GN]'); ax.legend()
-
-            elif name == 'Fs':
-                Fs_true = tr['F'].numpy() + k0 * tr['u']
-                ax.plot(x, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-                ax.plot(x, Fs,      '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-                ax.set_ylabel(r'$F_s$ [GN]'); ax.legend()
 
             elif name == 'k':
                 # Empirical stiffness directly from the data: k_true = -F/u
@@ -1005,14 +879,11 @@ def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
     I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
     u_b    = torch.tensor([u],    dtype=torch.float32)
     soc0_b = torch.tensor([soc0], dtype=torch.float32)
-    if noise: 
-        i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl = noise_lvl)
-        I_b += i_noise
-        u_b += u_noise
-    V, Fr, soc, U1, R1, Fs = model.forward_pulse(I_b, u_b, soc0_b)
+
+    V, Fr, soc, U1, R1 = model.forward_pulse(I_b, u_b, soc0_b)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy();  Fs = Fs[0].numpy()
+    R1  = R1[0].numpy(); 
 
     I_np = I_b[0].numpy()
     u_np = np.full(T, u)
@@ -1022,12 +893,12 @@ def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
     k     = model.k_net(soc_t, In_t, u_t).numpy()
     C1_t  = model._C1(soc_t, In_t, u_t)
 
-    return V, soc, U1, R1, Fs, Fr, k, C1_t
+    return V, soc, U1, R1, Fr, k, C1_t
 
 def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3, spec=None):
 
     n = min(n_show, len(pulse_trajs))
-    fig, axes = plt.subplots(9, n, figsize=(4.5 * n, 32), squeeze=False)
+    fig, axes = plt.subplots(8, n, figsize=(4.5 * n, 32), squeeze=False)
     model.eval()
     k = model.k_net.k
 
@@ -1036,7 +907,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
@@ -1083,16 +954,9 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             axes[6, j].plot(soc, Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
             axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
 
-            # Row 7: Fs
-            Fs_true = tr['F'].numpy() + k * tr['u']
-            Fs_plot = Fs 
-            axes[7, j].plot(soc, Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-            axes[7, j].plot(soc, Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-            axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
-
-            # Row 8: k
-            axes[8, j].plot(soc, k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-            axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
+            # Row 7: k
+            axes[7, j].plot(soc, k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+            axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
 
         for ax in axes.flat:
             if ax.get_xlabel() != 'Time [s]':
@@ -1103,12 +967,11 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             tr = pulse_trajs[j]
             T  = tr['T']
 
-            V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+            V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
             I_np = tr['I_seq'].numpy()
             u_np = np.full(T, tr['u'])
 
-            # TODO: Switch to R0 from config
             R0_np = R0_func(u_np, I_np)
             Ue_np = model.Ue_interp(soc)
             U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
@@ -1149,16 +1012,10 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
             axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
             axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
 
-            # Row 7: Fs
-            Fs_true = tr['F'].numpy() + k * tr['u']
-            Fs_plot = Fs 
-            axes[7, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-            axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-            axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
 
-            # Row 8: k
-            axes[8, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-            axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
+            # Row 7: k
+            axes[7, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+            axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
@@ -1168,7 +1025,7 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
         tr = pulse_trajs[n]
         T  = tr['T']
 
-        V, soc, U1, R1, Fs, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+        V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
 
         I_np = tr['I_seq'].numpy()
         u_np = np.full(T, tr['u'])
@@ -1214,16 +1071,10 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
         axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
         axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
 
-        # Row 7: Fs
-        Fs_true = tr['F'].numpy() + k * tr['u']
-        Fs_plot = Fs 
-        axes[7, j].plot(Fs_true, '--', color=COLORS[1], label=r'True $F_s$', lw=2)
-        axes[7, j].plot(Fs_plot, '-',  color=COLORS[0], label=r'Predicted $F_s$', lw=2)
-        axes[7, j].set_ylabel(r'$F_s$ [GN]'); axes[7, j].legend()
 
-        # Row 8: k
-        axes[8, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-        axes[8, j].set_ylabel(r'$k$ [GN/mm]'); axes[8, j].legend()
+        # Row 7: k
+        axes[7, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
+        axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
 
         for ax in axes.flat:
             ax.set_xlabel('Time [s]')
@@ -1231,94 +1082,6 @@ def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lv
 
     fig.tight_layout()
     return fig
-
-
-
-
-def plot_noisy_inputs(trajs, noise_lvl = 0.00):
-    tr    = trajs[0]
-    I_val = tr['I']
-    u_val = tr['u']
-    N = 1000  # number of samples
-
-    I_b = torch.full((N,), I_val, dtype=torch.float32)
-    u_b = torch.full((N,), u_val, dtype=torch.float32)
-
-    i_noise, u_noise = gen_noise(I_b, u_b, noise_lvl=noise_lvl)
-    I_plot = I_b + i_noise
-    u_plot = u_b + u_noise
-    f, ax = plt.subplots(1, 2, figsize=(10, 4))
-    ax[0].hist(I_plot.numpy(), bins=20, color=COLORS[0], alpha=0.7, edgecolor='black')
-    ax[0].axvline(I_val, color=COLORS[0], ls='--', label='True I', lw=2)
-    ax[0].legend()
-    ax[0].set_xlabel('Current [A]')
-    ax[0].set_ylabel('Frequency')
-    ax[1].hist(u_plot.numpy() * 10, bins=20, color=COLORS[1], alpha=0.7, edgecolor='black')
-    ax[1].axvline(u_val * 10, color=COLORS[1], ls='--', label='True u', lw=2)
-    ax[1].legend()
-    ax[1].set_xlabel('Displacement [µm]')
-    ax[1].set_ylabel('Frequency')
-    plt.tight_layout()
-    return f
-
-
-def plot_noisy_preds(model, config, trajs, time=False, title='', n_show=10, pulse = False):
-    n = min(n_show, len(trajs))
-
-    model.eval()
-    k = model.k_net.k
-    noise_max = 0.1
-    noise_lvls = np.linspace(0, noise_max, n)
-    rmse_noise = np.zeros((n, len(noise_lvls))) # (traj, noise_lvl)
-    if not time:
-        for j in trange(n):
-            tr = trajs[j]
-            for i, noise_lvl in enumerate(noise_lvls):
-                if pulse:
-                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
-                else:
-                    V, soc_np, U1, R1, Fs, Fr, ks, C1 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'], noise = True, noise_lvl = noise_lvl)
-                rmse_noise[j,i] = np.sqrt(np.mean((V - tr['V'])**2))
-
-    std_noise = rmse_noise.std(axis=0)
-    mean_noise = rmse_noise.mean(axis=0)
-    min_noise = mean_noise - std_noise
-    max_noise = mean_noise + std_noise
-    f,ax = plt.subplots(1,2, figsize=(8,4))
-
-    ax[0].plot(np.unique(noise_lvls)*100, mean_noise,color = COLORS[0], label='Mean RMSE', lw = 3, ls = '--')
-    
-    ax[0].fill_between(np.unique(noise_lvls)*100, min_noise, max_noise, color=COLORS[0], alpha=0.3, label=r'Mean $\pm\sigma$')
-    ax[0].set_xlabel(r'Noise level [\%]')
-    ax[0].set_ylabel('RMSE for $V$ [V]')
-    ax[0].legend()
-    ax[1].hist(rmse_noise[:,0], bins=15, color=COLORS[1], alpha=0.5, label=fr'${noise_lvls.min()*100:.0f} \%$ noise' , edgecolor='black', orientation='vertical')
-    ax[1].hist(rmse_noise[:,-1], bins=15, color=COLORS[2], alpha=0.5, label=fr'${noise_lvls.max()*100:.0f} \%$ noise' , edgecolor='black',orientation='vertical')
-    ax[1].set_yticks([])
-    ax[1].legend()
-    ax[1].set_xlabel('RMSE for $V$ [V]')
-    plt.tight_layout()
-    return f
-
-
-
-
-# ══════════════════════════════════════════════════════════
-#  EXTRACT ECM PARAMETERS  (unchanged)
-# ══════════════════════════════════════════════════════════════
-
-def extract_ecm_params(model, soc_points, I_val, u_val):
-    T = len(soc_points)
-    soc_t  = torch.tensor(soc_points, dtype=torch.float32)
-    I_norm = torch.full((T,), I_val / model.r1_net.I_ref)
-    u_t    = torch.full((T,), u_val)
-    model.eval()
-    with torch.no_grad():
-        R1 = model.r1_net(soc_t, I_norm, u_t).numpy()
-    C1 = get_C1(model, soc_ref=0.5, I_ref_val=I_val, u_ref=u_val)
-    R0 = R0_func(u_val, I_val)
-    return dict(soc=np.array(soc_points), R0=np.full(T, R0),
-                R1=R1, C1=C1, tau=R1 * C1, U1_ss=R1 * I_val)
 
 
 # =════════════════════════════════════════════════════════════════
@@ -1330,7 +1093,7 @@ def rmse_pulse(model, pulse_trajs, noise=False, noise_lvl=0.00):
     for j in range(len(pulse_trajs)):
         tr = pulse_trajs[j]
 
-        V, soc, U1, R1, Fs, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
+        V, soc, U1, R1, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
         rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
     
     return rmse
@@ -1343,7 +1106,7 @@ def rmse_pulse(model, pulse_trajs, noise=False, noise_lvl=0.00):
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 
-def plot_param(model, trajs, param='R1', title=''):
+def plot_param(model, trajs, param='R1'):
     """
     Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
 
@@ -1414,15 +1177,6 @@ def plot_param(model, trajs, param='R1', title=''):
                 k_emp = (-tr['F'] / tr['u']).numpy()
                 ax.plot(soc.numpy(), k_emp, '--', color=cmap_r(norm(C_val)), label='Empirical $k$', lw=2)
             
-            elif param == 'Fu':
-                k = model.k_net(soc, I_norm, u_t).numpy()
-                y = - k * u_t.numpy()  # convert to GN/mm * mm
-                ylabel = r'$F_u$ [GN]'
-
-                # overwrite soc to be u_per for this plot
-                soc = tr['u_per'] * torch.ones_like(soc)
-                xlabel = r'$u$ $[\%]$'
-            
 
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
@@ -1439,6 +1193,42 @@ def plot_param(model, trajs, param='R1', title=''):
     fig.tight_layout()
     return fig
 
+def plot_force(model, trajs):
+    """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
+
+    Each trajectory contributes len(soc) points: x = u_per (constant per traj),
+    y = -k·u (varies along the traj because k depends on SOC), color = SOC.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    norm = Normalize(vmin=0, vmax=1)
+
+    with torch.no_grad():
+        for tr in trajs:
+            soc       = tr['soc']
+            I_val     = float(tr['I'])
+            u_val     = float(tr['u'])
+            u_per_val = float(tr['u_per'])
+            I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_t    = torch.full_like(soc, u_val)
+
+            k = model.k_net(soc, I_norm, u_t).numpy()
+            F = -k * u_t.numpy()                            # GN
+            x = np.full(len(soc), u_per_val)                # constant per traj
+
+            ax.scatter(x, F, c=soc.numpy(),
+                       cmap=cmap, norm=norm, s=6)
+
+    ax.set_xlabel(r'$u$ $[\%]$')
+    ax.set_ylabel(r'$F_r$ [GN]')
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='State of Charge')
+    fig.tight_layout()
+    return fig
 
 def data_param(model, trajs):
     """
@@ -1452,7 +1242,6 @@ def data_param(model, trajs):
     """
 
     model.eval()
-
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
     # C_vals = np.array([tr['C'] for tr in trajs_sorted])
 
@@ -1505,7 +1294,6 @@ def plot_predicts(model, config, trajs, predict='R1', sort='C_rate'):
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 4))
     model.eval()
-    k = model.k_net.k
 
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
@@ -1543,7 +1331,7 @@ def plot_predicts(model, config, trajs, predict='R1', sort='C_rate'):
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
 
-            V, soc_np, U1, R1, Fs, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
+            V, soc_np, U1, R1, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
 
             if predict == 'V':
                 y_true = tr['V'].numpy()
