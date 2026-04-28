@@ -9,7 +9,8 @@ import pandas as pd
 from tqdm import trange
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.cm import ScalarMappable
 import time as _time
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -18,6 +19,13 @@ sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
+
+
+Q0          = 17921.57581
+TRAIN_SPLIT = 0.8
+N_HIDDEN    = 32
+EPOCHS      = 2
+LR          = 1e-3
 
 
 # ══════════════════════════════════════════════════════════
@@ -39,9 +47,9 @@ class R1Net(nn.Module):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         # scale output to typical R1 range (mOhm·m)
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01  # if softplus = 1, out = 10 [mOhm * m]
-    
+
 class R1NetConstrained(nn.Module):
-    """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
+    """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, sigmoid+linear constraint."""
     def __init__(self, config, n_hidden=32, I_ref=20.0):
         super().__init__()
         self.I_ref = I_ref
@@ -58,7 +66,7 @@ class R1NetConstrained(nn.Module):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
         return self.R1_min + s * (self.R1_max - self.R1_min)
-    
+
 # ══════════════════════════════════════════════════════════
 #  C1 NETWORK
 # ══════════════════════════════════════════════════════════
@@ -79,7 +87,7 @@ class C1Net(nn.Module):
         return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000      # [F]
 
 class C1NetConstrained(nn.Module):
-    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, softplus output, linear constraint."""
+    """(SOC, I, u) → C1 > 0  [F].  One hidden layer, sigmoid+linear constraint."""
     def __init__(self, config, n_hidden=32, I_ref=20.0):
         super().__init__()
         self.I_ref = I_ref
@@ -125,16 +133,23 @@ class kNet(nn.Module):
         return nn.functional.softplus(self.net(x)).squeeze(-1)
 
 # ══════════════════════════════════════════════════════════
-#  BATCHED ECMM MODEL
+#  ECMM MODEL
 # ════════════════════════════════════════════════════════════
 
 class BatteryECMM(nn.Module):
     """
-    Batched ECMM:  forward() now accepts tensors of shape (B,) for
-    scalar-per-trajectory quantities and returns (B, T_max) tensors.
+    Single-trajectory ECMM (B=1 in all paths; the leading dim is preserved
+    so the rest of the code can stay shape-agnostic).
 
-    The Euler loop steps ALL trajectories simultaneously at each
-    timestep — no per-trajectory Python loop.
+    forward() handles BOTH constant-current trajectories and pulse trajectories
+    via a single code path.  The current input shape selects the mode:
+
+        I_batch shape (B,)    → constant current per trajectory  (CC)
+        I_batch shape (B, T)  → time-varying current             (pulse)
+
+    SOC is integrated by cumulative sum in both cases (analytically equivalent
+    to soc0 − I·t/Q0 when I is constant).  V_mode='static' is only meaningful
+    for the CC case; it is rejected if a sequence is provided.
     """
     def __init__(self, config, Ue_interp, R0_func, Q0, I_ref=20.0, k=53.0):
         super().__init__()
@@ -162,7 +177,7 @@ class BatteryECMM(nn.Module):
             print('C1 unconstrained')
             self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
 
-        # ── R0 — multiple modes still supported ──
+        # ── R0 — only 'func' supported in this cleaned version ──
         self.R0_func = R0_func
 
     # ── Dispatchers ──
@@ -172,53 +187,69 @@ class BatteryECMM(nn.Module):
     def _C1(self, soc, I_norm, u):
         return self.C1_net(soc, I_norm, u)
 
-    def _R0(self, soc, I_norm, u, I_batch, u_batch):
-        """Returns R0 broadcastable to (B, T)."""
+    def _R0(self, u_exp, I_seq):
+        """Element-wise R0 evaluated on (B, T) tensors. Returns (B, T)."""
         m = self.config['R0_mode']
         if m == 'func':
+            return self.R0_func(u_exp, I_seq)
+        # Other modes (net, param, net_no_soc) were dropped during cleanup.
+        raise ValueError(f"Unsupported R0_mode: {m!r} (only 'func' is wired up).")
+
+    def forward(self, I_batch, u_batch, soc0_batch, T=None, V_mode='dynamic'):
+        """
+        I_batch    : (B,)     constant current per traj         → CC mode
+                     (B, T)   per-timestep current sequence     → pulse mode
+        u_batch    : (B,)
+        soc0_batch : (B,)
+        T          : int, required when I_batch is 1D, ignored when 2D
+        V_mode     : 'dynamic' — full Euler U1 integration  (Stage 2 / production)
+                     'static'  — algebraic U1 = I·R1        (Stage 1 / Brucker);
+                                 only valid for CC input.
+                                 C1_net is NOT called in this mode — guarantees
+                                 C1 plays no role during Stage 1 training.
+        F is algebraic in both modes (k is static).
+        """
+        # ── Resolve I_seq shape (B, T) and B, T ──
+        if I_batch.ndim == 1:
+            assert T is not None, "T must be provided when I_batch is 1D (CC mode)"
             B = I_batch.shape[0]
-            return torch.tensor(
-                [self.R0_func(u_batch[b].item(), I_batch[b].item()) for b in range(B)],
-                dtype=torch.float32).unsqueeze(1)
-        # if m == 'net_no_soc':
-        #     return self.R0_net(I_norm, u)
+            I_seq = I_batch.unsqueeze(1).expand(B, T)
+        elif I_batch.ndim == 2:
+            B, T = I_batch.shape
+            I_seq = I_batch
+            if V_mode == 'static':
+                raise ValueError("V_mode='static' requires constant-current input (1D I_batch)")
+        else:
+            raise ValueError(f"I_batch must be 1D or 2D, got shape {tuple(I_batch.shape)}")
 
-    def forward(self, I_batch, u_batch, soc0_batch, T_max, V_mode='dynamic'):
-        """
-        V_mode : 'dynamic' — full Euler U1 integration  (Stage 2 / production)
-                 'static'  — algebraic U1 = I·R1        (Stage 1 / Brucker)
-                             C1_net is NOT called in this mode — guarantees
-                             C1 plays no role during Stage 1 training.
-        F is dynamic in both modes (k integrated via Euler).
-        """
+        # ── SOC integration (cumsum form works for both CC and pulse) ──
+        # We want soc[:, 0] = soc0, soc[:, n] = soc0 + sum_{k<n} dsoc[k]
+        # cumsum gives sum_{k≤n}; subtract dsoc[:, :1] to shift the index.
+        dsoc = -I_seq / self.Q0
+        soc  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]
 
-        # TODO: Integrate SOC
-        # TODO: Use stop ccondition instead of fixed T_max
-        B = I_batch.shape[0]
-        t_idx = torch.arange(T_max, dtype=torch.float32).unsqueeze(0)
-        soc = soc0_batch.unsqueeze(1) - I_batch.unsqueeze(1) / self.Q0 * t_idx
-        I_norm = (I_batch / self.I_ref).unsqueeze(1).expand(B, T_max)
-        u_exp  = u_batch.unsqueeze(1).expand(B, T_max)
+        I_norm = I_seq / self.I_ref
+        u_exp  = u_batch.unsqueeze(1).expand(B, T)
 
-        # Parameters along the trajectory  (B, T_max)
+        # Parameters along the trajectory  (B, T)
         R1 = self._R1(soc, I_norm, u_exp)
-        R0 = self._R0(soc, I_norm, u_exp, I_batch, u_batch)
+        R0 = self._R0(u_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(soc, I_norm, u_exp)              # (B, T_max)
+        k = self.k_net(soc, I_norm, u_exp)              # (B, T)
 
         # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
-            U1 = I_batch.unsqueeze(1) * R1
+            U1 = I_seq * R1
         elif V_mode == 'dynamic':
             C1 = self._C1(soc, I_norm, u_exp)
             U1_steps = [torch.zeros(B)]
-            for n in range(T_max - 1):
+            dt = 1.0
+            for n in range(T - 1):
                 C1_n = C1[:, n] if C1.ndim == 2 else C1
                 # Semi-implicit Euler — unconditionally stable
-                dt = 1.0
-                U1_next = (U1_steps[n] + dt * I_batch / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
+                U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
         else:
@@ -227,58 +258,11 @@ class BatteryECMM(nn.Module):
         with torch.no_grad():
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
 
-        V  = Ue - I_batch.unsqueeze(1) * R0 - U1
-        Fr = -k * u_exp
-
-        return V, Fr, soc, U1, R1
-
-    # Keep single-trajectory forward for inference / plotting
-    def forward_single(self, I_val, u_val, soc0_val, T):
-        I_b    = torch.tensor([I_val], dtype=torch.float32)
-        u_b    = torch.tensor([u_val], dtype=torch.float32)
-        soc0_b = torch.tensor([soc0_val], dtype=torch.float32)
-        V, Fr, soc, U1, R1 = self.forward(I_b, u_b, soc0_b, T)
-        return V[0], Fr[0], soc[0], U1[0], R1[0]
-    
-    # TODO: Merge with forward
-    def forward_pulse(self, I_seq, u_batch, soc0_batch):
-        """
-        I_seq      : (B, T) — current per trajectory per timestep
-        u_batch    : (B,)
-        soc0_batch : (B,)
-        """
-        B, T = I_seq.shape
-
-        # SOC cumulative integration
-        dsoc = -I_seq / self.Q0
-        soc = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]
-
-        I_norm = I_seq / self.I_ref
-        u_exp  = u_batch.unsqueeze(1).expand(B, T)
-
-        R1 = self._R1(soc, I_norm, u_exp)
-        C1 = self._C1(soc, I_norm, u_exp)
-        R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
-
-        # k is algebraic (static)
-        k = self.k_net(soc, I_norm, u_exp)              # (B, T)
-
-        U1_steps = [torch.zeros(B)]
-        for n in range(T - 1):
-            C1_n = C1[:, n] if C1.ndim == 2 else C1
-            # Semi-implicit Euler for U1
-            dt = 1.0
-            U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
-            U1_steps.append(U1_next)
-        U1 = torch.stack(U1_steps, dim=1)
-
-        with torch.no_grad():
-            Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
-
         V  = Ue - I_seq * R0 - U1
         Fr = -k * u_exp
 
         return V, Fr, soc, U1, R1
+
 
 def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06,
            soc=None, I_norm=None, u_exp=None):
@@ -306,7 +290,7 @@ def prepare_data(data, R0_func):
         grp = grp.reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])
         C_val  = float(grp['C'].iloc[0])
-        u_per = float(grp['u_par'].iloc[0])      
+        u_per = float(grp['u_par'].iloc[0])
         R0_val = R0_func(u_val, I_val)
         trajs.append(dict(
             I=I_val, u=u_val, C=C_val, u_per=u_per,
@@ -326,7 +310,7 @@ def prepare_pulse_data(pulse_raw):
         pulse_trajs.append(dict(
             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
             u     = float(grp['u'].iloc[0]),
-            u_per = float(grp['u_par'].iloc[0]),    
+            u_per = float(grp['u_par'].iloc[0]),
             soc0  = float(grp['soc'].iloc[0]),
             T     = len(grp),
             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
@@ -336,81 +320,29 @@ def prepare_pulse_data(pulse_raw):
         ))
     return pulse_trajs
 
+
 # ══════════════════════════════════════════════════════════
-#  BATCH COLLATION
+#  TRAJECTORY → MODEL INPUT  (single traj, B=1)
 # ══════════════════════════════════════════════════════════════
 
-def collate_batch(trajs):
+def _traj_inputs(tr):
+    """Pack a single trajectory dict into the (I, u, soc0) tensors expected by
+    BatteryECMM.forward.  Auto-detects CC vs pulse based on whether the dict
+    carries 'I_seq' (pulse) or 'I' (CC scalar).
+
+    Returns: I_b, u_b, soc0_b, T  — all with leading dim B=1.
     """
-    Pack a list of trajectory dicts into padded tensors + mask.
-
-    Returns
-    -------
-    I_batch    : (B,)
-    u_batch    : (B,)
-    soc0_batch : (B,)
-    V_batch    : (B, T_max)    padded with 0
-    Fr_batch   : (B, T_max)    padded with 0
-    mask       : (B, T_max)    True where data exists
-    T_max      : int
-    """
-    B = len(trajs)
-    T_max = max(tr['T'] for tr in trajs)
-
-    I_batch    = torch.tensor([tr['I']    for tr in trajs], dtype=torch.float32)
-    u_batch    = torch.tensor([tr['u']    for tr in trajs], dtype=torch.float32)
-    soc0_batch = torch.tensor([tr['soc0'] for tr in trajs], dtype=torch.float32)
-
-    V_batch  = torch.zeros(B, T_max)
-    Fr_batch = torch.zeros(B, T_max)
-    mask     = torch.zeros(B, T_max, dtype=torch.bool)
-
-    for i, tr in enumerate(trajs):
-        T = tr['T']
-        V_batch[i, :T]  = tr['V']
-        Fr_batch[i, :T] = tr['F']
-        mask[i, :T]     = True
-
-    return I_batch, u_batch, soc0_batch, V_batch, Fr_batch, mask, T_max
-
-
-def collate_batch_pulse(trajs):
-    """
-    Pulse-data analogue of collate_batch.  Current is a *sequence* per traj.
-
-    Returns
-    -------
-    I_seq_batch : (B, T_max)   padded with 0
-    u_batch     : (B,)
-    soc0_batch  : (B,)
-    V_batch     : (B, T_max)   padded with 0
-    Fr_batch    : (B, T_max)   padded with 0
-    mask        : (B, T_max)   True where data exists
-    T_max       : int
-    """
-    B = len(trajs)
-    T_max = max(tr['T'] for tr in trajs)
-
-    I_seq_batch = torch.zeros(B, T_max)
-    u_batch     = torch.tensor([tr['u']    for tr in trajs], dtype=torch.float32)
-    soc0_batch  = torch.tensor([tr['soc0'] for tr in trajs], dtype=torch.float32)
-
-    V_batch  = torch.zeros(B, T_max)
-    Fr_batch = torch.zeros(B, T_max)
-    mask     = torch.zeros(B, T_max, dtype=torch.bool)
-
-    for i, tr in enumerate(trajs):
-        T = tr['T']
-        I_seq_batch[i, :T] = tr['I_seq']
-        V_batch[i, :T]     = tr['V']
-        Fr_batch[i, :T]    = tr['F']
-        mask[i, :T]        = True
-
-    return I_seq_batch, u_batch, soc0_batch, V_batch, Fr_batch, mask, T_max
+    u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
+    soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
+    if 'I_seq' in tr:
+        I_b = tr['I_seq'].unsqueeze(0)              # (1, T) — pulse mode
+    else:
+        I_b = torch.tensor([tr['I']], dtype=torch.float32)   # (1,) — CC mode
+    return I_b, u_b, soc0_b, tr['T']
 
 
 # ══════════════════════════════════════════════════════════
-#  TRAINING FUNCTIONS  (batched, with staged option)
+#  TRAINING FUNCTIONS  (single-trajectory SGD, with staged option)
 # ══════════════════════════════════════════════════════════════
 
 def _empty_history():
@@ -422,18 +354,19 @@ def _empty_history():
 
 
 def _train_inner(model, train_trajs, test_trajs,
-                 optimizer, scheduler, n_epochs, batch_size, print_every,
-                 V_mode='dynamic', stage_label='', history=None,
-                 pulse=False):
+                 optimizer, scheduler, n_epochs, print_every,
+                 V_mode='dynamic', stage_label='', history=None):
     """
     One training pass with the given optimizer over n_epochs.
-    V_mode is forwarded to model() so the same loop fits Stage 1 (static V)
-    and Stage 2 (dynamic V).  F is dynamic in both modes.
 
-    pulse=True switches to pulse-trajectory mode: trajectories carry an
-    `I_seq` (per-timestep current) and the model is rolled out via
-    forward_pulse() instead of the constant-current forward().  V_mode is
-    ignored in this case (forward_pulse is always dynamic).
+    Per-trajectory stochastic GD: each epoch shuffles the trajectory order
+    and takes one optimizer step per trajectory.  The trajectory dict's
+    shape (CC scalar 'I' or pulse 'I_seq') drives whether forward() runs
+    in CC or pulse mode.
+
+    V_mode is forwarded to model() so the same loop fits Stage 1 (static V)
+    and Stage 2 (dynamic V).  V_mode='static' is silently switched to
+    'dynamic' for pulse trajectories (static V requires constant I).
     """
     if history is None:
         history = _empty_history()
@@ -445,28 +378,23 @@ def _train_inner(model, train_trajs, test_trajs,
         order = np.random.permutation(len(train_trajs))
         ep_mse = ep_mse_V = ep_mse_Fr = 0.0
         ep_rmse = ep_rmse_V = ep_rmse_Fr = 0.0
-        n_batches = 0
+        n_steps = 0
 
-        for start in range(0, len(train_trajs), batch_size):
-            idxs  = order[start : start + batch_size]
-            batch = [train_trajs[i] for i in idxs]
+        for i in order:
+            tr = train_trajs[i]
+            I_b, u_b, soc0_b, T = _traj_inputs(tr)
+            # static V only makes sense for CC input
+            v_mode_eff = 'dynamic' if 'I_seq' in tr else V_mode
 
             optimizer.zero_grad()
-            if pulse:
-                I_seq_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch_pulse(batch)
-                V_pred, Fr_pred, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
-            else:
-                I_b, u_b, soc0_b, V_true, Fr_true, mask, T_max = collate_batch(batch)
-                V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T_max, V_mode=V_mode)
+            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=v_mode_eff)
 
-            sq_err_V  = (V_pred  - V_true ) ** 2
-            sq_err_Fr = (Fr_pred - Fr_true) ** 2
-            loss_V  = sq_err_V[mask].mean()
-            loss_Fr = sq_err_Fr[mask].mean()
+            loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
+            loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean()
             loss = loss_V + loss_Fr
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)     # gradient clipping for stability in k training 
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)     # gradient clipping for stability in k training
             optimizer.step()
 
             with torch.no_grad():
@@ -479,10 +407,10 @@ def _train_inner(model, train_trajs, test_trajs,
             ep_rmse   += rmse_V + rmse_Fr
             ep_rmse_V += rmse_V
             ep_rmse_Fr+= rmse_Fr
-            n_batches += 1
+            n_steps += 1
 
-        ep_mse /= n_batches; ep_mse_V /= n_batches; ep_mse_Fr /= n_batches
-        ep_rmse /= n_batches; ep_rmse_V /= n_batches; ep_rmse_Fr /= n_batches
+        ep_mse /= n_steps; ep_mse_V /= n_steps; ep_mse_Fr /= n_steps
+        ep_rmse /= n_steps; ep_rmse_V /= n_steps; ep_rmse_Fr /= n_steps
 
         history['train'].append(ep_mse)
         history['train_V'].append(ep_mse_V)
@@ -492,21 +420,14 @@ def _train_inner(model, train_trajs, test_trajs,
         history['train_rmse_Fr'].append(ep_rmse_Fr)
         history['stage'].append(stage_label)
 
-        # Test eval — uses same V_mode as training stage (pulse always dynamic)
+        # Test eval — uses same V_mode as training stage (auto-switched for pulse)
         model.eval()
         with torch.no_grad():
             test_mse = 0.0
             for tr in test_trajs:
-                if pulse:
-                    I_seq_b = tr['I_seq'].unsqueeze(0)
-                    u_b     = torch.tensor([tr['u']],    dtype=torch.float32)
-                    soc0_b  = torch.tensor([tr['soc0']], dtype=torch.float32)
-                    V_pred, _, _, _, _ = model.forward_pulse(I_seq_b, u_b, soc0_b)
-                else:
-                    I_b    = torch.tensor([tr['I']],    dtype=torch.float32)
-                    u_b    = torch.tensor([tr['u']],    dtype=torch.float32)
-                    soc0_b = torch.tensor([tr['soc0']], dtype=torch.float32)
-                    V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, tr['T'], V_mode=V_mode)
+                I_b, u_b, soc0_b, T = _traj_inputs(tr)
+                v_mode_eff = 'dynamic' if 'I_seq' in tr else V_mode
+                V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=v_mode_eff)
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2).item()
             test_mse /= len(test_trajs)
             test_rmse = float(np.sqrt(test_mse))
@@ -529,20 +450,20 @@ def _train_inner(model, train_trajs, test_trajs,
 
 
 def train_model(model, train_trajs, test_trajs,
-                n_epochs=200, lr=1e-3, batch_size=16, print_every=10,
+                n_epochs=200, lr=1e-3, print_every=10,
                 V_mode='dynamic'):
     """Single-stage training (default behaviour: dynamic V from epoch 1)."""
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
     return _train_inner(model, train_trajs, test_trajs,
-                        optimizer, scheduler, n_epochs, batch_size, print_every,
+                        optimizer, scheduler, n_epochs, print_every,
                         V_mode=V_mode, stage_label='single')
 
 
 def train_staged(model, train_trajs, test_trajs,
                  n_epochs_static=100, n_epochs_dynamic=200,
                  lr_static=1e-3, lr_dynamic=1e-3,
-                 batch_size=16, print_every=10,
+                 print_every=10,
                  on_stage1_done=None,
                  # ── pulse-data extension (Stage 2 only) ──
                  pulse_train_trajs=None, pulse_test_trajs=None,
@@ -556,22 +477,23 @@ def train_staged(model, train_trajs, test_trajs,
     Stage 1  (static V, CC trajectories):
         V = Ue − I·R0 − I·R1     (algebraic; no U1 dynamics)
         F = -k(SOC, I, u) · u    (algebraic — no integration)
-        Trains: r1_net, R0_net (if R0_mode is a net), k_net
+        Trains: r1_net, k_net
         Frozen: C1_net
 
     Stage 2  (dynamic V):
         V uses full Euler U1 integration with dU1/dt = I/C1 − U1/(R1·C1)
         F unchanged (still algebraic)
-        Trains: C1_net
-        Frozen: r1_net, R0_net (if a net), k_net
+        Trains: C1_net, k_net
+        Frozen: r1_net
 
-        Data: `pulse_train_trajs` if provided (pulse current sequences via
-        forward_pulse), else the constant-current `train_trajs`.
+        Data: `pulse_train_trajs` if provided, else the constant-current
+        `train_trajs`.  Pulse data automatically uses dynamic V regardless
+        of stage flags (static V requires constant I).
 
     Stage 2b (optional, only if n_epochs_unfreeze > 0):
         Same dynamics + data as Stage 2, but r1_net is unfrozen so R1 gets
-        refined under the dynamic objective.  R0_net and k_net stay frozen.
-        Uses lr_unfreeze (defaults to lr_dynamic).
+        refined under the dynamic objective.  Uses lr_unfreeze (defaults to
+        lr_dynamic).
 
     on_stage1_done : optional callable(model, history) invoked between Stage 1
                      and Stage 2 (useful for plotting the post-Stage-1 state).
@@ -591,7 +513,7 @@ def train_staged(model, train_trajs, test_trajs,
     opt1 = torch.optim.Adam(s1_params, lr=lr_static)
     sched1 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt1, patience=40, factor=0.5)
     _train_inner(model, train_trajs, test_trajs,
-                 opt1, sched1, n_epochs_static, batch_size, print_every,
+                 opt1, sched1, n_epochs_static, print_every,
                  V_mode='static', stage_label='S1', history=history)
 
     history['stage1_epochs'] = n_epochs_static
@@ -601,7 +523,7 @@ def train_staged(model, train_trajs, test_trajs,
         print("\n---- post-Stage-1 callback ----")
         on_stage1_done(model, history)
 
-    # ── Stage 2 ──
+    # ── Stage 2 data routing ──
     use_pulse = pulse_train_trajs is not None
     s2_train  = pulse_train_trajs if use_pulse else train_trajs
     if use_pulse:
@@ -615,19 +537,18 @@ def train_staged(model, train_trajs, test_trajs,
         s2_test = test_trajs
     data_tag = 'pulse' if use_pulse else 'CC'
 
-    # ── Stage 2 (R1, frozen — train C1) ──
+    # ── Stage 2 (R1 frozen — train C1 + k) ──
     print(f"\n========== STAGE 2: dynamic V  ({n_epochs_dynamic} epochs, {data_tag} data) ==========")
-    freeze_kw = ('r1_net', 'R0_net')   # R0_net only exists if R0_mode is net or net_no_soc
+    freeze_kw = ('r1_net',)
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
-    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''})")
+    print(f"  Stage 2 trainable params: {n_s2}  (r1_net frozen)")
     opt2 = torch.optim.Adam(s2_params, lr=lr_dynamic)
     sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=40, factor=0.5)
     _train_inner(model, s2_train, s2_test,
-                 opt2, sched2, n_epochs_dynamic, batch_size, print_every,
-                 V_mode='dynamic', stage_label='S2', history=history,
-                 pulse=use_pulse)
+                 opt2, sched2, n_epochs_dynamic, print_every,
+                 V_mode='dynamic', stage_label='S2', history=history)
 
     history['stage2_epochs'] = n_epochs_dynamic
 
@@ -636,23 +557,19 @@ def train_staged(model, train_trajs, test_trajs,
         print("\n---- post-Stage-2 callback ----")
         on_stage2_done(model, history)
 
-    # ── Stage 2b (optional): unfreeze R1, keep R0_net + k_net frozen ──
+    # ── Stage 2b (optional): unfreeze R1 ──
     if n_epochs_unfreeze and n_epochs_unfreeze > 0:
         lr_b = lr_unfreeze if lr_unfreeze is not None else lr_dynamic
         print(f"\n========== STAGE 2b: dynamic V, R1 UNFROZEN  "
               f"({n_epochs_unfreeze} epochs, {data_tag} data, lr={lr_b}) ==========")
-        freeze_kw_b = ('R0_net')   # R1 + C1 trainable
-        s2b_params = [p for name, p in model.named_parameters()
-                      if not any(kw in name for kw in freeze_kw_b)]
+        s2b_params = list(model.parameters())   # everything trainable
         n_s2b = sum(p.numel() for p in s2b_params)
-        print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen; "
-              f"{'R0_net, ' if hasattr(model,'R0_net') else ''})")
+        print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen)")
         opt2b = torch.optim.Adam(s2b_params, lr=lr_b)
         sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=40, factor=0.5)
         _train_inner(model, s2_train, s2_test,
-                     opt2b, sched2b, n_epochs_unfreeze, batch_size, print_every,
-                     V_mode='dynamic', stage_label='S2b', history=history,
-                     pulse=use_pulse)
+                     opt2b, sched2b, n_epochs_unfreeze, print_every,
+                     V_mode='dynamic', stage_label='S2b', history=history)
         history['stage2b_epochs'] = n_epochs_unfreeze
 
     return history
@@ -660,110 +577,152 @@ def train_staged(model, train_trajs, test_trajs,
 
 
 # ══════════════════════════════════════════════════════════
-#  PLOTTING FUNCTIONS  (standalone numpy predict — no batched forward)
+#  PREDICT  (single-trajectory rollout, returns a dict)
 # ══════════════════════════════════════════════════════════════
 
-
-
 @torch.no_grad()
-def predict_np(model, config, I_val, u_val, soc0, T,
-               noise=False, noise_lvl=0.00, V_mode='dynamic'):
-    """Single-trajectory rollout for plotting.
+def predict_np(model, config, traj, V_mode='dynamic'):
+    """Single-trajectory rollout for plotting.  Auto-detects CC vs pulse from
+    whether `traj` carries 'I_seq' (pulse) or 'I' (CC).
 
     V_mode='static' uses the Stage-1 V equation (U1 = I·R1) and returns C1=None
-    so plotting can omit any C1-dependent panels.
+    so plotting can omit any C1-dependent panels.  Pulse trajectories ignore
+    V_mode and always use dynamic.
+
+    Returns a dict with keys: V, soc, U1, R1, Fr, k, C1, R0, I  — all numpy
+    arrays of length T (R0 / I are arrays in pulse mode and constant arrays
+    in CC mode, so plotting code can treat them uniformly).
     """
-    I_b    = torch.tensor([I_val],  dtype=torch.float32)
-    u_b    = torch.tensor([u_val],  dtype=torch.float32)
-    soc0_b = torch.tensor([soc0],   dtype=torch.float32)
+    pulse = 'I_seq' in traj
+    if pulse:
+        V_mode = 'dynamic'
+    I_b, u_b, soc0_b, T = _traj_inputs(traj)
 
-
-    V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T, V_mode=V_mode)
+    V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy();
+    R1  = R1[0].numpy()
 
-    soc_t  = torch.from_numpy(soc)
-    I_norm = torch.full((T,), I_val / model.I_ref)
-    u_t    = torch.full((T,), u_val)
-    k      = model.k_net(soc_t, I_norm, u_t).numpy()
+    # Trajectory-shape arrays for parameter evaluation
+    I_np   = traj['I_seq'].numpy() if pulse else np.full(T, traj['I'])
+    u_np   = np.full(T, traj['u'])
+    soc_t  = torch.from_numpy(soc.astype(np.float32))
+    I_norm = torch.from_numpy((I_np / model.I_ref).astype(np.float32))
+    u_t    = torch.from_numpy(u_np.astype(np.float32))
+
+    k = model.k_net(soc_t, I_norm, u_t).numpy()
 
     if V_mode == 'static':
         C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
 
-    if config['R0_mode'] in ('net', 'net_no_soc', 'param'):
-        R0 = model._R0(soc_t, I_norm, u_t, 0, 0).numpy()
-    else:
-        R0 = None  # plotting path uses R0_func directly when None
+    R0 = R0_func(u_np, I_np)        # numpy, shape (T,)
 
-    return V, soc, U1, R1, Fr, k, C1, R0
+    return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, C1=C1, R0=R0, I=I_np)
 
 
-def plot_predictions(model, config, trajs, time=False, noise=False,
-                     noise_lvl=0.00, title='', n_show=3, V_mode='dynamic'):
-    """Per-trajectory diagnostic grid.
+# ══════════════════════════════════════════════════════════
+#  PLOT PREDICTIONS  (one function for both CC and pulse)
+# ══════════════════════════════════════════════════════════════
 
-    V_mode='dynamic' → 8 rows (V, U1, dU1/dt, R, C1, Fr, k)
-    V_mode='static'  → 6 rows (V, U1, R, Fr, k)
-                       — dU1/dt and C1 are omitted because they have no
-                         meaning in Stage 1 (U1 is algebraic, C1 unused).
+def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
+                     V_mode='dynamic'):
+    """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
+
+    Row layout:
+        pulse traj                     - 8 rows (I, V, soc, U1, R, C1, Fr, k)
+        CC traj, V_mode='dynamic'      - 7 rows (V, U1, dU1, R, C1, Fr, k)
+        CC traj, V_mode='static'       - 5 rows (V, U1, R, Fr, k) dU1 and C1 omitted (no meaning in Stage 1)
+
+    All trajectories in `trajs` should be the same kind (all CC or all pulse).
     """
-    if V_mode == 'static':
+    n = min(n_show, len(trajs))
+    if n == 0:
+        raise ValueError("trajs is empty")
+
+    # Determine kind from first trajectory; assume the rest are the same.
+    pulse = 'I_seq' in trajs[0]
+    if pulse:
+        rows = ['I', 'V', 'soc', 'U1', 'R', 'C1', 'Fr', 'k']
+    elif V_mode == 'static':
         rows = ['V', 'U1', 'R', 'Fr', 'k']
     elif V_mode == 'dynamic':
         rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'k']
     else:
         raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
-    n = min(n_show, len(trajs))
     n_rows = len(rows)
     fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
     model.eval()
-    k0 = model.k_net.k                      # scalar reference k0 from data
 
     for j in range(n):
         tr = trajs[j]
-        V, soc_np, U1, R1, Fr, k_pred, C1, R0 = predict_np(
-            model, config, tr['I'], tr['u'], tr['soc0'], tr['T'],
-            noise=noise, noise_lvl=noise_lvl, V_mode=V_mode)
+        T  = tr['T']
+        out = predict_np(model, config, tr, V_mode=V_mode)
+        V, soc_np, U1 = out['V'], out['soc'], out['U1']
+        R1, Fr, k_pred = out['R1'], out['Fr'], out['k']
+        C1, R0, I_np = out['C1'], out['R0'], out['I']
 
-        # x-axis: SOC (default) or sample index (time=True)
-        x = soc_np if not time else np.arange(tr['T'])
+        # x-axis: time index when time=True OR for pulse data (SOC isn't monotonic
+        # under repeated charge/discharge pulses, so SOC-on-x makes no sense).
+        use_time_x = time or pulse
+        x = np.arange(T) if use_time_x else soc_np
+
+        # True U1 reconstruction: U1_true = Ue − I·R0 − V_data
+        Ue_np = model.Ue_interp(soc_np)
+        U1_true = Ue_np - I_np * R0 - tr['V'].numpy()
+
+        # Trajectory header — used in the title of the topmost row
+        if pulse:
+            traj_header = f'{title}pulse traj {j}, u={tr["u"]:.3f}'
+        else:
+            traj_header = f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}'
 
         for r, name in enumerate(rows):
             ax = axes[r, j]
 
-            if name == 'V':
+            if name == 'I':         # pulse-only
+                ax.plot(x, I_np, '-', color=COLORS[0], lw=2)
+                ax.set_ylabel(r'$I$ [A]')
+                ax.set_title(traj_header)
+
+            elif name == 'V':
                 ax.plot(x, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
                 ax.plot(x, V,               '-',  color=COLORS[0], label=r'Predicted $V$', lw=2)
                 ax.set_ylabel(r'$V$ [V]'); ax.legend()
-                ax.set_title(f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}')
+                if not pulse:        # for CC, V is the topmost row
+                    ax.set_title(traj_header)
+
+            elif name == 'soc':     # pulse-only — SOC consistency check
+                ax.plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1],
+                        label='True SOC', lw=2)
+                ax.plot(np.arange(T), soc_np, '-', color=COLORS[0],
+                        label='Predicted SOC', lw=2)
+                ax.set_ylabel('SOC'); ax.legend()
+                ax.set_xlabel('Time [s]')   # always indexed in time
 
             elif name == 'U1':
-                ax.plot(x, tr['U1_true'].numpy(), '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-                ax.plot(x, U1,                    '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
+                ax.plot(x, U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
+                ax.plot(x, U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
                 ax.set_ylabel(r'$U_1$ [V]'); ax.legend()
 
             elif name == 'dU1':
-                # Only reachable in V_mode='dynamic' – C1 is not None
-                dU1_data = np.gradient(tr['U1_true'].numpy(), 1.0)
-                dU1_rc   = tr['I'] / C1 - U1 / (R1 * C1)
+                # Only reachable for CC dynamic — C1 is not None
+                dU1_data = np.gradient(U1_true, 1.0)
+                dU1_rc   = I_np / C1 - U1 / (R1 * C1)
                 ax.plot(x, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
                 ax.plot(x, dU1_rc,   '-',  color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-                ax.set_ylabel(r'$dU_1/dt$ [V/s]')
+                ax.set_ylabel(r'$dU_1/dt$ [V/s]'); ax.legend()
 
             elif name == 'R':
-                if config['R0_mode'] in ('net', 'net_no_soc'):
-                    ax.plot(x, R0 * 1000, ls='--', color=COLORS[0], label=r'$R_0$', lw=2)
-                elif config['R0_mode'] == 'func':
-                    R0_val = R0_func(tr['u'], tr['I'])
+                # R0 is time-varying for pulse (since I varies); for CC it's constant.
+                if pulse:
+                    ax.plot(x, R0 * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
+                else:
+                    R0_val = float(R0[0])
                     ax.axhline(R0_val * 1000, ls='--', color=COLORS[0],
                                label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
-                elif config['R0_mode'] == 'param':
-                    ax.axhline(R0[0] * 1000, ls='--', color=COLORS[0],
-                               label=r'$R_0$' + fr' = {R0[0]*1000:.1f} m$\Omega$', lw=2)
                 ax.plot(x, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
                 ax.set_ylabel(r'$R$ [m$\Omega$]'); ax.legend()
 
@@ -781,16 +740,17 @@ def plot_predictions(model, config, trajs, time=False, noise=False,
                 k_true = -tr['F'].numpy() / tr['u']
                 ax.plot(x, k_true, '--', color=COLORS[1], label=r'Empirical $k = -F/u$', lw=2, alpha=0.7)
                 ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
-                # ax.axhline(k0, color='0.6', ls=':', lw=1, label=fr'$k_0 = {k0:.1f}$')
                 ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
 
-    # x-label + axis direction handled per-mode
+    # x-label + axis direction handled per-trajectory-kind
     for ax in axes.flat:
-        if not time:
+        if ax.get_xlabel() == 'Time [s]':
+            continue        # 'soc' panel already labelled itself
+        if pulse or time:
+            ax.set_xlabel('Time [s]')
+        else:
             ax.set_xlabel('State of Charge')
             ax.invert_xaxis()
-        else:
-            ax.set_xlabel('Time [s]')
 
     fig.tight_layout()
     return fig
@@ -837,229 +797,15 @@ def plot_loss(history):
     return fig
 
 
-@torch.no_grad()
-def predict_pulse_np(model, I_seq, u, soc0, T, noise = False, noise_lvl = 0.00):
-    # --- run model ---
-    I_b    = I_seq.unsqueeze(0) if I_seq.ndim == 1 else I_seq
-    u_b    = torch.tensor([u],    dtype=torch.float32)
-    soc0_b = torch.tensor([soc0], dtype=torch.float32)
-
-    V, Fr, soc, U1, R1 = model.forward_pulse(I_b, u_b, soc0_b)
-    V   = V[0].numpy();   Fr = Fr[0].numpy()
-    soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy(); 
-
-    I_np = I_b[0].numpy()
-    u_np = np.full(T, u)
-    soc_t = torch.from_numpy(soc.astype(np.float32))
-    In_t  = torch.from_numpy((I_np / model.I_ref).astype(np.float32))
-    u_t   = torch.from_numpy(u_np.astype(np.float32))
-    k     = model.k_net(soc_t, In_t, u_t).numpy()
-    C1_t  = model._C1(soc_t, In_t, u_t)
-
-    return V, soc, U1, R1, Fr, k, C1_t
-
-def plot_predictions_pulse(model, pulse_trajs, time=False, noise=False, noise_lvl=0.00, title='', n_show=3, spec=None):
-
-    n = min(n_show, len(pulse_trajs))
-    fig, axes = plt.subplots(8, n, figsize=(4.5 * n, 32), squeeze=False)
-    model.eval()
-    k = model.k_net.k
-
-    if not time and spec == None:
-        for j in range(n):
-            tr = pulse_trajs[j]
-            T  = tr['T']
-
-            V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
-
-            I_np = tr['I_seq'].numpy()
-            u_np = np.full(T, tr['u'])
-
-            # TODO: Switch to R0 from config
-            R0_np = R0_func(u_np, I_np)
-            Ue_np = model.Ue_interp(soc)
-            U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
-
-            # Row 0: I profile vs SOC
-            axes[0, j].plot(soc, I_np, '-', color=COLORS[0], lw=2)
-            axes[0, j].set_ylabel(r'$I$ [A]')
-            axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
-
-            # Row 1: V
-            axes[1, j].plot(soc, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-            axes[1, j].plot(soc, V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-            axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
-
-            # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
-            # (keep this one on a sample index since both curves ARE soc)
-            axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
-            axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
-            axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
-            axes[2, j].set_xlabel('Time [s]')
-
-            # Row 3: U1
-            axes[3, j].plot(soc, U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-            axes[3, j].plot(soc, U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-            axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
-
-            # Row 4: R1 (+ R0, time-varying via I)
-            axes[4, j].plot(soc, R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
-            axes[4, j].plot(soc, R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
-            axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
-
-            # Row 5: C1
-            C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
-            axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
-            axes[5, j].set_ylabel(r'$C_1$ [F]')
-
-            # Row 6: Fr
-            axes[6, j].plot(soc, tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-            axes[6, j].plot(soc, Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-            axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
-
-            # Row 7: k
-            axes[7, j].plot(soc, k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-            axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
-
-        for ax in axes.flat:
-            if ax.get_xlabel() != 'Time [s]':
-                ax.set_xlabel('State of Charge')
-                ax.invert_xaxis()
-    elif time and spec == None:
-        for j in range(n):
-            tr = pulse_trajs[j]
-            T  = tr['T']
-
-            V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
-
-            I_np = tr['I_seq'].numpy()
-            u_np = np.full(T, tr['u'])
-
-            R0_np = R0_func(u_np, I_np)
-            Ue_np = model.Ue_interp(soc)
-            U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
-
-            # Row 0: I profile vs SOC
-            axes[0, j].plot(I_np, '-', color=COLORS[0], lw=2)
-            axes[0, j].set_ylabel(r'$I$ [A]')
-            axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
-
-            # Row 1: V
-            axes[1, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-            axes[1, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-            axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
-
-            # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
-            # (keep this one on a sample index since both curves ARE soc)
-            axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
-            axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
-            axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
-
-            # Row 3: U1
-            axes[3, j].plot(U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-            axes[3, j].plot(U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-            axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
-
-            # Row 4: R1 (+ R0, time-varying via I)
-            axes[4, j].plot(R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
-            axes[4, j].plot(R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
-            axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
-
-            # Row 5: C1
-            C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
-            axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
-            axes[5, j].set_ylabel(r'$C_1$ [F]')
-
-            # Row 6: Fr
-            axes[6, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-            axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-            axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
-
-
-            # Row 7: k
-            axes[7, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-            axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
-
-        for ax in axes.flat:
-            ax.set_xlabel('Time [s]')
-    elif spec is not None:
-        j = 0
-        n = spec
-        tr = pulse_trajs[n]
-        T  = tr['T']
-
-        V, soc, U1, R1, Fr, k_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
-
-        I_np = tr['I_seq'].numpy()
-        u_np = np.full(T, tr['u'])
-
-        # TODO: Switch to R0 from config
-        R0_np = R0_func(u_np, I_np)
-        Ue_np = model.Ue_interp(soc)
-        U1_true = Ue_np - I_np * R0_np - tr['V'].numpy()
-
-        # Row 0: I profile vs SOC
-        axes[0, j].plot(I_np, '-', color=COLORS[0], lw=2)
-        axes[0, j].set_ylabel(r'$I$ [A]')
-        axes[0, j].set_title(f'{title}pulse traj {j}, u={tr["u"]:.3f}')
-
-        # Row 1: V
-        axes[1, j].plot(tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
-        axes[1, j].plot(V, '-', color=COLORS[0], label=r'Predicted $V$', lw=2)
-        axes[1, j].set_ylabel(r'$V$ [V]'); axes[1, j].legend()
-
-        # Row 2: SOC consistency check — predicted vs dataset SOC, vs time index
-        # (keep this one on a sample index since both curves ARE soc)
-        axes[2, j].plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1], label='True SOC', lw=2)
-        axes[2, j].plot(np.arange(T), soc, '-', color=COLORS[0], label='Predicted SOC', lw=2)
-        axes[2, j].set_ylabel('SOC'); axes[2, j].legend()
-
-        # Row 3: U1
-        axes[3, j].plot(U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-        axes[3, j].plot(U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-        axes[3, j].set_ylabel(r'$U_1$ [V]'); axes[3, j].legend()
-
-        # Row 4: R1 (+ R0, time-varying via I)
-        axes[4, j].plot(R0_np * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
-        axes[4, j].plot(R1    * 1000, '-',  color=COLORS[0], label=r'$R_1$', lw=2)
-        axes[4, j].set_ylabel(r'$R$ [m$\Omega$]'); axes[4, j].legend()
-
-        # Row 5: C1
-        C1_np = C1_t.numpy() if C1_t.ndim else np.full(T, float(C1_t))
-        axes[5, j].plot(soc, C1_np, '-', color=COLORS[0], lw=2)
-        axes[5, j].set_ylabel(r'$C_1$ [F]')
-
-        # Row 6: Fr
-        axes[6, j].plot(tr['F'].numpy(), '--', color=COLORS[1], label=r'True $F_r$', lw=2)
-        axes[6, j].plot(Fr,              '-',  color=COLORS[0], label=r'Predicted $F_r$', lw=2)
-        axes[6, j].set_ylabel(r'$F_r$ [GN]'); axes[6, j].legend()
-
-
-        # Row 7: k
-        axes[7, j].plot(k_pred, '-', color=COLORS[0], label=r'Predicted $k$', lw=2)
-        axes[7, j].set_ylabel(r'$k$ [GN/mm]'); axes[7, j].legend()
-
-        for ax in axes.flat:
-            ax.set_xlabel('Time [s]')
-
-
-    fig.tight_layout()
-    return fig
-
-
 # =════════════════════════════════════════════════════════════════
 # RMSE CALC FOR PULSES
 # =════════════════════════════════════════════════════════════════
 
-def rmse_pulse(model, pulse_trajs, noise=False, noise_lvl=0.00):
+def rmse_pulse(model, pulse_trajs):
     rmse = []
-    for j in range(len(pulse_trajs)):
-        tr = pulse_trajs[j]
-
-        V, soc, U1, R1, Fr, ks_pred, C1_t = predict_pulse_np(model, tr['I_seq'], tr['u'], tr['soc0'], tr['T'], noise=noise, noise_lvl=noise_lvl)
-        rmse.append(np.sqrt(np.mean((V - tr['V'].numpy())**2)))
-    
+    for tr in pulse_trajs:
+        out = predict_np(model, model.config, tr)
+        rmse.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2))))
     return rmse
 
 
@@ -1067,19 +813,15 @@ def rmse_pulse(model, pulse_trajs, noise=False, noise_lvl=0.00):
 # Plotter for ECM parameters
 # ══════════════════════════════════════════════════════════════
 
-from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
-
 def plot_param(model, trajs, param='R1'):
     """
-    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
+    Plot R0, R1, C1 or k across SOC for all given trajectories (one line each).
 
     Parameters
     ----------
     model : BatteryECMM
-    trajs : list of trajectory dicts (e.g. test_trajs)
-    param : 'R0', 'R1', 'C1', 'k' or 'Fu
-    title : prefix for the plot title
+    trajs : list of CC trajectory dicts (e.g. test_trajs)
+    param : 'R0', 'R1', 'C1', or 'k'
     """
 
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -1117,20 +859,14 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$R_1$ [m$\Omega$]'
 
             elif param == 'C1':
-                c1 = model._C1(soc, I_norm, u_t)
-                y  = c1.numpy() # if c1.ndim else np.full(len(soc), c1.item())
+                y = model._C1(soc, I_norm, u_t).numpy()
                 ylabel = r'$C_1$ [F]'
 
             elif param == 'R0':
-                m = model.config['R0_mode']
-                if m == 'net':
-                    y = model.R0_net(soc, I_norm, u_t).numpy() * 1e3
-                elif m == 'param':
-                    y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
-                elif m == 'func': 
-                    y = R0_func(u_t.numpy(), I_norm.numpy()) * 1e3
-                elif m in ('net', 'net_no_soc'):
-                    y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
+                if model.config['R0_mode'] == 'func':
+                    y = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val)) * 1e3
+                else:
+                    raise ValueError(f"R0_mode {model.config['R0_mode']!r} not supported")
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
@@ -1138,17 +874,16 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$k$ [GN/mm]'
                 k_true = (-tr['F'] / tr['u']).numpy()
                 ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
-            
+
+            else:
+                raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
 
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
-    # ax.axhline(1000, color='gray', ls='--', lw=1)
-    # ax.axhline(5.0, color='gray', ls='--', lw=1)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
     ax.ticklabel_format(useOffset=False, style='plain')
-
 
     sm = ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
@@ -1158,6 +893,7 @@ def plot_param(model, trajs, param='R1'):
 
     fig.tight_layout()
     return fig
+
 
 def plot_force(model, trajs):
     """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
@@ -1196,7 +932,6 @@ def plot_force(model, trajs):
             ax.scatter(x, F, c=soc.numpy(), cmap=cmap, norm=norm, s=6)
             ax.scatter(x, F_true, c=soc.numpy(), cmap=cmap_r, norm=norm, s=2, linewidths=0.1)
 
-    
     ax.set_xlabel(r'$u$ $[\%]$')
     ax.set_ylabel(r'$F_r$ [GN]')
     sm = ScalarMappable(cmap=cmap, norm=norm)
@@ -1204,21 +939,14 @@ def plot_force(model, trajs):
     fig.tight_layout()
     return fig
 
+
 def data_param(model, trajs):
     """
-    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
-
-    Parameters
-    ----------
-    model : BatteryECMM
-    trajs : list of trajectory dicts (e.g. test_trajs)
-    param : 'R0', 'R1', or 'C1'
+    Return a long-form DataFrame of R0, R1, C1 across SOC for all given
+    trajectories — one row per (trajectory, soc-sample).
     """
-
     model.eval()
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
-    # C_vals = np.array([tr['C'] for tr in trajs_sorted])
-
     frames = []
 
     with torch.no_grad():
@@ -1231,10 +959,9 @@ def data_param(model, trajs):
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
 
-
-            R1 = model._R1(soc, I_norm, u_t).numpy()       # Ohm
-            C1 = model._C1(soc, I_norm, u_t).numpy()       # F
-            R0 = model._R0(soc, I_norm, u_t, 0, 0).numpy()    # Ohm
+            R1 = model._R1(soc, I_norm, u_t).numpy()                   # Ohm
+            C1 = model._C1(soc, I_norm, u_t).numpy()                   # F
+            R0 = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val))  # Ohm
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -1244,10 +971,8 @@ def data_param(model, trajs):
                 'R0': R0,
                 'C': C_val,
                 'u_per': u_per_val}))
-            
-    df = pd.concat(frames, ignore_index=True)
 
-    return df
+    return pd.concat(frames, ignore_index=True)
 
 # =═════════════════════════════════════════════════════════
 # Plotter for predictions
@@ -1255,14 +980,14 @@ def data_param(model, trajs):
 
 def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     """
-    Plot R0, R1, or C1 across SOC for all given trajectories (one line each).
+    Plot V or F prediction vs true across SOC for all given (CC) trajectories.
 
     Parameters
     ----------
     model : BatteryECMM
-    trajs : list of trajectory dicts (e.g. test_trajs)
-    predict : 'V', or 'F'
-    sort : 'C_rate' or 'u_par'
+    trajs : list of CC trajectory dicts (e.g. test_trajs)
+    predict : 'V' or 'F'
+    sort : 'C_rate' or 'u_per'
     """
     assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
 
@@ -1281,60 +1006,44 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
         norm = Normalize(vmin=u_per_vals.min(), vmax=u_per_vals.max())
         bar_name = r'$u$ $[\%]$'
 
-    
     base = plt.cm.Blues_r
     Blues_cut = LinearSegmentedColormap.from_list(
-        "Blues_custom",
-        base(np.linspace(0.0, 0.8, 256))
-    )
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
     cmap_b = Blues_cut
     base = plt.cm.Reds_r
     Reds_cut = LinearSegmentedColormap.from_list(
-        "Reds_custom",
-        base(np.linspace(0.0, 0.8, 256))
-    )
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
     cmap_r = Reds_cut
 
     with torch.no_grad():
         for tr in trajs_sorted:
-            soc    = tr['soc']
-            I_val  = float(tr['I'])
-            u_val  = float(tr['u'])
-            C_val  = float(tr['C'])
+            C_val     = float(tr['C'])
             u_per_val = float(tr['u_per'])
-            I_norm = torch.full_like(soc, I_val / model.I_ref)
-            u_t    = torch.full_like(soc, u_val)
 
-            V, soc_np, U1, R1, Fr, ks, C1, R0 = predict_np(model, config, tr['I'], tr['u'], tr['soc0'], tr['T'])
-
+            out = predict_np(model, config, tr)
+            soc_np = out['soc']
             if predict == 'V':
-                y_true = tr['V'].numpy()
-                y_pred = V
+                y_true = tr['V'].numpy(); y_pred = out['V']
                 ylabel = r'$V$ [V]'
-
             elif predict == 'F':
-                y_true = tr['F'].numpy()
-                y_pred = Fr
+                y_true = tr['F'].numpy(); y_pred = out['Fr']
                 ylabel = r'$F$ [GN]'
 
-            if sort == 'C_rate':
-                bar_val = C_val
-            elif sort == 'u_per':
-                bar_val = u_per_val
+            bar_val = C_val if sort == 'C_rate' else u_per_val
 
-            ax.plot(soc_np, y_true, '--', label=f'True {ylabel}', color=cmap_r(norm(bar_val)), lw=2)
-            ax.plot(soc_np, y_pred, '-', label=f'Predicted {ylabel}', color=cmap_b(norm(bar_val)), lw=2)
+            ax.plot(soc_np, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
+            ax.plot(soc_np, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
 
-    # axes[0].set_ylabel(ylabel)
     ax.set_xlabel('State of Charge')
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
 
-    # cheat legend
+    # legend with two cheat handles
     from matplotlib.lines import Line2D
-    # mid-color of each cmap
-    ax.legend(handles=[Line2D([0], [0], color='tab:red', lw=2, label='True')])
-    ax.legend(handles=[Line2D([0], [0], color='tab:blue', lw=2, label='Predicted')])
+    ax.legend(handles=[
+        Line2D([0], [0], color='tab:red',  lw=2, label='True'),
+        Line2D([0], [0], color='tab:blue', lw=2, label='Predicted'),
+    ])
 
     fig.tight_layout()
     sm_true = ScalarMappable(cmap=cmap_b, norm=norm)

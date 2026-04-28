@@ -4,3 +4,7 @@ Similar to staged_2_lib but without all alternatives, that is hopefully the fina
 
 Future updated function helpers and plotters will most likely be in here (28/04)
 
+## cleaner
+Removed batched
+Forward into one forward function
+Plot_predictions into one function (a lot of ifs)
