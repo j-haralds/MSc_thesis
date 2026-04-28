@@ -238,6 +238,12 @@ if SAVE_FIGS:
 plot_param(model, trajs, param='C1')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(model, trajs, param='k')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(model, trajs, param='Fu')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════

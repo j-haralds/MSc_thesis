@@ -1351,10 +1351,9 @@ def plot_param(model, trajs, param='R1', title=''):
     ----------
     model : BatteryECMM
     trajs : list of trajectory dicts (e.g. test_trajs)
-    param : 'R0', 'R1', or 'C1'
+    param : 'R0', 'R1', 'C1', 'k' or 'Fu
     title : prefix for the plot title
     """
-    assert param in ('R0', 'R1', 'C1'), "param must be 'R0', 'R1', or 'C1'"
 
     fig, ax = plt.subplots(figsize=(6, 4))
     model.eval()
@@ -1362,21 +1361,20 @@ def plot_param(model, trajs, param='R1', title=''):
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
     C_vals = np.array([tr['C'] for tr in trajs_sorted])
 
-    # base = plt.get_cmap("RdBu_r")  # reversed so blue = low C, red = high C
-    # blue_only = LinearSegmentedColormap.from_list(
-    #     "RdBu_blue",
-    #     base(np.linspace(0.0, 0.4, 256))
-    # )
-    # cmap = blue_only
-    # cmap = plt.cm.Blues # magma # RdBu_r    # coolwarm
-
     base = plt.cm.Blues_r
     Blues_cut = LinearSegmentedColormap.from_list(
         "Blues_custom",
         base(np.linspace(0.0, 0.8, 256))
     )
     cmap = Blues_cut
-    # cmap = plt.cm.copper
+
+    base = plt.cm.Reds_r
+    Reds_cut = LinearSegmentedColormap.from_list(
+        "Reds_custom",
+        base(np.linspace(0.0, 0.8, 256))
+    )
+    cmap_r = Reds_cut
+
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
 
     with torch.no_grad():
@@ -1387,6 +1385,7 @@ def plot_param(model, trajs, param='R1', title=''):
             C_val  = float(tr['C'])
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
+            xlabel = 'State of Charge'
 
             if param == 'R1':
                 y = model._R1(soc, I_norm, u_t).numpy() * 1e3
@@ -1397,7 +1396,7 @@ def plot_param(model, trajs, param='R1', title=''):
                 y  = c1.numpy() # if c1.ndim else np.full(len(soc), c1.item())
                 ylabel = r'$C_1$ [F]'
 
-            else:  # 'R0'
+            elif param == 'R0':
                 m = model.config['R0_mode']
                 if m == 'net':
                     y = model.R0_net(soc, I_norm, u_t).numpy() * 1e3
@@ -1409,11 +1408,27 @@ def plot_param(model, trajs, param='R1', title=''):
                     y = model._R0(soc, I_norm, u_t, 0, 0).numpy() * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
 
+            elif param == 'k':
+                y = model.k_net(soc, I_norm, u_t).numpy()
+                ylabel = r'$k$ [GN/mm]'
+                k_emp = (-tr['F'] / tr['u']).numpy()
+                ax.plot(soc.numpy(), k_emp, '--', color=cmap_r(norm(C_val)), label='Empirical $k$', lw=2)
+            
+            elif param == 'Fu':
+                k = model.k_net(soc, I_norm, u_t).numpy()
+                y = - k * u_t.numpy()  # convert to GN/mm * mm
+                ylabel = r'$F_u$ [GN]'
+
+                # overwrite soc to be u_per for this plot
+                soc = tr['u_per'] * torch.ones_like(soc)
+                xlabel = r'$u$ $[\%]$'
+            
+
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
     # ax.axhline(1000, color='gray', ls='--', lw=1)
     # ax.axhline(5.0, color='gray', ls='--', lw=1)
-    ax.set_xlabel('State of Charge')
+    ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
     ax.ticklabel_format(useOffset=False, style='plain')
