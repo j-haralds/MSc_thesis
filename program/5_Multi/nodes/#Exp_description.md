@@ -55,3 +55,10 @@ Paste the constrained networks here and the name of the model. För att hålla k
 ecm_node_net_no_socR0_netC1_60.4089min_1b_32h_100eps.pt
 R0(i, u)
 With semi-implicit euler
+
+
+## staged_lib.py
+Stage 2 on CC and not optional to train R1
+
+## staged_lib_2.py
+Stage 2 on pulse C, trains k and optional to train R1.

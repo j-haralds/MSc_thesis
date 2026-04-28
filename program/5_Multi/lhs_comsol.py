@@ -14,9 +14,9 @@ N = 50                        # number of sample points (simulations to run)
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
-    "C_rate": (1.0,  5.0,  1),
+    # "C_rate": (1.0,  5.0,  1),    # Pulse
     "u_par":  (0.0, 30.0, 1),
-    # "C_rate": (0.5,  5.0,  1),
+    "C_rate": (0.5,  5.0,  1),     # CC
     # "u_par":  (0.0, 0.0, 1),
 }
 

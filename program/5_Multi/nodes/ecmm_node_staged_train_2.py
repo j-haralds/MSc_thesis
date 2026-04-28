@@ -62,7 +62,7 @@ TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
 EPOCHS_STATIC     = 500     # Stage 1 : V static, train R1 (+R0 if net), kdot
 EPOCHS_DYNAMIC    = 50       # Stage 2 : V dynamic, train C1 only (R1 frozen)
-EPOCHS_UNFREEZE   = 0       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_UNFREEZE   = 10       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 5e-4    # smaller LR once R1 is being refined

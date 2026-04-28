@@ -664,7 +664,7 @@ def _train_inner(model, train_trajs, test_trajs,
             tag = f"[{stage_label}] " if stage_label else ""
             print(f"  {tag}{epoch:4d}/{n_epochs} | ETA {eta:.1f}m "
                   f"| RMSE V {ep_rmse_V:.4f} Fr {ep_rmse_Fr:.4f} "
-                  f"| test V {test_rmse:.4f} | C1={C1:.0f}F")
+                  f"| test V {test_rmse:.4f} | C1={C1:.0f}F | LR {optimizer.param_groups[0]['lr']:.2e}")
 
     history['time'] = history.get('time', 0.0) + (_time.time() - t0) / 60
     return history
@@ -743,7 +743,7 @@ def train_staged(model, train_trajs, test_trajs,
         print("\n---- post-Stage-1 callback ----")
         on_stage1_done(model, history)
 
-    # ── Stage 2 data routing ──
+    # ── Stage 2 ──
     use_pulse = pulse_train_trajs is not None
     s2_train  = pulse_train_trajs if use_pulse else train_trajs
     if use_pulse:
@@ -759,7 +759,7 @@ def train_staged(model, train_trajs, test_trajs,
 
     # ── Stage 2 (R1, R0_net, k frozen — train C1) ──
     print(f"\n========== STAGE 2: dynamic V  ({n_epochs_dynamic} epochs, {data_tag} data) ==========")
-    freeze_kw = ('r1_net', 'R0_net', 'k_net')   # R0_net only exists if R0_mode is net or net_no_soc
+    freeze_kw = ('r1_net', 'R0_net')   # R0_net only exists if R0_mode is net or net_no_soc
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
