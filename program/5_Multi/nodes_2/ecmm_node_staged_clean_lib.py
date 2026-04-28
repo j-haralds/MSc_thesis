@@ -657,7 +657,7 @@ def train_staged(model, train_trajs, test_trajs,
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
-    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''}, k_net frozen)")
+    print(f"  Stage 2 trainable params: {n_s2}  (r1_net{', R0_net' if hasattr(model,'R0_net') else ''})")
     opt2 = torch.optim.Adam(s2_params, lr=lr_dynamic)
     sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=40, factor=0.5)
     _train_inner(model, s2_train, s2_test,
@@ -677,12 +677,12 @@ def train_staged(model, train_trajs, test_trajs,
         lr_b = lr_unfreeze if lr_unfreeze is not None else lr_dynamic
         print(f"\n========== STAGE 2b: dynamic V, R1 UNFROZEN  "
               f"({n_epochs_unfreeze} epochs, {data_tag} data, lr={lr_b}) ==========")
-        freeze_kw_b = ('R0_net', 'k_net')   # R1 + C1 trainable
+        freeze_kw_b = ('R0_net')   # R1 + C1 trainable
         s2b_params = [p for name, p in model.named_parameters()
                       if not any(kw in name for kw in freeze_kw_b)]
         n_s2b = sum(p.numel() for p in s2b_params)
         print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen; "
-              f"{'R0_net, ' if hasattr(model,'R0_net') else ''}k_net frozen)")
+              f"{'R0_net, ' if hasattr(model,'R0_net') else ''})")
         opt2b = torch.optim.Adam(s2b_params, lr=lr_b)
         sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=40, factor=0.5)
         _train_inner(model, s2_train, s2_test,
@@ -1126,25 +1126,23 @@ def plot_param(model, trajs, param='R1'):
 
     base = plt.cm.Blues_r
     Blues_cut = LinearSegmentedColormap.from_list(
-        "Blues_custom",
-        base(np.linspace(0.0, 0.8, 256))
-    )
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
     cmap = Blues_cut
 
     base = plt.cm.Reds_r
     Reds_cut = LinearSegmentedColormap.from_list(
-        "Reds_custom",
-        base(np.linspace(0.0, 0.8, 256))
-    )
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
     cmap_r = Reds_cut
 
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+    norm_u = Normalize(vmin=0, vmax=30)
 
     with torch.no_grad():
         for tr in trajs_sorted:
             soc    = tr['soc']
             I_val  = float(tr['I'])
             u_val  = float(tr['u'])
+            u_per_val = float(tr['u_per'])
             C_val  = float(tr['C'])
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
@@ -1174,8 +1172,8 @@ def plot_param(model, trajs, param='R1'):
             elif param == 'k':
                 y = model.k_net(soc, I_norm, u_t).numpy()
                 ylabel = r'$k$ [GN/mm]'
-                k_emp = (-tr['F'] / tr['u']).numpy()
-                ax.plot(soc.numpy(), k_emp, '--', color=cmap_r(norm(C_val)), label='Empirical $k$', lw=2)
+                k_true = (-tr['F'] / tr['u']).numpy()
+                ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
 
             ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
@@ -1187,8 +1185,12 @@ def plot_param(model, trajs, param='R1'):
     ax.invert_xaxis()
     ax.ticklabel_format(useOffset=False, style='plain')
 
+
     sm = ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
+    if param == 'k':
+        sm = ScalarMappable(cmap=cmap_r, norm=norm_u)
+        fig.colorbar(sm, ax=ax, label='u [%]')
 
     fig.tight_layout()
     return fig
@@ -1205,6 +1207,12 @@ def plot_force(model, trajs):
     base = plt.cm.Blues_r
     cmap = LinearSegmentedColormap.from_list(
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    base = plt.cm.Reds_r
+    Reds_cut = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+    cmap_r = Reds_cut
+
     norm = Normalize(vmin=0, vmax=1)
 
     with torch.no_grad():
@@ -1218,11 +1226,13 @@ def plot_force(model, trajs):
 
             k = model.k_net(soc, I_norm, u_t).numpy()
             F = -k * u_t.numpy()                            # GN
+            F_true = tr['F'].numpy()
             x = np.full(len(soc), u_per_val)                # constant per traj
 
-            ax.scatter(x, F, c=soc.numpy(),
-                       cmap=cmap, norm=norm, s=6)
+            ax.scatter(x, F, c=soc.numpy(), cmap=cmap, norm=norm, s=6)
+            ax.scatter(x, F_true, c=soc.numpy(), cmap=cmap_r, norm=norm, s=2, linewidths=0.1)
 
+    
     ax.set_xlabel(r'$u$ $[\%]$')
     ax.set_ylabel(r'$F_r$ [GN]')
     sm = ScalarMappable(cmap=cmap, norm=norm)

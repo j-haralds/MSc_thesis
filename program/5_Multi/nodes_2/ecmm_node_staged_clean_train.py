@@ -31,13 +31,15 @@ from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 
 
+
+
 # %% ══════════════════════════════════════════════════════════
 #  CONFIGURATION
 # ════════════════════════════════════════════════════════════
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/2_merged_data.txt')
-PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/data_pulse1.txt')
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
+PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
@@ -46,9 +48,9 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 50     # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 5       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
-EPOCHS_UNFREEZE   = 1       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_STATIC     = 1000     # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 10       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 0       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3    # smaller LR once R1 is being refined
@@ -76,18 +78,12 @@ CONFIG = {
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
-data['eta'] = -data['eta']      # TODO: remove for new data
 I_MAX = data['I'].max()
 
 # TODO: Replace with existing GP 
 _s, _u = data['soc'].values, data['Ue'].values
 _i = np.argsort(_s)
 Ue_interp = interp1d(_s[_i], _u[_i], kind='linear', fill_value='extrapolate')
-
-# TODO: Remove
-F_first = data.groupby('u')['F'].first()
-FORCE_CONST = abs(F_first / data.groupby('u')['u'].first()).values[0]  # GN/mm
-print(f'Force constant: {100 * FORCE_CONST:.2f} GN/mm')
 
 print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 
@@ -109,8 +105,7 @@ print(f"  C1 estimate: {C1_init:.0f} F")
 # ══════════════════════════════════════════════════════════════
 
 # print(f"\nLoading pulse data from {os.path.basename(PULSE_FILE)} ...")
-pulse_data = pd.read_csv(PULSE_FILE, sep=',', comment='%')
-pulse_data['eta'] = -pulse_data['eta']      # TODO: remove for new data
+pulse_data = pd.read_csv(PULSE_FILE, sep=';', comment='%')
 pulse_trajs = prepare_pulse_data(pulse_data)
 split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
 pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
@@ -122,9 +117,9 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 #  BUILD MODEL
 # ══════════════════════════════════════════════════════════════
 
-model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0, C1_init=C1_init, I_ref=I_MAX, k=FORCE_CONST)
+bat_model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0, I_ref=I_MAX)
 
-n_params = sum(p.numel() for p in model.parameters())
+n_params = sum(p.numel() for p in bat_model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 
 # %% ══════════════════════════════════════════════════════════
@@ -135,20 +130,20 @@ print(f"\nStaged training: S1={EPOCHS_STATIC}ep static, S2={EPOCHS_DYNAMIC}ep dy
       f"{f', S2b={EPOCHS_UNFREEZE}ep R1-unfrozen' if EPOCHS_UNFREEZE > 0 else ''}, "
       f"batch_size={BATCH_SIZE}{' (pulse Stage 2)' if USE_PULSE else ''}")
 
-def _post_stage1(model, history):
+def _post_stage1(bat_model, history):
     """Plot test predictions at the end of Stage 1, before Stage 2 starts.
 
     V_mode='static' so the plot reflects how Stage 1 was actually trained
     (U1 = I·R1, no C1) — and the C1 panel is omitted entirely since C1
     has not been trained yet.
     """
-    plot_predictions(model, CONFIG, test_trajs, time=False,
+    plot_predictions(bat_model, CONFIG, test_trajs, time=False,
                      title='Post-Stage-1: ', V_mode='static')
     plt.suptitle(f'After Stage 1 ({history["stage1_epochs"]} static epochs) — '
                  f'C1 not yet trained, omitted', y=1.0)
     plt.show()
 
-history = train_staged(model, train_trajs, test_trajs,
+history = train_staged(bat_model, train_trajs, test_trajs,
                        n_epochs_static=EPOCHS_STATIC,
                        n_epochs_dynamic=EPOCHS_DYNAMIC,
                        lr_static=LR_STATIC,
@@ -160,7 +155,7 @@ history = train_staged(model, train_trajs, test_trajs,
                        n_epochs_unfreeze=EPOCHS_UNFREEZE,
                        lr_unfreeze=LR_UNFREEZE)
 
-C1_final = get_C1(model, scalar=True)
+C1_final = get_C1(bat_model, scalar=True)
 TOTAL_TIME = history['time']
 print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 print(f"  C1: {C1_init:.0f} → {C1_final:.0f} F")
@@ -185,7 +180,7 @@ SAVE_NAME = (f'staged_{CONFIG["R0_mode"]}R0_{constr}'
              f'eps')
 print(SAVE_NAME)
 
-plot_predictions(model, CONFIG, test_trajs, time=False, title='Test: ')
+plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
@@ -206,21 +201,21 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 # TODO: switch param to element
-plot_param(model, trajs, param='R0')
+plot_param(bat_model, test_trajs, param='R0')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='R1')
+plot_param(bat_model, test_trajs, param='R1')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='C1')
+plot_param(bat_model, test_trajs, param='C1')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(model, trajs, param='k')
+plot_param(bat_model, test_trajs, param='k')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
-plot_force(model, trajs)
+plot_force(bat_model, test_trajs)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
@@ -230,7 +225,7 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 sort = 'u_per'  # 'C_rate' or 'u_per'
-plot_predicts(model, CONFIG, test_trajs, predict='F', sort=sort)
+plot_predicts(bat_model, CONFIG, test_trajs, predict='F', sort=sort)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
@@ -240,7 +235,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 
-plot_predictions_pulse(model, pulse_test, time=True, title='Pulse test: ',
+plot_predictions_pulse(bat_model, pulse_test, time=True, title='Pulse test: ',
                         n_show=min(3, len(pulse_test)))
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}.pdf'),
@@ -248,7 +243,7 @@ if SAVE_FIGS:
 plt.show()
 
 # Numeric RMSE summary across the pulse test set
-rmses = rmse_pulse(model, pulse_test)
+rmses = rmse_pulse(bat_model, pulse_test)
 print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
         f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
         f"({len(rmses)} trajs)")
@@ -259,7 +254,7 @@ print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
 
 if SAVE_MODELS:
     torch.save({
-        'model': model.state_dict(),
+        'model': bat_model.state_dict(),
         'config': CONFIG,
         'history': history,
         'C1_init': C1_init,
@@ -272,3 +267,5 @@ if SAVE_MODELS:
     }, os.path.join(MODEL_DIR, f'ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt'))
 
     print(f"Saved: ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt")
+
+# %%
