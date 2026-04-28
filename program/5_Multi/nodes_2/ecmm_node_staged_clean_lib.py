@@ -21,19 +21,6 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
-# DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-# DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
-# FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
-# MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-
-# Q0          = 17921.57581
-# TRAIN_SPLIT = 0.8
-# N_HIDDEN    = 32
-# EPOCHS      = 2
-# LR          = 1e-3
-# BATCH_SIZE  = 1        # Trajectories per batch
-
-
 # ══════════════════════════════════════════════════════════
 #  R1 NETWORK
 # ══════════════════════════════════════════════════════════════
@@ -272,16 +259,6 @@ class BatteryECMM(nn.Module):
 
         R1 = self._R1(soc, I_norm, u_exp)
         C1 = self._C1(soc, I_norm, u_exp)
-
-        # m = self.config['R0_mode']
-        # if m == 'net':
-        #     R0 = self.R0_net(soc, I_norm, u_exp)
-        # elif m == 'param':
-        #     R0 = torch.exp(self.log_R0).expand_as(soc)
-        # elif m == 'func':
-        #     R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
-        # elif m == 'net_no_soc':
-        #     R0 = self.R0_net(I_norm, u_exp)
         R0 = (u_exp * (-0.0001887521) - 7.049519e-5 * I_seq + 0.008446693)
 
         # k is algebraic (static)
@@ -359,19 +336,6 @@ def prepare_pulse_data(pulse_raw):
             soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
         ))
     return pulse_trajs
-
-
-# def estimate_C1(trajs):
-#     ests = []
-#     for tr in trajs:
-#         U1 = tr['U1_true'].numpy()
-#         U1_ss = np.mean(U1[-max(20, len(U1)//20):])
-#         R1_ss = U1_ss / tr['I'] if tr['I'] > 0 else np.nan
-#         target = 0.632 * U1_ss
-#         idx = np.argmax(U1 > target)
-#         if idx > 0 and R1_ss > 1e-6:
-#             ests.append(idx / R1_ss)
-#     return float(np.median(ests)) if ests else 30000.0
 
 # ══════════════════════════════════════════════════════════
 #  BATCH COLLATION
