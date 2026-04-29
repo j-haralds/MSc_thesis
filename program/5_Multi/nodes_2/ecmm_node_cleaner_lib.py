@@ -210,6 +210,8 @@ class BatteryECMM(nn.Module):
                                  C1 plays no role during Stage 1 training.
         F is algebraic in both modes (k is static).
         """
+        # Batch remnant: B size is 1 
+
         # ── Resolve I_seq shape (B, T) and B, T ──
         if I_batch.ndim == 1:
             assert T is not None, "T must be provided when I_batch is 1D (CC mode)"
@@ -392,8 +394,8 @@ def _train_inner(model, train_trajs, test_trajs,
             V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=v_mode_eff)
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
-            loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean()
-            loss = loss_V + loss_Fr
+            loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * 1000  # scale up Fr loss to be in similar order as V loss
+            loss = loss_V + loss_Fr    
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)     # gradient clipping for stability in k training
@@ -944,7 +946,7 @@ def plot_force(model, trajs):
 
 def data_param(model, trajs):
     """
-    Return a long-form DataFrame of R0, R1, C1 across SOC for all given
+    Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
     trajectories — one row per (trajectory, soc-sample).
     """
     model.eval()
@@ -964,15 +966,19 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_t).numpy()                   # Ohm
             C1 = model._C1(soc, I_norm, u_t).numpy()                   # F
             R0 = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val))  # Ohm
+            k = model.k_net(soc, I_norm, u_t).numpy()                   # GN/mm
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
+                'C': C_val,
+                'u_per': u_per_val,
+                'I': I_val,
+                'u': u_val,
                 'soc': soc.numpy(),
                 'R1': R1,
                 'C1': C1,
                 'R0': R0,
-                'C': C_val,
-                'u_per': u_per_val}))
+                'k': k}))
 
     return pd.concat(frames, ignore_index=True)
 

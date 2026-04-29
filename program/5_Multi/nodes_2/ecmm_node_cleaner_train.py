@@ -49,7 +49,7 @@ Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
 EPOCHS_STATIC     = 1000     # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 10       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_DYNAMIC    = 0       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
@@ -245,7 +245,7 @@ print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
 
 # %% ══════════════════════════════════════════════════════════
 #  SAVE
-# ══════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 if SAVE_MODELS:
     torch.save({
@@ -262,4 +262,11 @@ if SAVE_MODELS:
 
     print(f"Saved: ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt")
 
-# %%
+# %% ══════════════════════════════════════════════════════════
+# ELEMENT SAVER
+# ═════════════════════════════════════════════════════════════
+
+element_data = data_param(bat_model, pulse_test)
+element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
+print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
+
