@@ -118,19 +118,39 @@ def R0_func(u, I):
 # ══════════════════════════════════════════════════════════════
 
 class kNet(nn.Module):
-    """(SOC, I, u) → k > 0  [GN/mm].  Algebraic — no integration.
+    """(u) → k > 0  [GN/mm].  Algebraic — no integration.
     """
     def __init__(self, n_hidden=32, k=53.0):
         super().__init__()
         self.k = float(k)                           # reference k0 from data
         self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
+            nn.Linear(1, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
-    def forward(self, soc, I_norm, u):
-        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+    def forward(self, u):
+        x = torch.stack([u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1)
+    
+# ══════════════════════════════════════════════════════════
+#  s NETWORK (static)
+# ══════════════════════════════════════════════════════════════
+
+
+class sNet(nn.Module):
+    """(soc, I_norm) → s > 0  [GN/mm].  Algebraic — no integration.
+    """
+    def __init__(self, n_hidden=32):
+        super().__init__()                       
+        self.net = nn.Sequential(
+            nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+
+    def forward(self, soc, I_norm):
+        x = torch.stack([soc, I_norm], dim=-1)   # (..., 2)
         return nn.functional.softplus(self.net(x)).squeeze(-1)
 
 # ══════════════════════════════════════════════════════════
@@ -163,6 +183,9 @@ class BatteryECMM(nn.Module):
 
         # ── k network (always; static algebraic stiffness) ──
         self.k_net = kNet(n_hidden=nh, k=k)
+
+        # ── s network (always; static algebraic stiffness) ──
+        self.s_net = sNet(n_hidden=nh)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -240,7 +263,8 @@ class BatteryECMM(nn.Module):
         R0 = self._R0(u_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(soc, I_norm, u_exp)              # (B, T)
+        k = self.k_net(u_exp)              # (B, T)
+        s = self.s_net(soc, I_norm)              # (B, T)
 
         # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
@@ -263,7 +287,7 @@ class BatteryECMM(nn.Module):
             Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
 
         V  = Ue - I_seq * R0 - U1
-        Fr = - k * u_exp             # GN/ 1e-5m * 1e-5m
+        Fr = - k * (u_exp - s)            # GN/ 1e-5m * 1e-5m
 
         return V, Fr, soc, U1, R1
 
@@ -614,7 +638,8 @@ def predict_np(model, config, traj, V_mode='dynamic'):
     I_norm = torch.from_numpy((I_np / model.I_ref).astype(np.float32))
     u_t    = torch.from_numpy(u_np.astype(np.float32))
 
-    k = model.k_net(soc_t, I_norm, u_t).numpy()
+    k = model.k_net(u_t).numpy()
+    s = model.s_net(soc_t, I_norm).numpy()
 
     if V_mode == 'static':
         C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
@@ -623,12 +648,12 @@ def predict_np(model, config, traj, V_mode='dynamic'):
 
     R0 = R0_func(u_np, I_np)        # numpy, shape (T,)
 
-    return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, C1=C1, R0=R0, I=I_np)
+    return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
 
 
 # ══════════════════════════════════════════════════════════
 #  PLOT PREDICTIONS  (one function for both CC and pulse)
-# ══════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════
 
 def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                      V_mode='dynamic'):
@@ -648,11 +673,11 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     # Determine kind from first trajectory; assume the rest are the same.
     pulse = 'I_seq' in trajs[0]
     if pulse:
-        rows = ['I', 'V', 'soc', 'U1', 'R', 'C1', 'Fr', 'k']
+        rows = ['I', 'V', 'soc', 'U1', 'R', 'C1', 'Fr', 'k', 's']
     elif V_mode == 'static':
-        rows = ['V', 'U1', 'R', 'Fr', 'k']
+        rows = ['V', 'U1', 'R', 'Fr', 'k', 's'] 
     elif V_mode == 'dynamic':
-        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'k']
+        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'k', 's']
     else:
         raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
@@ -665,7 +690,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         T  = tr['T']
         out = predict_np(model, config, tr, V_mode=V_mode)
         V, soc_np, U1 = out['V'], out['soc'], out['U1']
-        R1, Fr, k_pred = out['R1'], out['Fr'], out['k']
+        R1, Fr, k_pred, s_pred = out['R1'], out['Fr'], out['k'], out['s']
         C1, R0, I_np = out['C1'], out['R0'], out['I']
 
         # x-axis: time index when time=True OR for pulse data (SOC isn't monotonic
@@ -743,9 +768,14 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 # Empirical stiffness directly from the data: k_true = -F/u
                 k_true = -tr['F'] / tr['u'] * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 k_pred = k_pred * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
-                ax.plot(x, k_true, '--', color=COLORS[1], label=r'True $k = -F/u$', lw=2, alpha=0.7)
+                ax.plot(x, k_true, '--', color=COLORS[1], label=r'INVALID! True $k = -F/u$', lw=2, alpha=0.7)
                 ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
                 ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
+
+            elif name == 's':
+                # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
+                ax.plot(x, s_pred, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                ax.set_ylabel(r'$s$ [mm]'); ax.legend()
 
     # x-label + axis direction handled per-trajectory-kind
     for ax in axes.flat:
@@ -875,12 +905,16 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
-                y = model.k_net(soc, I_norm, u_t).numpy()
+                y = model.k_net(u_t).numpy()
                 ylabel = r'$k$ [GN/mm]'
                 k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
 
                 ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
+            
+            elif param == 's':
+                y = model.s_net(soc, I_norm).numpy() * 1e2 # 1e-5 m to mm
+                ylabel = r'$s$ [mm]'
 
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
@@ -931,8 +965,9 @@ def plot_force(model, trajs):
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_t    = torch.full_like(soc, u_val)
 
-            k = model.k_net(soc, I_norm, u_t).numpy() # * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
-            F = - k * u_t.numpy()                            # GN
+            k = model.k_net(u_t).numpy() # * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
+            s = model.s_net(soc, I_norm).numpy() # * 1e2 # convert from m to mm for plotting
+            F = - k * (u_t.numpy() - s)                            # GN
             F_true = tr['F'].numpy()
             x = np.full(len(soc), u_per_val)                # constant per traj
 
@@ -969,7 +1004,8 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_t).numpy()                     # Ohm
             C1 = model._C1(soc, I_norm, u_t).numpy()                     # F
             R0 = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val))  # Ohm
-            k  = model.k_net(soc, I_norm, u_t).numpy()                   # GN/mm
+            k  = model.k_net(u_t).numpy()                   # GN/mm
+            s  = model.s_net(soc, I_norm).numpy() * 1e2      # convert from m to mm for plotting
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -981,7 +1017,8 @@ def data_param(model, trajs):
                 'R1': R1,
                 'C1': C1,
                 'R0': R0,
-                'k': k}))
+                'k': k,
+                's': s}))
 
     return pd.concat(frames, ignore_index=True)
 

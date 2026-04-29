@@ -23,9 +23,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_lib as _lib
+import ecmm_node_cleaner_swell_lib as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_lib import *
+from ecmm_node_cleaner_swell_lib import *
 
 from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
@@ -43,12 +43,12 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = True
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 5    # Stage 1 : V static, train R1 and k
+EPOCHS_STATIC     = 500    # Stage 1 : V static, train R1 and k
 EPOCHS_DYNAMIC    = 0       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
@@ -167,8 +167,7 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'staged_{CONFIG["R0_mode"]}R0_{constr}'
-             f'_{"pulse" if USE_PULSE else "CC"}'
+SAVE_NAME = (f'staged_swelling'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
              f'{f"_S2b{EPOCHS_UNFREEZE}" if EPOCHS_UNFREEZE > 0 else ""}'
