@@ -43,7 +43,7 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = True
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
@@ -59,11 +59,11 @@ LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 USE_PULSE         = True
 
 CONFIG = {
-    'R1_mode': 'net',   # 'net'
-    'C1_mode': 'net',   # 'net'
-    'R0_mode': 'func',           # 'func'
+    'R1_mode': 'net',           # 'net'
+    'C1_mode': 'net',           # 'net'
+    'R0_mode': 'func',          # 'func'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
+    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.3,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
 }

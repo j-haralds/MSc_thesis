@@ -759,7 +759,7 @@ def train_staged(model, train_trajs, test_trajs,
 
     # ── Stage 2 (R1, R0_net, k frozen — train C1) ──
     print(f"\n========== STAGE 2: dynamic V  ({n_epochs_dynamic} epochs, {data_tag} data) ==========")
-    freeze_kw = ('r1_net', 'R0_net')   # R0_net only exists if R0_mode is net or net_no_soc
+    freeze_kw = ('r1_net',)   # R0_net only exists if R0_mode is net or net_no_soc
     s2_params = [p for name, p in model.named_parameters()
                  if not any(kw in name for kw in freeze_kw)]
     n_s2 = sum(p.numel() for p in s2_params)
@@ -783,7 +783,7 @@ def train_staged(model, train_trajs, test_trajs,
         lr_b = lr_unfreeze if lr_unfreeze is not None else lr_dynamic
         print(f"\n========== STAGE 2b: dynamic V, R1 UNFROZEN  "
               f"({n_epochs_unfreeze} epochs, {data_tag} data, lr={lr_b}) ==========")
-        freeze_kw_b = ('R0_net', 'k_net')   # R1 + C1 trainable
+        freeze_kw_b = ('k_net',)   # R1 + C1 trainable
         s2b_params = [p for name, p in model.named_parameters()
                       if not any(kw in name for kw in freeze_kw_b)]
         n_s2b = sum(p.numel() for p in s2b_params)
@@ -1390,6 +1390,8 @@ def plot_param(model, trajs, param='R1', title=''):
             if param == 'R1':
                 y = model._R1(soc, I_norm, u_t).numpy() * 1e3
                 ylabel = r'$R_1$ [m$\Omega$]'
+                ax.axhline(y.min(), color='k', ls='--', lw=1, label=rf'{y.min():.1f} m$\Omega$')
+                ax.legend()
 
             elif param == 'C1':
                 c1 = model._C1(soc, I_norm, u_t)
@@ -1428,6 +1430,7 @@ def plot_param(model, trajs, param='R1', title=''):
 
     # ax.axhline(1000, color='gray', ls='--', lw=1)
     # ax.axhline(5.0, color='gray', ls='--', lw=1)
+    
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()

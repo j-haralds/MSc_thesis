@@ -110,6 +110,25 @@ class C1NetConstrained(nn.Module):
 #  R0
 # ══════════════════════════════════════════════════════════════
 
+class R0NetConstrained(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        self.R0_min = config.get('R0_min')
+        self.R0_max = config.get('R0_max')
+        print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
+
+    def forward(self, soc, I_norm, u):
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+        return self.R0_min + s * (self.R0_max - self.R0_min)
+
 def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
@@ -178,8 +197,12 @@ class BatteryECMM(nn.Module):
             print('C1 unconstrained')
             self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
 
-        # ── R0 — only 'func' supported in this cleaned version ──
-        self.R0_func = R0_func
+        # ── R0 — support R0 networks ──
+        if config.get('R0_constrained', 'false') == 'true':
+            self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+        else:
+            print('R0 as function, no net')
+            self.R0_func = R0_func
 
     # ── Dispatchers ──
     def _R1(self, soc, I_norm, u):
@@ -188,13 +211,15 @@ class BatteryECMM(nn.Module):
     def _C1(self, soc, I_norm, u):
         return self.C1_net(soc, I_norm, u)
 
-    def _R0(self, u_exp, I_seq):
+    def _R0(self, soc, I_norm, u_exp, I_seq):
         """Element-wise R0 evaluated on (B, T) tensors. Returns (B, T)."""
         m = self.config['R0_mode']
         if m == 'func':
             return self.R0_func(u_exp, I_seq)
+        elif m == 'net':
+            return self.R0_net(soc, I_norm, u_exp)
         # Other modes (net, param, net_no_soc) were dropped during cleanup.
-        raise ValueError(f"Unsupported R0_mode: {m!r} (only 'func' is wired up).")
+        raise ValueError(f"Unsupported R0_mode: {m!r} (only 'func' and 'net' are supported).")
 
     def forward(self, I_batch, u_batch, soc0_batch, T=None, V_mode='dynamic'):
         """
@@ -237,7 +262,7 @@ class BatteryECMM(nn.Module):
 
         # Parameters along the trajectory  (B, T)
         R1 = self._R1(soc, I_norm, u_exp)
-        R0 = self._R0(u_exp, I_seq)
+        R0 = self._R0(soc, I_norm, u_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
         k = self.k_net(soc, I_norm, u_exp)              # (B, T)

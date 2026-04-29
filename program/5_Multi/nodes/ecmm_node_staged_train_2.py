@@ -60,12 +60,12 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 500     # Stage 1 : V static, train R1 (+R0 if net), kdot
+EPOCHS_STATIC     = 1000     # Stage 1 : V static, train R1 (+R0 if net), kdot
 EPOCHS_DYNAMIC    = 50       # Stage 2 : V dynamic, train C1 only (R1 frozen)
 EPOCHS_UNFREEZE   = 10       # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
-LR_UNFREEZE       = 5e-4    # smaller LR once R1 is being refined
+LR_UNFREEZE       = 1e-3    # smaller LR once R1 is being refined
 BATCH_SIZE        = 1       # Trajectories per batch
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
@@ -74,12 +74,12 @@ USE_PULSE         = True
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net' 
-    'R0_mode': 'net_no_soc',           # 'net', 'func', 'net_no_soc', 'param'
+    'R0_mode': 'net',           # 'net', 'func', 'net_no_soc', 'param'
     'n_hidden': N_HIDDEN,
     'k_scale': None,          # output magnitude for kNet
-    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
+    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.3,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-    'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
+    'R0_constrained': 'true', 'R0_min': 0.005, 'R0_max': 0.012,    # Ohm
 }
 
 
