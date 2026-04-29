@@ -266,7 +266,7 @@ if SAVE_MODELS:
 # ELEMENT SAVER
 # ═════════════════════════════════════════════════════════════
 
-element_data = data_param(bat_model, pulse_test)
+element_data = data_param(bat_model, trajs)
 element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
 print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
 
