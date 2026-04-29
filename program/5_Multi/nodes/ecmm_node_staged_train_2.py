@@ -74,7 +74,7 @@ USE_PULSE         = True
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net' 
-    'R0_mode': 'func',           # 'net', 'func', 'net_no_soc', 'param'
+    'R0_mode': 'net_no_soc',           # 'net', 'func', 'net_no_soc', 'param'
     'n_hidden': N_HIDDEN,
     'k_scale': None,          # output magnitude for kNet
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm

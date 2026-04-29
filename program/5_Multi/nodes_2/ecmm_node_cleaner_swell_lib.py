@@ -85,7 +85,7 @@ class C1Net(nn.Module):
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         # C1 initialized around softplus(0) = ln(1 + e^0) = ln(2) = 0.693.  0.693 × 2000 = 1386 F
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000      # [F]
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000 * 4     # [F]
 
 class C1NetConstrained(nn.Module):
     """(SOC, I, u) → C1 > 0  [F].  One hidden layer, sigmoid+linear constraint."""

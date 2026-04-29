@@ -43,14 +43,14 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = False
+SAVE_MODELS = True
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 500    # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 0       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
-EPOCHS_UNFREEZE   = 0        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_STATIC     = 1000    # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 50       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 5        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
