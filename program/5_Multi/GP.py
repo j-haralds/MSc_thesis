@@ -5,7 +5,7 @@ import torch
 
 def get_data(file_name):
     df = pd.read_csv(
-        f"Multi_data/{file_name}.txt",
+        f"../Multi_data/other/{file_name}.txt",
         delim_whitespace=True,
         comment="%",
         header=None
@@ -21,7 +21,7 @@ def GP_process():
     sig = 1
     l = 0.1
     alpha = [l, sig]
-    data = get_data('ocv_run')
+    data = get_data('GP_run')
     x_gp = data['soc'].values
     y_gp = data['Ue'].values
     x_gp[x_gp<0] = 0 
