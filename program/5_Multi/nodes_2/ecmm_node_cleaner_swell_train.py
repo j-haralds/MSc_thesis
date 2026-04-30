@@ -43,14 +43,14 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = True
+SAVE_MODELS = False
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 1000    # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 50       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
-EPOCHS_UNFREEZE   = 5        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_STATIC     = 100   # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 2       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 2        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
@@ -61,11 +61,11 @@ USE_PULSE         = True
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net'
-    'R0_mode': 'func',           # 'func'
+    'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
+    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-    'R0_constrained': 'false', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
+    'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
 }
 
 
@@ -207,11 +207,19 @@ if SAVE_FIGS:
 plot_param(bat_model, test_trajs, param='k')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(bat_model, test_trajs, param='s')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_s_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
+
+
 
 plot_force(bat_model, test_trajs)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_swelling(bat_model, test_trajs)
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_su_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════

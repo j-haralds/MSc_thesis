@@ -109,7 +109,67 @@ class C1NetConstrained(nn.Module):
 # ══════════════════════════════════════════════════════════
 #  R0
 # ══════════════════════════════════════════════════════════════
+class R0Net(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
 
+    def forward(self, soc, I_norm, u):
+        # Works for any shape — just needs matching last dims
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
+class R0NetConstrained(nn.Module):
+    """(SOC, I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        self.R0_min = config.get('R0_min')
+        self.R0_max = config.get('R0_max')
+        print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
+
+    def forward(self, soc, I_norm, u):
+        x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
+        s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+        return self.R0_min + s * (self.R0_max - self.R0_min)
+    
+class R0NetNoSOC(nn.Module):
+    """(I, u) → R0 > 0  [Ohm].  One hidden layer, softplus output."""
+    def __init__(self, config, n_hidden=32, I_ref=20.0):
+        super().__init__()
+        self.I_ref = I_ref
+        self.config = config
+        self.net = nn.Sequential(
+            nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        self.R0_min = config.get('R0_min')
+        self.R0_max = config.get('R0_max')
+        if config.get('R0_constrained', 'false') == 'true':
+            print(f'R0 constrained to [{self.R0_min}, {self.R0_max}] Ohm')
+        else:
+            print('R0 unconstrained')
+
+    def forward(self, I_norm, u):
+        x = torch.stack([I_norm, u], dim=-1)   # (..., 2)
+        if self.config.get('R0_constrained', 'false') == 'true':
+            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.R0_min + s * (self.R0_max - self.R0_min)
+        else:
+            return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
+    
 def R0_func(u, I):
     return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
@@ -201,8 +261,22 @@ class BatteryECMM(nn.Module):
             print('C1 unconstrained')
             self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
 
-        # ── R0 — only 'func' supported in this cleaned version ──
-        self.R0_func = R0_func
+        # ── R0 — multiple modes still supported ──
+        m = config['R0_mode']
+        if m == 'net':
+            if config.get('R0_constrained', 'false') == 'true':
+                self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+            else:
+                print('R0 unconstrained')
+                self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
+        elif m == 'func':
+            self.R0_func = R0_func
+        elif m == 'param':
+            self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))
+        elif m == 'net_no_soc':
+            self.R0_net = R0NetNoSOC(config, n_hidden=nh, I_ref=I_ref)
+        else:
+            raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
 
     # ── Dispatchers ──
     def _R1(self, soc, I_norm, u):
@@ -211,11 +285,17 @@ class BatteryECMM(nn.Module):
     def _C1(self, soc, I_norm, u):
         return self.C1_net(soc, I_norm, u)
 
-    def _R0(self, u_exp, I_seq):
+    def _R0(self, soc, I_norm, u_exp, I_seq):
         """Element-wise R0 evaluated on (B, T) tensors. Returns (B, T)."""
         m = self.config['R0_mode']
         if m == 'func':
             return self.R0_func(u_exp, I_seq)
+        elif m == 'net':
+            return self.R0_net(soc, I_norm, u_exp)
+        elif m == 'param':
+            return torch.exp(self.log_R0)
+        elif m == 'net_no_soc':
+            return self.R0_net(I_norm, u_exp)
         # Other modes (net, param, net_no_soc) were dropped during cleanup.
         raise ValueError(f"Unsupported R0_mode: {m!r} (only 'func' is wired up).")
 
@@ -260,7 +340,7 @@ class BatteryECMM(nn.Module):
 
         # Parameters along the trajectory  (B, T)
         R1 = self._R1(soc, I_norm, u_exp)
-        R0 = self._R0(u_exp, I_seq)
+        R0 = self._R0(soc, I_norm, u_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
         k = self.k_net(u_exp)              # (B, T)
@@ -640,13 +720,13 @@ def predict_np(model, config, traj, V_mode='dynamic'):
 
     k = model.k_net(u_t).numpy()
     s = model.s_net(soc_t, I_norm).numpy()
+    R0 = model._R0(soc_t, I_norm, u_t, I_np).numpy()        # (T,)
 
     if V_mode == 'static':
         C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
 
-    R0 = R0_func(u_np, I_np)        # numpy, shape (T,)
 
     return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
 
@@ -745,10 +825,9 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 ax.set_ylabel(r'$dU_1/dt$ [V/s]'); ax.legend()
 
             elif name == 'R':
-                # R0 is time-varying for pulse (since I varies); for CC it's constant.
-                if pulse:
+                if config['R0_mode'] in ('func', 'net', 'net_no_soc'):
                     ax.plot(x, R0 * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
-                else:
+                else:   # 'param'
                     R0_val = float(R0[0])
                     ax.axhline(R0_val * 1000, ls='--', color=COLORS[0],
                                label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
@@ -898,10 +977,7 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$C_1$ [F]'
 
             elif param == 'R0':
-                if model.config['R0_mode'] == 'func':
-                    y = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val)) * 1e3
-                else:
-                    raise ValueError(f"R0_mode {model.config['R0_mode']!r} not supported")
+                y = model._R0(soc, I_norm, u_t, np.full_like(u_t.numpy(), I_val)).numpy() * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
@@ -981,6 +1057,53 @@ def plot_force(model, trajs):
     fig.tight_layout()
     return fig
 
+def plot_swelling(model, trajs):
+    """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
+
+    Each trajectory contributes len(soc) points: x = u_per (constant per traj),
+    y = -k·u (varies along the traj because k depends on SOC), color = SOC.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    base = plt.cm.Reds_r
+    Reds_cut = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+    cmap_r = Reds_cut
+
+    trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+    C_vals = np.array([tr['C'] for tr in trajs_sorted])
+    norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+    norm_u = Normalize(vmin=0, vmax=1)
+
+    with torch.no_grad():
+        for tr in trajs:
+            soc       = tr['soc']
+            I_val     = float(tr['I'])
+            u_val     = float(tr['u'])
+            C_val     = float(tr['C'])
+            u_per_val = float(tr['u_per'])
+            I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_t    = torch.full_like(soc, u_val)
+
+            s = model.s_net(soc, I_norm).numpy() * 1e2 # convert from 1e-5m to mm for plotting
+            x = np.full(len(soc), u_per_val)                # constant per traj
+
+            # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
+            ax.scatter(x, s, c=C_val*np.ones_like(s), cmap=cmap, norm=norm, s=6)
+
+
+    ax.set_xlabel(r'$u$ $[\%]$')
+    ax.set_ylabel(r'$s$ [mm]')
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
+    fig.tight_layout()
+    return fig
+
 
 def data_param(model, trajs):
     """
@@ -1003,7 +1126,7 @@ def data_param(model, trajs):
 
             R1 = model._R1(soc, I_norm, u_t).numpy()                     # Ohm
             C1 = model._C1(soc, I_norm, u_t).numpy()                     # F
-            R0 = R0_func(u_t.numpy(), np.full_like(u_t.numpy(), I_val))  # Ohm
+            R0 = model._R0(soc, I_norm, u_t, I_norm).numpy()      # Ohm
             k  = model.k_net(u_t).numpy()                   # GN/mm
             s  = model.s_net(soc, I_norm).numpy() * 1e2      # convert from m to mm for plotting
 
@@ -1021,6 +1144,32 @@ def data_param(model, trajs):
                 's': s}))
 
     return pd.concat(frames, ignore_index=True)
+
+
+def element_predict(model, c_rate, u_per, soc, element=None):
+    ''' Element value predictor at one instance of Crate u and soc for R1, C1, R0, k, s '''
+
+    I_norm = c_rate * Q0 / 3600 / model.I_ref
+    u = u_per * LIMON_CELL0
+
+    R1 = model._R1(soc, I_norm, u).numpy()                     # Ohm
+    C1 = model._C1(soc, I_norm, u).numpy()                     # F
+    R0 = model._R0(soc, I_norm, u, I_norm).numpy()      # Ohm
+    k  = model.k_net(u).numpy()                   # GN/mm
+    s  = model.s_net(soc, I_norm).numpy()
+
+    if element == 'R1':
+        return R1
+    elif element == 'C1':
+        return C1
+    elif element == 'R0':
+        return R0
+    elif element == 'k':
+        return k
+    elif element == 's':
+        return s
+    else:
+        return R1, C1, R0, k, s
 
 # =═════════════════════════════════════════════════════════
 # Plotter for predictions
