@@ -234,7 +234,7 @@ class BatteryECMM(nn.Module):
     to soc0 − I·t/Q0 when I is constant).  V_mode='static' is only meaningful
     for the CC case; it is rejected if a sequence is provided.
     """
-    def __init__(self, config, Ue_interp, R0_func, Q0, I_ref=20.0, k=53.0):
+    def __init__(self, config, Ue_interp, Q0=Q0, I_ref=20.0, k=53.0):
         super().__init__()
         self.Ue_interp = Ue_interp
         self.Q0        = Q0
@@ -1248,3 +1248,27 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
     return fig
+
+def load_nn_model(model_name, Ue, I_MAX):
+    # ckpt_file = os.path.join(os.getcwd(), '..', '/nodes_2/models', model_name)
+    ckpt_file = os.path.join(os.getcwd(), 'models', model_name)
+    ckpt     = torch.load(ckpt_file, map_location='cpu', weights_only=False)
+
+    CONFIG = ckpt['config']
+    print(f"Loaded checkpoint with config: {CONFIG}")
+
+    model = BatteryECMM(CONFIG, Ue, I_ref=I_MAX)
+    model.load_state_dict(ckpt['model'])
+    model.eval()
+    
+    return model, ckpt
+
+def load_checkpoint(ckpt):
+    history  = ckpt['history']
+    CONFIG   = ckpt['config']
+    C1_final = ckpt['C1_final']
+    N_HIDDEN = ckpt['N_HIDDEN']
+    EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
+    EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
+    EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
+    return history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
