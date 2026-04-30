@@ -281,3 +281,25 @@ element_data = data_param(bat_model, trajs)
 element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
 print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
 
+
+
+# %% ══════════════════════════════════════════════════════════
+
+def load_nn_model(model_name):
+    ckpt_file = os.path.join(os.getcwd(), '..', '/nodes_2/models', model_name)
+    ckpt     = torch.load(ckpt_file, map_location='cpu', weights_only=False)
+
+    history  = ckpt['history']
+    C1_final = ckpt['C1_final']
+    N_HIDDEN = ckpt['N_HIDDEN']
+    EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
+    EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
+    EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
+    CONFIG   = ckpt['config']
+    print(f"Loaded checkpoint with config: {CONFIG}")
+
+    model = BatteryECMM(CONFIG, Ue_interp, R0_func, Q0, I_ref=I_MAX)
+    model.load_state_dict(ckpt['model'])
+    model.eval()
+    
+    return model, CONFIG, history
