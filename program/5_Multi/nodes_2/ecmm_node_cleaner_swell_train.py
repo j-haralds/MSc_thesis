@@ -43,14 +43,14 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = False
+SAVE_MODELS = True
 
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 100   # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 2       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
-EPOCHS_UNFREEZE   = 2        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+EPOCHS_STATIC     = 2000   # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 100       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 20        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
@@ -78,6 +78,9 @@ print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
 I_MAX = data['I'].max()
+L_CELL = -(data['u'] / (data['u_par']/100))[0]
+print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.2f} A')
+
 
 # TODO: Replace with existing GP
 _s, _u = data['soc'].values, data['Ue'].values
@@ -168,6 +171,7 @@ if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
 SAVE_NAME = (f'staged_swelling'
+             f'{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
              f'{f"_S2b{EPOCHS_UNFREEZE}" if EPOCHS_UNFREEZE > 0 else ""}'

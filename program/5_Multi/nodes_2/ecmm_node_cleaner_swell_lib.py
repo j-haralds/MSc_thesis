@@ -1,6 +1,7 @@
 
 import os
 import sys
+from xml.parsers.expat import model
 
 import torch
 import torch.nn as nn
@@ -21,7 +22,8 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
-Q0          = 17921.57581
+Q0          = 17921.57581   # cell capacity [Coulombs]
+LIMON_CELL0 = 14.37325  # cell length [1e-5m]
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
 EPOCHS      = 2
@@ -1105,6 +1107,31 @@ def plot_swelling(model, trajs):
     return fig
 
 
+def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CELL0):
+    '''
+    Element value predictor. Accepts scalars or aligned 1-D arrays/tensors for
+    c_rate, u_per, and soc — fully vectorised (no loop).
+    Returns (R1, C1, R0, k, s), or a single array if `element` is given.
+    '''
+    model.eval()
+    with torch.no_grad():
+        c_rate = torch.atleast_1d(torch.as_tensor(c_rate, dtype=torch.float32)) # If one value or list. Ensure 1D tensor
+        u_per  = torch.atleast_1d(torch.as_tensor(u_per,  dtype=torch.float32))
+        soc    = torch.atleast_1d(torch.as_tensor(soc,    dtype=torch.float32))
+
+        I_norm = c_rate * Q0 / 3600.0 / model.I_ref
+        u      = u_per * L0
+
+        R1 = model._R1(soc, I_norm, u).numpy()           # Ohm
+        C1 = model._C1(soc, I_norm, u).numpy()           # F
+        R0 = model._R0(soc, I_norm, u, I_norm).numpy()   # Ohm
+        k  = model.k_net(u).numpy()                       # GN/mm
+        s  = model.s_net(soc, I_norm).numpy()
+
+    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
+    return out[element] if element is not None else (R1, C1, R0, k, s)
+
+
 def data_param(model, trajs):
     """
     Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
@@ -1145,31 +1172,6 @@ def data_param(model, trajs):
 
     return pd.concat(frames, ignore_index=True)
 
-
-def element_predict(model, c_rate, u_per, soc, element=None):
-    ''' Element value predictor at one instance of Crate u and soc for R1, C1, R0, k, s '''
-
-    I_norm = c_rate * Q0 / 3600 / model.I_ref
-    u = u_per * LIMON_CELL0
-
-    R1 = model._R1(soc, I_norm, u).numpy()                     # Ohm
-    C1 = model._C1(soc, I_norm, u).numpy()                     # F
-    R0 = model._R0(soc, I_norm, u, I_norm).numpy()      # Ohm
-    k  = model.k_net(u).numpy()                   # GN/mm
-    s  = model.s_net(soc, I_norm).numpy()
-
-    if element == 'R1':
-        return R1
-    elif element == 'C1':
-        return C1
-    elif element == 'R0':
-        return R0
-    elif element == 'k':
-        return k
-    elif element == 's':
-        return s
-    else:
-        return R1, C1, R0, k, s
 
 # =═════════════════════════════════════════════════════════
 # Plotter for predictions

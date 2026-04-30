@@ -85,21 +85,6 @@ split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
-# def prepare_pulse_data(pulse_raw):
-#     pulse_trajs = []
-#     for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
-#         grp = grp.reset_index(drop=True)
-#         pulse_trajs.append(dict(
-#             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
-#             u     = float(grp['u'].iloc[0]),
-#             soc0  = float(grp['soc'].iloc[0]),
-#             T     = len(grp),
-#             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
-#             V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
-#             F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
-#             soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
-#         ))
-#     return pulse_trajs
 
 pulse_trajs = prepare_pulse_data(pulse_raw)
 
