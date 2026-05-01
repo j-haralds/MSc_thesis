@@ -17,9 +17,34 @@ import time as _time
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
+sys.path.append(os.path.join(FILE_PATH, '..'))          # Up one step — for JN_GP
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
+
+# ── Ue(SOC) Gaussian process — replaces the old `Ue_interp` callable that the
+# model used to accept as a constructor argument.  Loaded lazily once and
+# shared by all BatteryECMM instances.
+import JN_GP
+
+_GP_MODEL = None
+
+def _get_gp():
+    global _GP_MODEL
+    if _GP_MODEL is None:
+        print("Loading GP for Ue(SOC) ...")
+        _GP_MODEL = JN_GP.GP_process()
+    return _GP_MODEL
+
+def _soc_to_Ue(soc_tensor):
+    """GP prediction Ue(soc) that preserves input shape and returns a float32
+    torch tensor.  SOC values < 0 are clipped to 0 (matches GP training data)."""
+    soc_np    = soc_tensor.detach().cpu().numpy()
+    orig_shape = soc_np.shape
+    soc_flat  = np.asarray(soc_np, dtype=float).reshape(-1)
+    soc_flat  = np.where(soc_flat < 0, 0.0, soc_flat)
+    Ue_flat   = _get_gp().predict(soc_flat.reshape(-1, 1)).reshape(-1)
+    return torch.tensor(Ue_flat.reshape(orig_shape), dtype=torch.float32)
 
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
@@ -232,9 +257,11 @@ class BatteryECMM(nn.Module):
     to soc0 − I·t/Q0 when I is constant).  V_mode='static' is only meaningful
     for the CC case; it is rejected if a sequence is provided.
     """
-    def __init__(self, config, Ue_interp, Q0=Q0, I_ref=24.79, k=53.0):
+    def __init__(self, config, Q0=Q0, I_ref=24.79, k=53.0):
         super().__init__()
-        self.Ue_interp = Ue_interp
+        # Ue(SOC) is now sourced from the module-level GP (`_get_gp` / `_soc_to_Ue`)
+        # — no longer a constructor argument.  This makes checkpoint loading
+        # self-contained and matches how `sr_ode` consumes the GP from JN_GP.
         self.Q0        = Q0
         self.I_ref     = I_ref
         self.k         = k
@@ -256,10 +283,10 @@ class BatteryECMM(nn.Module):
 
         # ── C1 net — always network, optionally constrained ──
         if config.get('C1_constrained', 'false') == 'true':
-            self.C1_net = C1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+            self.C1_net = C1NetConstrained(config, n_hidden=nh)
         else:
             print('C1 unconstrained')
-            self.C1_net = C1Net(n_hidden=nh, I_ref=I_ref)
+            self.C1_net = C1Net(n_hidden=nh)
 
         # ── R0 — multiple modes still supported ──
         m = config['R0_mode']
@@ -364,7 +391,7 @@ class BatteryECMM(nn.Module):
             raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
         with torch.no_grad():
-            Ue = torch.tensor(self.Ue_interp(soc.detach().numpy()), dtype=torch.float32)
+            Ue = _soc_to_Ue(soc)
 
         V  = Ue - I_seq * R0 - U1
         Fr = - k * (u_exp - s)            # GN/ 1e-5m * 1e-5m
@@ -779,7 +806,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         x = np.arange(T) if use_time_x else soc_np
 
         # True U1 reconstruction: U1_true = Ue − I·R0 − V_data
-        Ue_np = model.Ue_interp(soc_np)
+        Ue_np = _get_gp().predict(np.asarray(soc_np, dtype=float).reshape(-1, 1)).reshape(-1)
         U1_true = Ue_np - I_np * R0 - tr['V'].numpy()
 
         # Trajectory header — used in the title of the topmost row
@@ -1247,18 +1274,36 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
     return fig
 
-def load_nn_model(model_name, Ue):
-    # ckpt_file = os.path.join(os.getcwd(), '..', '/nodes_2/models', model_name)
+def load_nn_model(model_name, I_ref=None):
+    """Load a saved BatteryECMM checkpoint.
+
+    Ue(SOC) no longer needs to be supplied — the model uses the module-level
+    GP from JN_GP internally.
+
+    Parameters
+    ----------
+    model_name : str
+        Filename inside ./models/.
+    I_ref : float or None
+        Reference current used to normalise I.  If None, falls back to the
+        value saved in the checkpoint (new checkpoints) and finally to the
+        BatteryECMM default (24.79).  Pass an explicit value when loading
+        older checkpoints that don't carry I_ref.
+    """
     ckpt_file = os.path.join(os.getcwd(), 'models', model_name)
-    ckpt     = torch.load(ckpt_file, map_location='cpu', weights_only=False)
+    ckpt      = torch.load(ckpt_file, map_location='cpu', weights_only=False)
 
     CONFIG = ckpt['config']
     print(f"Loaded checkpoint with config: {CONFIG}")
 
-    model = BatteryECMM(CONFIG, Ue)
+    if I_ref is None:
+        I_ref = ckpt.get('I_ref', 24.79)
+    print(f"Using I_ref = {I_ref}")
+
+    model = BatteryECMM(CONFIG, I_ref=I_ref)
     model.load_state_dict(ckpt['model'])
     model.eval()
-    
+
     return model, ckpt
 
 def load_checkpoint(ckpt):
