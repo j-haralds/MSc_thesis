@@ -34,9 +34,19 @@ def GP_process():
 
 
 
-def soc_to_Ue(soc, gp_model, return_torch=False):
-    soc = np.asarray(soc)
-    if return_torch:
-        return torch.from_numpy(gp_model.predict(np.asarray(soc).reshape(-1, 1))).float()
-    else:
-        return gp_model.predict(soc.reshape(-1, 1))
+# def soc_to_Ue(soc, gp_model, return_torch=False):
+#     soc = np.asarray(soc)
+#     if return_torch:
+#         return torch.from_numpy(gp_model.predict(np.asarray(soc).reshape(-1, 1))).float()
+#     else:
+#         return gp_model.predict(soc.reshape(-1, 1))
+
+def soc_to_Ue(soc_tensor, gp_model):
+    """GP prediction Ue(soc) that preserves input shape and returns a float32
+    torch tensor.  SOC values < 0 are clipped to 0 (matches GP training data)."""
+    soc_np    = soc_tensor.detach().cpu().numpy()
+    orig_shape = soc_np.shape
+    soc_flat  = np.asarray(soc_np, dtype=float).reshape(-1)
+    soc_flat  = np.where(soc_flat < 0, 0.0, soc_flat)
+    Ue_flat   = gp_model.predict(soc_flat.reshape(-1, 1)).reshape(-1)
+    return torch.tensor(Ue_flat.reshape(orig_shape), dtype=torch.float32)

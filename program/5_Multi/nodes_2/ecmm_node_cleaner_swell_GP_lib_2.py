@@ -15,34 +15,16 @@ from matplotlib.cm import ScalarMappable
 import time as _time
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
-# FILE_PATH = os.getcwd()
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
-sys.path.append(os.path.join(FILE_PATH, '..'))          # Up one step — for JN_GP
+sys.path.append(os.path.join(FILE_PATH, '..'))          # Up one step — for JN_GP / Ue_GP
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
 
-# ── Ue(SOC) Gaussian process — replaces the old Ue_interp
-import JN_GP
-GP_MODEL = JN_GP.GP_process()
-
-_GP_MODEL = None
-def _get_gp():
-    global _GP_MODEL
-    if _GP_MODEL is None:
-        print("Loading GP for Ue(SOC) ...")
-        _GP_MODEL = JN_GP.GP_process()
-    return _GP_MODEL
-
-def _soc_to_Ue(soc_tensor):
-    """GP prediction Ue(soc) that preserves input shape and returns a float32
-    torch tensor.  SOC values < 0 are clipped to 0 (matches GP training data)."""
-    soc_np    = soc_tensor.detach().cpu().numpy()
-    orig_shape = soc_np.shape
-    soc_flat  = np.asarray(soc_np, dtype=float).reshape(-1)
-    soc_flat  = np.where(soc_flat < 0, 0.0, soc_flat)
-    Ue_flat   = _get_gp().predict(soc_flat.reshape(-1, 1)).reshape(-1)
-    return torch.tensor(Ue_flat.reshape(orig_shape), dtype=torch.float32)
+# Ue(SOC) lookup — see Ue_GP.py for caching / tabulation details.
+# Tabulate the GP on a dense SOC grid once at startup, use np.interp for lookups. 
+# GP-quality values with interpolant speed.
+import Ue_GP
 
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
@@ -51,7 +33,7 @@ TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
 EPOCHS      = 2
 LR          = 1e-3
-
+PAT         = 400   # # Extrmely high pateience to omitt scheduler (epochs with no improvement on test loss before reducing LR)
 
 # ══════════════════════════════════════════════════════════
 #  R1 NETWORK
@@ -257,8 +239,9 @@ class BatteryECMM(nn.Module):
     """
     def __init__(self, config, Q0=Q0, I_ref=24.79, k=53.0):
         super().__init__()
-        # Ue(SOC) is now sourced from the module-level GP (`_get_gp` / `_soc_to_Ue`)
-        # — no longer a constructor argument
+        # Ue(SOC) is sourced from the module-level Ue_GP lookup (cached GP) —
+        # no longer a constructor argument. This makes checkpoint loading
+        # self-contained and matches how `sr_ode` consumes the GP from JN_GP.
         self.Q0        = Q0
         self.I_ref     = I_ref
         self.k         = k
@@ -268,7 +251,7 @@ class BatteryECMM(nn.Module):
         # ── k network (always; static algebraic stiffness) ──
         self.k_net = kNet(n_hidden=nh, k=k)
 
-        # ── s network ──
+        # ── s network (always; static algebraic stiffness) ──
         self.s_net = sNet(n_hidden=nh)
 
         # ── R1 net — always network, optionally constrained ──
@@ -320,6 +303,8 @@ class BatteryECMM(nn.Module):
             return torch.exp(self.log_R0)
         elif m == 'net_no_soc':
             return self.R0_net(I_norm, u_exp)
+        # Other modes (net, param, net_no_soc) were dropped during cleanup.
+        raise ValueError(f"Unsupported R0_mode: {m!r} (only 'func' is wired up).")
 
     def forward(self, I_batch, u_batch, soc0_batch, T=None, V_mode='dynamic'):
         """
@@ -386,8 +371,7 @@ class BatteryECMM(nn.Module):
             raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
         with torch.no_grad():
-            Ue = _soc_to_Ue(soc)
-            # Ue = JN_GP.soc_to_Ue(soc, GP_MODEL)
+            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
 
         V  = Ue - I_seq * R0 - U1
         Fr = - k * (u_exp - s)            # GN/ 1e-5m * 1e-5m
@@ -585,7 +569,7 @@ def train_model(model, train_trajs, test_trajs,
                 V_mode='dynamic'):
     """Single-stage training (default behaviour: dynamic V from epoch 1)."""
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=40, factor=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=PAT, factor=0.5) 
     return _train_inner(model, train_trajs, test_trajs,
                         optimizer, scheduler, n_epochs, print_every,
                         V_mode=V_mode, stage_label='single')
@@ -642,7 +626,7 @@ def train_staged(model, train_trajs, test_trajs,
     n_s1 = sum(p.numel() for p in s1_params)
     print(f"  Stage 1 trainable params: {n_s1}  (C1_net frozen)")
     opt1 = torch.optim.Adam(s1_params, lr=lr_static)
-    sched1 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt1, patience=40, factor=0.5)
+    sched1 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt1, patience=PAT, factor=0.5)
     _train_inner(model, train_trajs, test_trajs,
                  opt1, sched1, n_epochs_static, print_every,
                  V_mode='static', stage_label='S1', history=history)
@@ -676,7 +660,7 @@ def train_staged(model, train_trajs, test_trajs,
     n_s2 = sum(p.numel() for p in s2_params)
     print(f"  Stage 2 trainable params: {n_s2}  (r1_net frozen)")
     opt2 = torch.optim.Adam(s2_params, lr=lr_dynamic)
-    sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=40, factor=0.5)
+    sched2 = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2, patience=PAT, factor=0.5)
     _train_inner(model, s2_train, s2_test,
                  opt2, sched2, n_epochs_dynamic, print_every,
                  V_mode='dynamic', stage_label='S2', history=history)
@@ -697,7 +681,7 @@ def train_staged(model, train_trajs, test_trajs,
         n_s2b = sum(p.numel() for p in s2b_params)
         print(f"  Stage 2b trainable params: {n_s2b}  (R1 unfrozen)")
         opt2b = torch.optim.Adam(s2b_params, lr=lr_b)
-        sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=40, factor=0.5)
+        sched2b = torch.optim.lr_scheduler.ReduceLROnPlateau(opt2b, patience=PAT, factor=0.5)
         _train_inner(model, s2_train, s2_test,
                      opt2b, sched2b, n_epochs_unfreeze, print_every,
                      V_mode='dynamic', stage_label='S2b', history=history)
@@ -802,7 +786,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         x = np.arange(T) if use_time_x else soc_np
 
         # True U1 reconstruction: U1_true = Ue − I·R0 − V_data
-        Ue_np = _get_gp().predict(np.asarray(soc_np, dtype=float).reshape(-1, 1)).reshape(-1)
+        Ue_np = Ue_GP.soc_to_Ue(soc_np)
         U1_true = Ue_np - I_np * R0 - tr['V'].numpy()
 
         # Trajectory header — used in the title of the topmost row
@@ -914,17 +898,17 @@ def plot_loss(history):
     if n_s1 > 0 and n_s2 > 0:
         b1 = n_s1 + 0.5
         ax.axvline(b1, color='0.4', ls=':', lw=1.2)
-        ax.text(0.5 + n_s1 / 2, ymax - 0.5, 'Stage 1\n(static $V$)',
+        ax.text(0.5 + n_s1 / 2, ymax, 'Stage 1\n(static $V$)',
                 ha='center', va='top', fontsize=9, color='0.3')
         if n_s2b > 0:
             b2 = n_s1 + n_s2 + 0.5
             ax.axvline(b2, color='0.4', ls=':', lw=1.2)
-            ax.text(b1 + n_s2 / 2, ymax - 0.5, 'Stage 2\n(dyn., $R_1$ frozen)',
+            ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dyn., $R_1$ frozen)',
                     ha='center', va='top', fontsize=9, color='0.3')
-            ax.text(b2 + n_s2b / 2, ymax - 0.5, 'Stage 2b\n(dyn., $R_1$ unfrozen)',
+            ax.text(b2 + n_s2b / 2, ymax, 'Stage 2b\n(dyn., $R_1$ unfrozen)',
                     ha='center', va='top', fontsize=9, color='0.3')
         else:
-            ax.text(b1 + n_s2 / 2, ymax - 0.5, 'Stage 2\n(dynamic $V$)',
+            ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dynamic $V$)',
                     ha='center', va='top', fontsize=9, color='0.3')
 
     ax.set_xlabel('Epoch')
@@ -1130,23 +1114,41 @@ def plot_swelling(model, trajs):
 
 def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CELL0):
     '''
-    Element value predictor. Accepts scalars or aligned 1-D arrays/tensors for
-    c_rate, u_per, and soc — fully vectorised (no loop).
-    Returns (R1, C1, R0, k, s), or a single array if `element` is given.
+    Element value predictor. Accepts any mix of scalars / lists / 1-D arrays /
+    tensors for c_rate, u_per, and soc — they are broadcast to a common shape
+    before being fed to the networks (so e.g. a scalar c_rate against a list
+    of SOCs Just Works).
+
+    Returns (R1, C1, R0, k, s) numpy arrays of the broadcast shape, or a single
+    array if `element` ('R0' / 'R1' / 'C1' / 'k' / 's') is given.
+
+    Notes on units (must match training):
+        c_rate  → I_real = c_rate · Q0 / 3600   [A]
+                  I_norm = I_real / model.I_ref
+        u_per   → u      = u_per · L0           [1e-5 m]   (signed; compression < 0)
     '''
     model.eval()
     with torch.no_grad():
-        c_rate = torch.atleast_1d(torch.as_tensor(c_rate, dtype=torch.float32)) # If one value or list. Ensure 1D tensor
+        c_rate = torch.atleast_1d(torch.as_tensor(c_rate, dtype=torch.float32))
         u_per  = torch.atleast_1d(torch.as_tensor(u_per,  dtype=torch.float32))
         soc    = torch.atleast_1d(torch.as_tensor(soc,    dtype=torch.float32))
 
-        I_norm = c_rate * Q0 / 3600.0 / model.I_ref
-        u      = u_per * L0
+        # Broadcast to a common shape so callers can mix scalars and lists freely.
+        # Without this, the inner torch.stack inside the small networks fails
+        # with "stack expects each tensor to be equal size".
+        c_rate, u_per, soc = torch.broadcast_tensors(c_rate, u_per, soc)
+        c_rate = c_rate.contiguous()
+        u_per  = u_per.contiguous()
+        soc    = soc.contiguous()
 
-        R1 = model._R1(soc, I_norm, u).numpy()           # Ohm
-        C1 = model._C1(soc, I_norm, u).numpy()           # F
-        R0 = model._R0(soc, I_norm, u, I_norm).numpy()   # Ohm
-        k  = model.k_net(u).numpy()                       # GN/mm
+        I_real = c_rate * Q0 / 3600.0          # actual current [A]
+        I_norm = I_real / model.I_ref          # what the networks were trained on
+        u      = u_per * L0                    # cell displacement [1e-5 m]
+
+        R1 = model._R1(soc, I_norm, u).numpy()              # Ohm
+        C1 = model._C1(soc, I_norm, u).numpy()              # F
+        R0 = model._R0(soc, I_norm, u, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
+        k  = model.k_net(u).numpy()                          # GN/mm
         s  = model.s_net(soc, I_norm).numpy()
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}

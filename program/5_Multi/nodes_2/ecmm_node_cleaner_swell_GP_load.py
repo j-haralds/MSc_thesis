@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_lib as _lib
+import ecmm_node_cleaner_swell_GP_lib as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_lib import *
+from ecmm_node_cleaner_swell_GP_lib import *
 
 from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
@@ -44,6 +44,8 @@ MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
 SAVE_MODELS = False
 SAVE_DATA   = False
+
+MODEL_NAME= 'ecm_node_0430_1313_staged_swelling_netR0_25.28min_32h_2000_100_S2b20eps.pt'
 
 Q0          = 17921.57581
 
@@ -92,11 +94,11 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 #  LOAD MODEL  (no Ue argument — GP loaded internally by lib)
 # ══════════════════════════════════════════════════════════════
 
-model_name = 'ecm_node_0430_1313_staged_swelling_netR0_25.28min_32h_2000_100_S2b20eps.pt'
+
 # Pass I_ref explicitly because older checkpoints don't have it stored.
 # New checkpoints saved by the updated train script will carry it, in which
 # case the I_ref argument can be omitted.
-bat_model, ckpt = load_nn_model(model_name, I_ref=I_MAX)
+bat_model, ckpt = load_nn_model(MODEL_NAME, I_ref=I_MAX)
 history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt)
 
 n_params = sum(p.numel() for p in bat_model.parameters())
