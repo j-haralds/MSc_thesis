@@ -22,9 +22,7 @@ import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
 
-# ── Ue(SOC) Gaussian process — replaces the old `Ue_interp` callable that the
-# model used to accept as a constructor argument.  Loaded lazily once and
-# shared by all BatteryECMM instances.
+# ── Ue(SOC) Gaussian process — replaces the old Ue_interp
 import JN_GP
 
 _GP_MODEL = None
@@ -1276,10 +1274,6 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
 
 def load_nn_model(model_name, I_ref=None):
     """Load a saved BatteryECMM checkpoint.
-
-    Ue(SOC) no longer needs to be supplied — the model uses the module-level
-    GP from JN_GP internally.
-
     Parameters
     ----------
     model_name : str
@@ -1290,14 +1284,13 @@ def load_nn_model(model_name, I_ref=None):
         BatteryECMM default (24.79).  Pass an explicit value when loading
         older checkpoints that don't carry I_ref.
     """
-    ckpt_file = os.path.join(os.getcwd(), 'models', model_name)
+    ckpt_file = os.path.join(FILE_PATH, 'models', model_name)
     ckpt      = torch.load(ckpt_file, map_location='cpu', weights_only=False)
 
     CONFIG = ckpt['config']
     print(f"Loaded checkpoint with config: {CONFIG}")
 
-    if I_ref is None:
-        I_ref = ckpt.get('I_ref', 24.79)
+    I_ref = ckpt.get('I_ref', 24.79)    # Use persisted I_ref if model saved it, else default
     print(f"Using I_ref = {I_ref}")
 
     model = BatteryECMM(CONFIG, I_ref=I_ref)
