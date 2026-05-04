@@ -33,7 +33,9 @@ def GP_process():
 
 
 def soc_to_Ue(soc, gp_model, return_torch = False):
+    
     soc = np.asarray(soc)
+    soc[soc<0] = 0; soc[soc>1] = 1
     if return_torch:
         return torch.from_numpy(gp_model.predict(np.asarray(soc).reshape(-1,1))).float()
     else:
