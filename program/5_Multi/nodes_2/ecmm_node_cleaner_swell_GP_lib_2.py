@@ -183,7 +183,7 @@ def R0_func(u, I):
 # ══════════════════════════════════════════════════════════════
 
 class kNet(nn.Module):
-    """(u) → k > 0  [GN/mm].  Algebraic — no integration.
+    """(u) → k > 0  [GN/1e-5m].  Algebraic — no integration.
     """
     def __init__(self, n_hidden=32, k=53.0):
         super().__init__()
@@ -195,7 +195,7 @@ class kNet(nn.Module):
         )
 
     def forward(self, u):
-        x = torch.stack([u], dim=-1)   # (..., 3)
+        x = torch.stack([u], dim=-1)   # (..., 1)
         return nn.functional.softplus(self.net(x)).squeeze(-1)
     
 # ══════════════════════════════════════════════════════════
@@ -204,7 +204,7 @@ class kNet(nn.Module):
 
 
 class sNet(nn.Module):
-    """(soc, I_norm) → s > 0  [GN/mm].  Algebraic — no integration.
+    """(soc, I_norm) → s > 0  [GN/1e-5m].  Algebraic — no integration.
     """
     def __init__(self, n_hidden=32):
         super().__init__()                       
@@ -234,7 +234,7 @@ class BatteryECMM(nn.Module):
         I_batch shape (B, T)  → time-varying current             (pulse)
 
     SOC is integrated by cumulative sum in both cases (analytically equivalent
-    to soc0 − I·t/Q0 when I is constant).  V_mode='static' is only meaningful
+    to soc0 - I·t/Q0 when I is constant).  V_mode='static' is only meaningful
     for the CC case; it is rejected if a sequence is provided.
     """
     def __init__(self, config, Q0=Q0, I_ref=24.79, k=53.0):
