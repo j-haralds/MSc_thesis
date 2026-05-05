@@ -50,9 +50,6 @@ SAVE_MODELS = False
 Q0          = 17921.57581
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
-EPOCHS_STATIC     = 1000   # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 1       # Stage 2 : V dynamic, train C1 and k (R1 frozen)
-EPOCHS_UNFREEZE   = 1        # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
@@ -68,8 +65,13 @@ CONFIG = {
     'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
+    'style': 'staged',  # 'static_no_R0', 'dynamic', 'staged'
+    'freeze': ('R0_net',),
 }
 
+EPOCHS_STATIC     = 1000 if not CONFIG['style'] == 'dynamic' else 0  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 1    if not CONFIG['style'] == 'static_no_R0' else 0    # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_UNFREEZE   = 1    if not CONFIG['style'] == 'staged' else 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -123,9 +125,12 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 #  TRAIN
 # ══════════════════════════════════════════════════════════════
 
+#TODO: if statement for CONFIG['style'] use single training  
+
+
 print(f"\nStaged training: S1={EPOCHS_STATIC}ep static, S2={EPOCHS_DYNAMIC}ep dynamic"
       f"{f', S2b={EPOCHS_UNFREEZE}ep R1-unfrozen' if EPOCHS_UNFREEZE > 0 else ''}"
-      f"{' (pulse Stage 2)' if USE_PULSE else ''}")
+      f"{' (pulse Stage 2)'}")
 
 def _post_stage1(bat_model, history):
     """Plot test predictions at the end of Stage 1, before Stage 2 starts.
@@ -168,7 +173,7 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'staged_swelling_'
+SAVE_NAME = (f'swelling_{CONFIG["style"]}'
              f'{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'

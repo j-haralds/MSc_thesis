@@ -353,10 +353,17 @@ class BatteryECMM(nn.Module):
         k = self.k_net(u_exp)              # (B, T)
         s = self.s_net(soc, I_norm)              # (B, T)
 
+        with torch.no_grad():
+            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
+
         # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
             U1 = I_seq * R1
+            V  = Ue - I_seq * R0 - U1
+        elif V_mode == 'static_no_R0':
+            U1 = I_seq * R1
+            V  = Ue - U1
         elif V_mode == 'dynamic':
             C1 = self._C1(soc, I_norm, u_exp)
             U1_steps = [torch.zeros(B)]
@@ -367,13 +374,13 @@ class BatteryECMM(nn.Module):
                 U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
+
+            V  = Ue - I_seq * R0 - U1
         else:
             raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
 
-        with torch.no_grad():
-            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
-
-        V  = Ue - I_seq * R0 - U1
+        
+        
         Fr = - k * (u_exp - s)            # GN/ 1e-5m * 1e-5m
 
         return V, Fr, soc, U1, R1
@@ -566,9 +573,15 @@ def _train_inner(model, train_trajs, test_trajs,
 
 def train_model(model, train_trajs, test_trajs,
                 n_epochs=200, lr=1e-3, print_every=10,
-                V_mode='dynamic'):
+                V_mode='dynamic', freeze=None):
     """Single-stage training (default behaviour: dynamic V from epoch 1)."""
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    freeze_kw = freeze if freeze is not None else ()
+    s2_params = [p for name, p in model.named_parameters() if not any(kw in name for kw in freeze_kw)]
+    n_s2 = sum(p.numel() for p in s2_params)
+    print(f"  Stage 2 trainable params: {n_s2}  (r1_net frozen)")
+
+    optimizer = torch.optim.Adam(s2_params, lr=lr)
+
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=PAT, factor=0.5) 
     return _train_inner(model, train_trajs, test_trajs,
                         optimizer, scheduler, n_epochs, print_every,
