@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_train_single_lib as _lib
+import ecmm_node_cleaner_swell_GP_train_single_lib_3 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_train_single_lib import *
+from ecmm_node_cleaner_swell_GP_train_single_lib_3 import *
 # import ecmm_node_cleaner_swell_GP_lib as _lib
 # importlib.reload(_lib)
 # from ecmm_node_cleaner_swell_GP_lib import *
@@ -45,7 +45,7 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = True
+SAVE_MODELS = False
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -64,18 +64,20 @@ CONFIG = {
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
     'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
-    'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
+    'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
+    'k_constrained': 'true', 'k_min': 0.0, 'k_max': 10000.0,          # GN/1e-5m
+    's_constrained': 'true', 's_min': 0.0, 's_max': 200.0,          # 1e-5 m
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
+    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 100      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 100  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -86,9 +88,12 @@ EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
+
+# Normalization factors
 I_MAX = data['I'].max()
+U_MIN = data['u'].min()
 L_CELL = -(data['u'] / (data['u_par']/100))[0]
-print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.2f} A')
+print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.4f} A | u min: {U_MIN:.4f} 1e-5m')
 
 # Ue(SOC) is now provided by the module-level GP (loaded lazily inside the
 # library from JN_GP) — no Ue_interp construction needed here anymore.
@@ -121,7 +126,7 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 #  BUILD MODEL
 # ══════════════════════════════════════════════════════════════
 
-bat_model = BatteryECMM(CONFIG, Q0=Q0, I_ref=I_MAX)
+bat_model = BatteryECMM(CONFIG, Q0=Q0, I_ref=I_MAX, u_ref=U_MIN)
 
 n_params = sum(p.numel() for p in bat_model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
@@ -298,7 +303,8 @@ if SAVE_MODELS:
         'config': CONFIG,
         'history': history,
         # 'C1_final': C1_final,
-        'I_ref': float(I_MAX),   
+        'I_ref': float(I_MAX),
+        'u_ref': float(U_MIN),  
         'N_HIDDEN': N_HIDDEN,
         'EPOCHS_STATIC': EPOCHS_STATIC,
         'EPOCHS_DYNAMIC': EPOCHS_DYNAMIC,
@@ -320,3 +326,4 @@ if SAVE_ELEMENTS:
 
 
 # %% ══════════════════════════════════════════════════════════
+

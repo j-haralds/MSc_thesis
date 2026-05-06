@@ -58,9 +58,11 @@ Q0          = 17921.57581
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
+    
 I_MAX = data['I'].max()
+U_MAX = data['u'].max()
 L_CELL = -(data['u'] / (data['u_par']/100))[0]
-print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.2f} A')
+print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.4f} A | u max: {U_MAX:.4f} 1e-5m')
 
 # Ue(SOC) is now provided by the module-level GP (loaded lazily inside the
 # library from JN_GP) — no Ue_interp construction needed here anymore.
@@ -98,7 +100,7 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 # Pass I_ref explicitly because older checkpoints don't have it stored.
 # New checkpoints saved by the updated train script will carry it, in which
 # case the I_ref argument can be omitted.
-bat_model, ckpt = load_nn_model(MODEL_NAME, I_ref=I_MAX)
+bat_model, ckpt = load_nn_model(MODEL_NAME, I_ref=I_MAX, u_ref=U_MAX)   # U_MAX when loading lib_3
 history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt)
 
 n_params = sum(p.numel() for p in bat_model.parameters())

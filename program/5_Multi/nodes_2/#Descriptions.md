@@ -16,3 +16,9 @@ Run with GP_train.py which have started the train single implementation, not qui
 
 ## train single
 trains only static with eta = R1 i or dynamic with full ode, or staged
+
+
+## Numbers at the end of name are supposed to note some kind ofchronological version name
+
+
+version 3 should be the same but with more layers in one
