@@ -329,8 +329,6 @@ class BatteryECMM(nn.Module):
         elif I_batch.ndim == 2:
             B, T = I_batch.shape
             I_seq = I_batch
-            if V_mode == 'static':
-                raise ValueError("V_mode='static' requires constant-current input (1D I_batch)")
         else:
             raise ValueError(f"I_batch must be 1D or 2D, got shape {tuple(I_batch.shape)}")
 
@@ -385,6 +383,18 @@ class BatteryECMM(nn.Module):
         return V, Fr, soc, U1, R1
 
 
+def vmode_from_style(style):
+    """Map a CONFIG['style'] to the V_mode the model should run in for inference."""
+    if style == 'static_no_R0':
+        return 'static_no_R0'
+    elif style == 'static':
+        return 'static'
+    elif style in ('dynamic', 'staged'):
+        return 'dynamic'
+    else:
+        raise ValueError(f"Unknown style: {style!r}")
+
+
 def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref=-0.06,
            soc=None, I_norm=None, u_exp=None):
     """Return a representative C1 value.
@@ -412,15 +422,13 @@ def prepare_data(data, R0_func):
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])     # u = [1e-5m]
         C_val  = float(grp['C'].iloc[0])
         u_per = float(grp['u_par'].iloc[0])
-        R0_val = R0_func(u_val, I_val)
         trajs.append(dict(
             I=I_val, u=u_val, C=C_val, u_per=u_per,
             soc0=float(grp['soc'].iloc[0]), T=len(grp),
             V=torch.tensor(grp['V'].values, dtype=torch.float32),
             F=torch.tensor(grp['F'].values, dtype=torch.float32),
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
-            U1_true=torch.tensor(grp['Ue'].values - I_val * R0_val - grp['V'].values,
-                                 dtype=torch.float32),
+            eta=torch.tensor(grp['eta'].values, dtype=torch.float32),
         ))
     return trajs
 
@@ -437,7 +445,8 @@ def prepare_pulse_data(pulse_raw):
             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
             V     = torch.tensor(grp['V'].values,   dtype=torch.float32),
             F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
-            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32)
+            soc   = torch.tensor(grp['soc'].values, dtype=torch.float32),
+            eta   = torch.tensor(grp['eta'].values, dtype=torch.float32),
         ))
     return pulse_trajs
 
@@ -486,8 +495,10 @@ def _train_inner(model, train_trajs, test_trajs,
     in CC or pulse mode.
 
     V_mode is forwarded to model() so the same loop fits Stage 1 (static V)
-    and Stage 2 (dynamic V).  V_mode='static' is silently switched to
-    'dynamic' for pulse trajectories (static V requires constant I).
+    and Stage 2 (dynamic V).  V_mode is honoured for both CC and pulse
+    trajectories — no implicit override — so e.g. V_mode='static_no_R0' on
+    pulse data trains the algebraic equation against pulses (which is the
+    diagnostic loss curve showing the algebraic V cannot follow transients).
     """
     if history is None:
         history = _empty_history()
@@ -501,14 +512,13 @@ def _train_inner(model, train_trajs, test_trajs,
         ep_rmse = ep_rmse_V = ep_rmse_Fr = 0.0
         n_steps = 0
 
+        ''' Mark 1: per-trajectory SGD (no accumulation) '''
         for i in order:
             tr = train_trajs[i]
             I_b, u_b, soc0_b, T = _traj_inputs(tr)
-            # static V only makes sense for CC input
-            v_mode_eff = 'dynamic' if 'I_seq' in tr else V_mode
 
             optimizer.zero_grad()
-            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=v_mode_eff)
+            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
             loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * 1000  # scale up Fr loss to be in similar order as V loss
@@ -520,7 +530,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
             with torch.no_grad():
                 rmse_V  = torch.sqrt(loss_V).item()
-                rmse_Fr = torch.sqrt(loss_Fr).item()
+                rmse_Fr = torch.sqrt(loss_Fr/1000).item()
 
             ep_mse    += loss.item()
             ep_mse_V  += loss_V.item()
@@ -529,6 +539,40 @@ def _train_inner(model, train_trajs, test_trajs,
             ep_rmse_V += rmse_V
             ep_rmse_Fr+= rmse_Fr
             n_steps += 1
+
+        '''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
+        # accum_steps = 1
+        # optimizer.zero_grad()
+
+        # for k, i in enumerate(order):
+        #     tr = train_trajs[i]
+        #     I_b, u_b, soc0_b, T = _traj_inputs(tr)
+
+        #     V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+
+        #     loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
+        #     loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * 1000  # scale up Fr loss to be in similar order as V loss
+        #     loss = loss_V + loss_Fr    
+
+        #     loss.backward()
+
+        #     # Batch like accumulation of gradients: step every accum_steps trajectories or at the end of the epoch
+        #     if (k + 1) % accum_steps == 0 or (k + 1) == len(order):
+        #         optimizer.step()
+        #         optimizer.zero_grad()
+
+        #     with torch.no_grad():
+        #         rmse_V  = torch.sqrt(loss_V).item()
+        #         rmse_Fr = torch.sqrt(loss_Fr/1000).item()
+
+        #     ep_mse    += loss.item()
+        #     ep_mse_V  += loss_V.item()
+        #     ep_mse_Fr += loss_Fr.item()
+        #     ep_rmse   += rmse_V + rmse_Fr
+        #     ep_rmse_V += rmse_V
+        #     ep_rmse_Fr+= rmse_Fr
+        #     n_steps += 1
+
 
         ep_mse /= n_steps; ep_mse_V /= n_steps; ep_mse_Fr /= n_steps
         ep_rmse /= n_steps; ep_rmse_V /= n_steps; ep_rmse_Fr /= n_steps
@@ -541,14 +585,13 @@ def _train_inner(model, train_trajs, test_trajs,
         history['train_rmse_Fr'].append(ep_rmse_Fr)
         history['stage'].append(stage_label)
 
-        # Test eval — uses same V_mode as training stage (auto-switched for pulse)
+        # Test eval — uses the same V_mode as the training stage on every traj.
         model.eval()
         with torch.no_grad():
             test_mse = 0.0
             for tr in test_trajs:
                 I_b, u_b, soc0_b, T = _traj_inputs(tr)
-                v_mode_eff = 'dynamic' if 'I_seq' in tr else V_mode
-                V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=v_mode_eff)
+                V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2).item()
             test_mse /= len(test_trajs)
             test_rmse = float(np.sqrt(test_mse))
@@ -708,21 +751,27 @@ def train_staged(model, train_trajs, test_trajs,
 # ══════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def predict_np(model, config, traj, V_mode='dynamic'):
+def predict_np(model, config, traj, V_mode=None):
     """Single-trajectory rollout for plotting.  Auto-detects CC vs pulse from
     whether `traj` carries 'I_seq' (pulse) or 'I' (CC).
 
-    V_mode='static' uses the Stage-1 V equation (U1 = I·R1) and returns C1=None
-    so plotting can omit any C1-dependent panels.  Pulse trajectories ignore
-    V_mode and always use dynamic.
+    V_mode controls the V equation — 'static' (V = Ue - I·R0 - I·R1),
+    'static_no_R0' (V = Ue - I·R1) or 'dynamic' (Euler RC integration with
+    V = Ue - I·R0 - U1).  When V_mode is None (default) it is derived from
+    config['style'] via vmode_from_style().  V_mode is honoured for both CC
+    and pulse trajectories — no implicit override — so a static-trained model
+    can be evaluated on pulses to show the algebraic V can't follow them.
+
+    For V_mode in ('static', 'static_no_R0') C1 is returned as None so plots
+    can omit any C1-dependent panels.
 
     Returns a dict with keys: V, soc, U1, R1, Fr, k, C1, R0, I  — all numpy
     arrays of length T (R0 / I are arrays in pulse mode and constant arrays
     in CC mode, so plotting code can treat them uniformly).
     """
+    if V_mode is None:
+        V_mode = vmode_from_style(config.get('style', 'dynamic'))
     pulse = 'I_seq' in traj
-    if pulse:
-        V_mode = 'dynamic'
     I_b, u_b, soc0_b, T = _traj_inputs(traj)
 
     V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
@@ -741,8 +790,8 @@ def predict_np(model, config, traj, V_mode='dynamic'):
     s = model.s_net(soc_t, I_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_t, I_np).numpy()        # (T,)
 
-    if V_mode == 'static':
-        C1 = None       # C1 is meaningless in Stage 1 — don't evaluate it
+    if V_mode in ('static', 'static_no_R0'):
+        C1 = None       # C1 not used when V is algebraic — don't evaluate it
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_t)
 
@@ -755,30 +804,44 @@ def predict_np(model, config, traj, V_mode='dynamic'):
 # ════════════════════════════════════════════════
 
 def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
-                     V_mode='dynamic'):
+                     V_mode=None):
     """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
 
     Row layout:
-        pulse traj                     - 8 rows (I, V, soc, U1, R, C1, Fr, k)
-        CC traj, V_mode='dynamic'      - 7 rows (V, U1, dU1, R, C1, Fr, k)
-        CC traj, V_mode='static'       - 5 rows (V, U1, R, Fr, k) dU1 and C1 omitted (no meaning in Stage 1)
+        pulse traj, V_mode='dynamic'        - 9 rows (I, V, soc, eta, R, C1, Fr, k, s)
+        pulse traj, V_mode in static modes  - 8 rows (I, V, soc, eta, R, Fr, k, s) C1 omitted
+        CC traj,    V_mode='dynamic'        - 7 rows (V, eta, R, C1, Fr, k, s)
+        CC traj,    V_mode in static modes  - 6 rows (V, eta, R, Fr, k, s) C1 omitted
 
+    eta is the overpotential η = V − Uₑ taken straight from the data column —
+    model-independent.  Predicted η is built from the model's V equation:
+        static_no_R0     →  η_pred = -I·R₁
+        static / dynamic →  η_pred = -(I·R₀ + U₁)
+
+    When V_mode is None (default), it is derived from config['style'] via
+    vmode_from_style().
     All trajectories in `trajs` should be the same kind (all CC or all pulse).
     """
+    if V_mode is None:
+        V_mode = vmode_from_style(config.get('style', 'dynamic'))
     n = min(n_show, len(trajs))
     if n == 0:
         raise ValueError("trajs is empty")
 
     # Determine kind from first trajectory; assume the rest are the same.
     pulse = 'I_seq' in trajs[0]
-    if pulse:
-        rows = ['I', 'V', 'soc', 'U1', 'R', 'C1', 'Fr', 'k', 's']
-    elif V_mode == 'static':
-        rows = ['V', 'U1', 'R', 'Fr', 'k', 's'] 
+    if pulse and V_mode in ('static', 'static_no_R0'):
+        # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
+    elif pulse:
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+    elif V_mode in ('static', 'static_no_R0'):
+        rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
     elif V_mode == 'dynamic':
-        rows = ['V', 'U1', 'dU1', 'R', 'C1', 'Fr', 'k', 's']
+        rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
     else:
-        raise ValueError(f"V_mode must be 'static' or 'dynamic', got {V_mode!r}")
+        raise ValueError(
+            f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
     n_rows = len(rows)
     fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
@@ -796,10 +859,6 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         # under repeated charge/discharge pulses, so SOC-on-x makes no sense).
         use_time_x = time or pulse
         x = np.arange(T) if use_time_x else soc_np
-
-        # True U1 reconstruction: U1_true = Ue − I·R0 − V_data
-        Ue_np = Ue_GP.soc_to_Ue(soc_np)
-        U1_true = Ue_np - I_np * R0 - tr['V'].numpy()
 
         # Trajectory header — used in the title of the topmost row
         if pulse:
@@ -830,18 +889,20 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 ax.set_ylabel('SOC'); ax.legend()
                 ax.set_xlabel('Time [s]')   # always indexed in time
 
-            elif name == 'U1':
-                ax.plot(x, U1_true, '--', color=COLORS[1], label=r'True $U_1$', lw=2)
-                ax.plot(x, U1,      '-',  color=COLORS[0], label=r'Predicted $U_1$', lw=2)
-                ax.set_ylabel(r'$U_1$ [V]'); ax.legend()
-
-            elif name == 'dU1':
-                # Only reachable for CC dynamic — C1 is not None
-                dU1_data = np.gradient(U1_true, 1.0)
-                dU1_rc   = I_np / C1 - U1 / (R1 * C1)
-                ax.plot(x, dU1_data, '--', color=COLORS[1], label=r'True $dU_1/dt$', lw=2, alpha=0.7)
-                ax.plot(x, dU1_rc,   '-',  color=COLORS[0], label=r'Predicted $dU_1/dt$', lw=2)
-                ax.set_ylabel(r'$dU_1/dt$ [V/s]'); ax.legend()
+            elif name == 'eta':
+                # eta_true = V_data - Ue, taken directly from the data column —
+                # model-independent, no R0 assumption, identical across V_modes.
+                # eta_pred follows the model's V equation:
+                #   static_no_R0:    eta = V - Ue = -U1                = -I·R1
+                #   static / dynamic: eta = V - Ue = -(I·R0 + U1)
+                eta_true = tr['eta'].numpy()
+                if V_mode == 'static_no_R0':
+                    eta_pred = U1
+                else:
+                    eta_pred = (I_np * R0 + U1)
+                ax.plot(x, eta_true, '--', color=COLORS[1], label=r'True $\eta$', lw=2)
+                ax.plot(x, eta_pred, '-',  color=COLORS[0], label=r'Predicted $\eta$', lw=2)
+                ax.set_ylabel(r'$\eta$ [V]'); ax.legend()
 
             elif name == 'R':
                 if config['R0_mode'] in ('func', 'net', 'net_no_soc'):
@@ -1008,7 +1069,7 @@ def plot_param(model, trajs, param='R1'):
                 ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
             elif param == 's':
-                y = model.s_net(soc, I_norm).numpy() * 1e2 # 1e-5 m to mm
+                y = model.s_net(soc, I_norm).numpy() / 1e2 # 1e-5 m to mm
                 ylabel = r'$s$ [mm]'
 
             else:

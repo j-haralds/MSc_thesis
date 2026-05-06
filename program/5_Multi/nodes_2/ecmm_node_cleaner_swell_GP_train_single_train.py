@@ -22,15 +22,14 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_lib_2 as _lib
+import ecmm_node_cleaner_swell_GP_train_single_lib as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_lib_2 import *
+from ecmm_node_cleaner_swell_GP_train_single_lib import *
 # import ecmm_node_cleaner_swell_GP_lib as _lib
 # importlib.reload(_lib)
 # from ecmm_node_cleaner_swell_GP_lib import *
 
 from datetime import datetime
-TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 
 
 
@@ -39,6 +38,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 #  CONFIGURATION
 # ════════════════════════════════════════════════════════════
 
+TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
@@ -46,8 +46,9 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
 SAVE_MODELS = True
+SAVE_ELEMENTS = False
 
-Q0          = 17921.57581   # As
+Q0          = 17921.57581     # As
 TRAIN_SPLIT = 0.8
 N_HIDDEN          = 32
 LR_STATIC         = 1e-3
@@ -55,24 +56,26 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = False
+USE_PULSE         = True
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net'
-    'R0_mode': 'net_no_soc',           # 'func', 'net', 'param', 'net_no_soc'
+    'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
     'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
     'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
 
-    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
-    'freeze_static': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
+    # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
+    # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
+    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
+    # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 100  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 100      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -141,17 +144,17 @@ else:
 if CONFIG['style'] == 'dynamic':
     print(f"\nSingle-stage training: {EPOCHS_DYNAMIC} epochs with dynamic V")
     history = train_model(bat_model, _train_trajs, _test_trajs,
-                n_epochs=EPOCHS_DYNAMIC, lr=LR_DYNAMIC, print_every=5,
+                n_epochs=EPOCHS_DYNAMIC, lr=LR_DYNAMIC, print_every=1,
                 V_mode='dynamic', freeze=None)
 
     TOTAL_TIME = history['time']
     print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 
 elif CONFIG['style'] == 'static_no_R0':
-    print(f"\nSingle-stage training: {EPOCHS_STATIC} epochs with static V (no R0 in V)")
+    print(f"\nSingle-stage training: {EPOCHS_STATIC} epochs with static V1: VB = Ue - iR1 (no R0)")
     history = train_model(bat_model, _train_trajs, _test_trajs,
                 n_epochs=EPOCHS_STATIC, lr=LR_STATIC, print_every=5,
-                V_mode='static', freeze=CONFIG['freeze_static'])
+                V_mode='static_no_R0', freeze=('R0_net', 'C1_net'))          #CONFIG['freeze_static_no_R0'])
 
     TOTAL_TIME = history['time']
     print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
@@ -202,7 +205,7 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'swelling_{CONFIG["style"]}'
+SAVE_NAME = (f'swelling_{'pulse' if USE_PULSE else 'DC'}_{CONFIG["style"]}'
              f'_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
@@ -310,8 +313,9 @@ if SAVE_MODELS:
 # ═════════════════════════════════════════════════════════════
 
 element_data = data_param(bat_model, trajs)
-element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
-print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
+if SAVE_ELEMENTS:
+    element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
+    print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
 
 
 
