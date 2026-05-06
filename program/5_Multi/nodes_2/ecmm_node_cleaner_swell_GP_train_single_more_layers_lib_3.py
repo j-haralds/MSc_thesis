@@ -40,9 +40,8 @@ PAT         = 400   # # Extrmely high pateience to omitt scheduler (epochs with 
 
 class R1Net(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, softplus output."""
-    def __init__(self, n_hidden=32, I_ref=24.79):
+    def __init__(self, n_hidden=32):
         super().__init__()
-        self.I_ref = I_ref
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
@@ -58,9 +57,8 @@ class R1Net(nn.Module):
 
 class R1NetConstrained(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, sigmoid+linear constraint."""
-    def __init__(self, config, n_hidden=32, I_ref=24.79):
+    def __init__(self, config, n_hidden=32):
         super().__init__()
-        self.I_ref = I_ref
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
@@ -198,9 +196,10 @@ def R0_func(u, I):
 class kNet(nn.Module):
     """(u) → k > 0  [GN/1e-5m].  Algebraic — no integration.
     """
-    def __init__(self, n_hidden=32, k=53.0):
+    def __init__(self, config, n_hidden=32, k=53.0):
         super().__init__()
-        self.k = float(k)                           # reference k0 from data
+        self.k = float(k)                          # reference k0 from data
+        self.config = config
         self.net = nn.Sequential(
             nn.Linear(1, n_hidden),
             nn.Tanh(),
@@ -208,21 +207,32 @@ class kNet(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
+        self.k_min = config.get('k_min')
+        self.k_max = config.get('k_max')
+        if config.get('k_constrained', 'false') == 'true':
+            print(f'k constrained to [{self.k_min}, {self.k_max}] GN/1e-5m')
+        else:
+            print('k unconstrained')
 
     def forward(self, u):
-        x = torch.stack([u], dim=-1)   # (..., 1)
-        return nn.functional.softplus(self.net(x)).squeeze(-1)
+        x = torch.stack([u], dim=-1)
+        if self.config.get('k_constrained', 'false') == 'true':
+            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.k_min + s * (self.k_max - self.k_min)
+        else:
+            return nn.functional.softplus(self.net(x)).squeeze(-1)
     
 # ══════════════════════════════════════════════════════════
 #  s NETWORK (static)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 
 
 class sNet(nn.Module):
     """(soc, I_norm) → s > 0  [GN/1e-5m].  Algebraic — no integration.
     """
-    def __init__(self, n_hidden=32):
+    def __init__(self, config, n_hidden=32):
         super().__init__()                       
+        self.config = config
         self.net = nn.Sequential(
             nn.Linear(2, n_hidden),
             nn.Tanh(),
@@ -230,15 +240,23 @@ class sNet(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
-
+        self.s_min = config.get('s_min')
+        self.s_max = config.get('s_max')
+        if config.get('s_constrained', 'false') == 'true':
+            print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m')
+        else:
+            print('s unconstrained')
     def forward(self, soc, I_norm):
         x = torch.stack([soc, I_norm], dim=-1)   # (..., 2)
-        return nn.functional.softplus(self.net(x)).squeeze(-1)
+        if self.config.get('s_constrained', 'false') == 'true':
+            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.s_min + s * (self.s_max - self.s_min)
+        else:
+            return nn.functional.softplus(self.net(x)).squeeze(-1)
 
 # ══════════════════════════════════════════════════════════
 #  ECMM MODEL
-# ════════════════════════════════════════════════════════════
-
+# ══════════════════════════════════════════════════════
 class BatteryECMM(nn.Module):
     """
     Single-trajectory ECMM (B=1 in all paths; the leading dim is preserved
@@ -267,17 +285,17 @@ class BatteryECMM(nn.Module):
         nh = config.get('n_hidden', 32)
 
         # ── k network (always; static algebraic stiffness) ──
-        self.k_net = kNet(n_hidden=nh, k=k)
+        self.k_net = kNet(config, n_hidden=nh, k=k)
 
         # ── s network (always; static algebraic stiffness) ──
-        self.s_net = sNet(n_hidden=nh)
+        self.s_net = sNet(config, n_hidden=nh)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
-            self.r1_net = R1NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+            self.r1_net = R1NetConstrained(config, n_hidden=nh)
         else:
             print('R1 unconstrained')
-            self.r1_net = R1Net(n_hidden=nh, I_ref=I_ref)
+            self.r1_net = R1Net(n_hidden=nh)
 
         # ── C1 net — always network, optionally constrained ──
         if config.get('C1_constrained', 'false') == 'true':
@@ -290,16 +308,16 @@ class BatteryECMM(nn.Module):
         m = config['R0_mode']
         if m == 'net':
             if config.get('R0_constrained', 'false') == 'true':
-                self.R0_net = R0NetConstrained(config, n_hidden=nh, I_ref=I_ref)
+                self.R0_net = R0NetConstrained(config, n_hidden=nh)
             else:
                 print('R0 unconstrained')
-                self.R0_net = R0Net(n_hidden=nh, I_ref=I_ref)
+                self.R0_net = R0Net(n_hidden=nh)
         elif m == 'func':
             self.R0_func = R0_func
         elif m == 'param':
             self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))
         elif m == 'net_no_soc':
-            self.R0_net = R0NetNoSOC(config, n_hidden=nh, I_ref=I_ref)
+            self.R0_net = R0NetNoSOC(config, n_hidden=nh)
         else:
             raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
 
@@ -363,16 +381,18 @@ class BatteryECMM(nn.Module):
         dsoc = -I_seq / self.Q0
         soc  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
 
+        # Normalize to obtain latent inputs roughly in range [0,1]
         I_norm = I_seq / self.I_ref
         u_norm = u_batch / self.u_ref           # both negative for compression → u_norm > 0
-        u_exp  = u_norm.unsqueeze(1).expand(B, T)
+        u_norm_exp  = u_norm.unsqueeze(1).expand(B, T)
+        u_phys_exp = u_batch.unsqueeze(1).expand(B, T)
 
         # Parameters along the trajectory  (B, T)
-        R1 = self._R1(soc, I_norm, u_exp)
-        R0 = self._R0(soc, I_norm, u_exp, I_seq)
+        R1 = self._R1(soc, I_norm, u_norm_exp)
+        R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(u_exp)              # (B, T)
+        k = self.k_net(u_norm_exp)              # (B, T)
         s = self.s_net(soc, I_norm)              # (B, T)
 
         with torch.no_grad():
@@ -387,7 +407,7 @@ class BatteryECMM(nn.Module):
             U1 = I_seq * R1
             V  = Ue - U1
         elif V_mode == 'dynamic':
-            C1 = self._C1(soc, I_norm, u_exp)
+            C1 = self._C1(soc, I_norm, u_norm_exp)
             U1_steps = [torch.zeros(B)]
             dt = 1.0
             for n in range(T - 1):
@@ -402,7 +422,8 @@ class BatteryECMM(nn.Module):
             raise ValueError(f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
         
-        Fr = - k * (u_exp - s)            # GN/ 1e-5m * 1e-5m
+        
+        Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
 
         return V, Fr, soc, U1, R1
 
@@ -533,6 +554,19 @@ def _train_inner(model, train_trajs, test_trajs,
 
     t0 = _time.time()
 
+    # # Warmup pass — one epoch, alpha_F = 1, no optimizer step
+    # mse_V_sum = mse_F_sum = 0.0
+    # with torch.no_grad():
+    #     for tr in train_trajs:
+    #         I_b, u_b, soc0_b, T = _traj_inputs(tr)
+    #         V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+    #         mse_V_sum += ((V_pred[0]  - tr['V']) ** 2).mean().item()
+    #         mse_F_sum += ((Fr_pred[0] - tr['F']) ** 2).mean().item()
+
+    # alpha_F = mse_V_sum / mse_F_sum
+    # print(f"Calibrated alpha_F = {alpha_F:.1f}")
+
+
     for epoch in range(1, n_epochs + 1):
         model.train()
         order = np.random.permutation(len(train_trajs))
@@ -542,7 +576,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
         ''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
         accum_steps = 1
-        alpha_F = 10000
+        alpha_F = 1000  # approx last MSE_V / last MSE_Fr
         optimizer.zero_grad()
 
         for k, i in enumerate(order):
@@ -851,7 +885,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     model.eval()
 
     for j in range(n):
-        tr = trajs[j]
+        tr = trajs[j + 3]   # Hard code skip the first 3 trajs to show more interesting ones
         T  = tr['T']
         out = predict_np(model, config, tr, V_mode=V_mode)
         V, soc_np, U1 = out['V'], out['soc'], out['U1']
@@ -989,6 +1023,7 @@ def plot_loss(history):
 
     ax.set_xlabel('Epoch')
     ax.set_ylabel('RMSE')
+    ax.grid(True, which='both', ls=':', color='0.8')
     ax.legend(loc='lower left')
     fig.tight_layout()
     return fig
@@ -1074,10 +1109,7 @@ def plot_param(model, trajs, param='R1'):
                 ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
             elif param == 's':
-                # s_net output is dimensionless (lives on u_norm scale).
-                # Recover physical s [1e-5 m]: s_phys = s_norm * u_ref. Then to mm: / 100.
-                s_norm = model.s_net(soc, I_norm).numpy()
-                y = s_norm * model.u_ref / 100.0    # 1e-5 m → mm
+                y = model.s_net(soc, I_norm).numpy() / 100.0    # 1e-5 m – mm
                 ylabel = r'$s$ [mm]'
 
             else:
@@ -1128,12 +1160,12 @@ def plot_force(model, trajs):
             u_per_val = float(tr['u_per'])
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_norm = torch.full_like(soc, u_val / model.u_ref)   # what the networks see
+            u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
             k = model.k_net(u_norm).numpy()
             s = model.s_net(soc, I_norm).numpy()
-            # Mirror forward(): Fr = -k * (u_norm - s). With u normalized, k_net and s_net
-            # have implicitly absorbed the u_ref scaling, so F still comes out in GN.
-            F = - k * (u_norm.numpy() - s)                       # GN
+
+            F = - k * (u_phys.numpy() - s)                       # GN
             F_true = tr['F'].numpy()
             x = np.full(len(soc), u_per_val)                # constant per traj
 
@@ -1141,7 +1173,7 @@ def plot_force(model, trajs):
             ax.scatter(x, F_true, c=soc.numpy(), cmap=cmap_r, norm=norm, s=2, linewidths=0.1)
 
     ax.set_xlabel(r'$u$ $[\%]$')
-    ax.set_ylabel(r'$F_r$ [GN]')
+    ax.set_ylabel(r'$F$ [GN]')
     sm = ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label='State of Charge')
     fig.tight_layout()
@@ -1180,8 +1212,7 @@ def plot_swelling(model, trajs):
 
             # s_net output is dimensionless (lives on the same scale as u_norm).
             # To recover [1e-5 m]: s_phys = s_net_output * u_ref. Then to mm: / 100.
-            s_norm = model.s_net(soc, I_norm).numpy()
-            s = s_norm * model.u_ref / 100.0    # 1e-5 m → mm
+            s = model.s_net(soc, I_norm).numpy() / 100.0   # convert from 1e-5 m to mm
             x = np.full(len(soc), u_per_val)                # constant per traj
 
             # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
@@ -1232,9 +1263,9 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
 
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
-        R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm (I_seq = real I)
-        k  = model.k_net(u_norm).numpy()                         # GN (rescaled)
-        s  = model.s_net(soc, I_norm).numpy()
+        R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
+        k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
+        s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
     return out[element] if element is not None else (R1, C1, R0, k, s)
@@ -1263,9 +1294,8 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(u_norm).numpy()                         # GN (rescaled)
-            # s_net output is dimensionless; convert to physical [1e-5 m] then to mm.
-            s  = model.s_net(soc, I_norm).numpy() * model.u_ref / 100.0   # mm
+            k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
+            s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -1368,11 +1398,13 @@ def load_nn_model(model_name, I_ref=None):
     I_ref : float or None
         Reference current used to normalise I.  If None, falls back to the
         value saved in the checkpoint (new checkpoints) and finally to the
-        BatteryECMM default (24.7915).  Pass an explicit value when loading
+        BatteryECMM default (24.79).  Pass an explicit value when loading
         older checkpoints that don't carry I_ref.
-
-    u_ref is always read from the checkpoint (falling back to the BatteryECMM
-    default of -4.2976 if the checkpoint doesn't carry it).
+    u_ref : float or None
+        Reference voltage used to normalise u.  If None, falls back to the
+        value saved in the checkpoint (new checkpoints) and finally to the
+        BatteryECMM default (-0.0862).  Pass an explicit value when loading
+        older checkpoints that don't carry u_ref.
     """
     ckpt_file = os.path.join(FILE_PATH, 'models', model_name)
     ckpt      = torch.load(ckpt_file, map_location='cpu', weights_only=False)
@@ -1381,8 +1413,8 @@ def load_nn_model(model_name, I_ref=None):
     print(f"Loaded checkpoint with config: {CONFIG}")
 
     I_ref = ckpt.get('I_ref', 24.7915)    # Use persisted I_ref if model saved it, else default
-    u_ref = ckpt.get('u_ref', -4.2976)    # Use persisted u_ref if model saved it, else default
-    print(f"Using I_ref = {I_ref}, u_ref = {u_ref}")
+    u_ref = ckpt.get('u_ref', -4.2976)       # Use persisted u_ref if model saved it, else default
+    print(f"Using I_ref = {I_ref} and 'u_ref' = {u_ref} for model parameters")
 
     model = BatteryECMM(CONFIG, I_ref=I_ref, u_ref=u_ref)
     model.load_state_dict(ckpt['model'])

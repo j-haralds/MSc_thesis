@@ -536,17 +536,17 @@ def _train_inner(model, train_trajs, test_trajs,
 
     t0 = _time.time()
 
-    # Warmup pass — one epoch, alpha_F = 1, no optimizer step
-    mse_V_sum = mse_F_sum = 0.0
-    with torch.no_grad():
-        for tr in train_trajs:
-            I_b, u_b, soc0_b, T = _traj_inputs(tr)
-            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
-            mse_V_sum += ((V_pred[0]  - tr['V']) ** 2).mean().item()
-            mse_F_sum += ((Fr_pred[0] - tr['F']) ** 2).mean().item()
+    # # Warmup pass — one epoch, alpha_F = 1, no optimizer step
+    # mse_V_sum = mse_F_sum = 0.0
+    # with torch.no_grad():
+    #     for tr in train_trajs:
+    #         I_b, u_b, soc0_b, T = _traj_inputs(tr)
+    #         V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+    #         mse_V_sum += ((V_pred[0]  - tr['V']) ** 2).mean().item()
+    #         mse_F_sum += ((Fr_pred[0] - tr['F']) ** 2).mean().item()
 
-    alpha_F = mse_V_sum / mse_F_sum
-    print(f"Calibrated alpha_F = {alpha_F:.1f}")
+    # alpha_F = mse_V_sum / mse_F_sum
+    # print(f"Calibrated alpha_F = {alpha_F:.1f}")
 
 
     for epoch in range(1, n_epochs + 1):
@@ -558,7 +558,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
         ''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
         accum_steps = 1
-        alpha_F = 1000
+        alpha_F = 1000  # approx last MSE_V / last MSE_Fr
         optimizer.zero_grad()
 
         for k, i in enumerate(order):
@@ -867,7 +867,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     model.eval()
 
     for j in range(n):
-        tr = trajs[j]
+        tr = trajs[j + 3]   # Hard code skip the first 3 trajs to show more interesting ones
         T  = tr['T']
         out = predict_np(model, config, tr, V_mode=V_mode)
         V, soc_np, U1 = out['V'], out['soc'], out['U1']
@@ -1005,6 +1005,7 @@ def plot_loss(history):
 
     ax.set_xlabel('Epoch')
     ax.set_ylabel('RMSE')
+    ax.grid(True, which='both', ls=':', color='0.8')
     ax.legend(loc='lower left')
     fig.tight_layout()
     return fig
