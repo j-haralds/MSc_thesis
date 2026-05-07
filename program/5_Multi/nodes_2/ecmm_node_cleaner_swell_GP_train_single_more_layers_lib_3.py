@@ -200,7 +200,7 @@ class kNet(nn.Module):
         super().__init__()
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
+            nn.Linear(1, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
@@ -213,8 +213,8 @@ class kNet(nn.Module):
         else:
             print('k unconstrained')
 
-    def forward(self, soc, I_norm, u_norm):
-        x = torch.stack([soc, I_norm, u_norm], dim=-1)
+    def forward(self, u_norm):
+        x = torch.stack([u_norm], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)
@@ -391,7 +391,7 @@ class BatteryECMM(nn.Module):
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
+        k = self.k_net(u_norm_exp)              # (B, T)
         s = self.s_net(soc, I_norm, u_norm_exp)              # (B, T)
 
         with torch.no_grad():
@@ -830,7 +830,7 @@ def predict_np(model, config, traj, V_mode=None):
     u_t    = torch.from_numpy(u_np.astype(np.float32))             # raw u [1e-5 m]
     u_norm = u_t / model.u_ref                                     # normalized — what networks see
 
-    k = model.k_net(soc_t, I_norm, u_norm).numpy()
+    k = model.k_net(u_norm).numpy()
     s = model.s_net(soc_t, I_norm, u_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
 
@@ -1112,10 +1112,10 @@ def plot_param(model, trajs, param='R1'):
             elif param == 'k':
                 y = model.k_net(u_norm).numpy()
                 ylabel = r'$k$ [GN/mm]'
-                k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
+                #k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
 
-                ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
+                #ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
             elif param == 's':
                 y = model.s_net(soc, I_norm, u_norm).numpy() / 100.0    # 1e-5 m – mm
@@ -1171,7 +1171,7 @@ def plot_force(model, trajs):
             u_norm = torch.full_like(soc, u_val / model.u_ref)   # what the networks see
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
-            k = model.k_net(soc, I_norm, u_norm).numpy()
+            k = model.k_net(u_norm).numpy()
             s = model.s_net(soc, I_norm, u_norm).numpy()
 
             F = - k * (u_phys.numpy() - s)                       # GN
@@ -1273,7 +1273,7 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
-        k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+        k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
         s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
@@ -1303,7 +1303,7 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+            k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
             s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
             frames.append(pd.DataFrame({
