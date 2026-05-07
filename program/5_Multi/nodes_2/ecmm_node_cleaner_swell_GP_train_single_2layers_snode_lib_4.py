@@ -45,6 +45,8 @@ class R1Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
@@ -59,6 +61,8 @@ class R1NetConstrained(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -82,6 +86,8 @@ class C1Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
@@ -96,6 +102,8 @@ class C1NetConstrained(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -119,6 +127,8 @@ class R0Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
@@ -134,6 +144,8 @@ class R0NetConstrained(nn.Module):
         self.I_ref = I_ref
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -154,6 +166,8 @@ class R0NetNoSOC(nn.Module):
         self.config = config
         self.net = nn.Sequential(
             nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -189,6 +203,8 @@ class kNet(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(1, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
         self.k_min = config.get('k_min')
@@ -211,14 +227,16 @@ class kNet(nn.Module):
 # ══════════════════════════════════════════════════════
 
 
-class sNet(nn.Module):
-    """(soc, I_norm) → s > 0  [GN/1e-5m].  Algebraic — no integration.
+class sdotNet(nn.Module):
+    """(soc, I_norm) → s > 0  [GN/1e-5m].
     """
     def __init__(self, config, n_hidden=32):
         super().__init__()                       
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(2, n_hidden),
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -228,8 +246,8 @@ class sNet(nn.Module):
             print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m')
         else:
             print('s unconstrained')
-    def forward(self, soc, I_norm):
-        x = torch.stack([soc, I_norm], dim=-1)   # (..., 2)
+    def forward(self, s, soc, I_norm):
+        x = torch.stack([s, soc, I_norm], dim=-1)
         if self.config.get('s_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.s_min + s * (self.s_max - self.s_min)
@@ -270,7 +288,7 @@ class BatteryECMM(nn.Module):
         self.k_net = kNet(config, n_hidden=nh, k=k)
 
         # ── s network (always; static algebraic stiffness) ──
-        self.s_net = sNet(config, n_hidden=nh)
+        self.ds_net = sdotNet(config, n_hidden=nh)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -373,14 +391,24 @@ class BatteryECMM(nn.Module):
         R1 = self._R1(soc, I_norm, u_norm_exp)
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
-        # ── F branch (static): k is an algebraic function, no state ──
+        # ── F branch (dynamic): k is an algebraic function, no state ──
         k = self.k_net(u_norm_exp)              # (B, T)
-        s = self.s_net(soc, I_norm)              # (B, T)
 
+        s_steps = [torch.zeros(B)]                     # (B,) initial step
+        dt = 1.0
+        for n in range(T-1):
+            ds = self.ds_net(s_steps[n], soc[:, n], I_norm[:, n])              # (B,)
+            s_next = s_steps[n] + ds.squeeze(-1) * dt                          # (B,)
+            s_steps.append(s_next)
+        s = torch.stack(s_steps, dim=1)                 # (B, T)
+
+        Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
+
+
+        # ── V branch: static or dynamic U1 ──
         with torch.no_grad():
             Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
 
-        # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
             U1 = I_seq * R1
@@ -403,11 +431,8 @@ class BatteryECMM(nn.Module):
         else:
             raise ValueError(f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
-        
-        
-        Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
 
-        return V, Fr, soc, U1, R1
+        return V, Fr, soc, U1, R1, s
 
 
 def vmode_from_style(style):
@@ -536,7 +561,6 @@ def _train_inner(model, train_trajs, test_trajs,
 
     t0 = _time.time()
 
-
     for epoch in range(1, n_epochs + 1):
         model.train()
         order = np.random.permutation(len(train_trajs))
@@ -545,7 +569,7 @@ def _train_inner(model, train_trajs, test_trajs,
         n_steps = 0
 
         ''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
-        accum_steps = 2
+        accum_steps = 1
         alpha_F = 1  # approx last MSE_V / last MSE_Fr
         optimizer.zero_grad()
 
@@ -553,7 +577,7 @@ def _train_inner(model, train_trajs, test_trajs,
             tr = train_trajs[i]
             I_b, u_b, soc0_b, T = _traj_inputs(tr)
 
-            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+            V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
             loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * alpha_F  # scale up Fr loss to be in similar order as V loss
@@ -563,7 +587,6 @@ def _train_inner(model, train_trajs, test_trajs,
 
             # Batch like accumulation of gradients: step every accum_steps trajectories or at the end of the epoch
             if (k + 1) % accum_steps == 0 or (k + 1) == len(order):
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -597,7 +620,7 @@ def _train_inner(model, train_trajs, test_trajs,
             test_mse = test_mse_V = test_mse_F = 0.0
             for tr in test_trajs:
                 I_b, u_b, soc0_b, T = _traj_inputs(tr)
-                V_pred, F_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+                V_pred, F_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
                 test_mse_V += torch.mean((V_pred[0] - tr['V']) ** 2).item()
                 test_mse_F += torch.mean((F_pred[0] - tr['F']) ** 2).item()
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2 + (F_pred[0] - tr['F']) ** 2).item()
@@ -764,6 +787,8 @@ def train_staged(model, train_trajs, test_trajs,
 #  PREDICT  (single-trajectory rollout, returns a dict)
 # ══════════════════════════════════════════════════════════════
 
+
+
 @torch.no_grad()
 def predict_np(model, config, traj, V_mode=None):
     """Single-trajectory rollout for plotting.  Auto-detects CC vs pulse from
@@ -788,10 +813,10 @@ def predict_np(model, config, traj, V_mode=None):
     pulse = 'I_seq' in traj
     I_b, u_b, soc0_b, T = _traj_inputs(traj)
 
-    V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+    V, Fr, soc, U1, R1, s = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy()
+    R1  = R1[0].numpy();  s  = s[0].numpy()
 
     # Trajectory-shape arrays for parameter evaluation
     I_np   = traj['I_seq'].numpy() if pulse else np.full(T, traj['I'])
@@ -802,14 +827,12 @@ def predict_np(model, config, traj, V_mode=None):
     u_norm = u_t / model.u_ref                                     # normalized — what networks see
 
     k = model.k_net(u_norm).numpy()
-    s = model.s_net(soc_t, I_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
 
     if V_mode in ('static', 'static_no_R0'):
         C1 = None       # C1 not used when V is algebraic — don't evaluate it
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_norm)
-
 
     return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
 
@@ -828,10 +851,10 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         CC traj,    V_mode='dynamic'        - 7 rows (V, eta, R, C1, Fr, k, s)
         CC traj,    V_mode in static modes  - 6 rows (V, eta, R, Fr, k, s) C1 omitted
 
-    eta is the overpotential η = V − Uₑ taken straight from the data column —
-    model-independent.  Predicted η is built from the model's V equation:
-        static_no_R0     →  η_pred = -I·R₁
-        static / dynamic →  η_pred = -(I·R₀ + U₁)
+    eta is the overpotential eta = V − Uₑ taken straight from the data column —
+    model-independent.  Predicted eta is built from the model's V equation:
+        static_no_R0     →  eta_pred = -I·R₁
+        static / dynamic →  eta_pred = -(I·R₀ + U₁)
 
     When V_mode is None (default), it is derived from config['style'] via
     vmode_from_style().
@@ -948,7 +971,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
 
             elif name == 's':
                 # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
-                ax.plot(x, s_pred, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                ax.plot(x, s_pred/100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
                 ax.set_ylabel(r'$s$ [mm]'); ax.legend()
 
     # x-label + axis direction handled per-trajectory-kind
@@ -1095,7 +1118,8 @@ def plot_param(model, trajs, param='R1'):
 
             
             elif param == 's':
-                y = model.s_net(soc, I_norm).numpy() / 100.0    # 1e-5 m – mm
+                s_ref = torch.zeros_like(soc)
+                y = model.ds_net(s_ref, soc, I_norm).numpy() / 100.0    # 1e-5 m – mm
                 ylabel = r'$s$ [mm]'
 
             else:
@@ -1144,6 +1168,7 @@ def plot_force(model, trajs):
     with torch.no_grad():
         for tr in trajs:
             soc       = tr['soc']
+            T        = tr['T']
             I_val     = float(tr['I'])
             u_val     = float(tr['u'])
             u_per_val = float(tr['u_per'])
@@ -1152,7 +1177,8 @@ def plot_force(model, trajs):
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
             k = model.k_net(u_norm).numpy()
-            s = model.s_net(soc, I_norm).numpy()
+            s_ref = torch.zeros_like(soc)
+            s = model.ds_net(s_ref, soc, I_norm).numpy()  # 1e-5 m
 
             F = - k * (u_phys.numpy() - s)                       # GN
             F_true = tr['F'].numpy()
@@ -1197,11 +1223,15 @@ def plot_swelling(model, trajs):
             I_val     = float(tr['I'])
             C_val     = float(tr['C'])
             u_per_val = float(tr['u_per'])
+            T         = tr['T']
             I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_norm = torch.full_like(soc, u_per_val / model.u_ref)   # what the networks see
 
             # s_net output is dimensionless (lives on the same scale as u_norm).
             # To recover [1e-5 m]: s_phys = s_net_output * u_ref. Then to mm: / 100.
-            s = model.s_net(soc, I_norm).numpy() / 100.0   # convert from 1e-5 m to mm
+            # s = s_predict(model, soc, I_norm, u_norm, T).numpy() / 100.0   # convert from 1e-5 m to mm
+            s_ref = torch.zeros_like(soc)
+            s = model.ds_net(s_ref, soc, I_norm).numpy()  # 1e-5 m
             x = np.full(len(soc), u_per_val)                # constant per traj
 
             # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
@@ -1254,7 +1284,7 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
         k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
-        s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
+        s  = model.ds_net(soc, I_norm).numpy()                    # [1e-5 m]
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
     return out[element] if element is not None else (R1, C1, R0, k, s)

@@ -22,3 +22,5 @@ trains only static with eta = R1 i or dynamic with full ode, or staged
 
 
 version 3 should be the same but with more layers in one
+
+Version 4 extension of 3 but with s node

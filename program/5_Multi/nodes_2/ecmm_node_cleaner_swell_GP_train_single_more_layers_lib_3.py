@@ -526,9 +526,9 @@ def _traj_inputs(tr):
 
 def _empty_history():
     return {'train': [], 'train_V': [], 'train_Fr': [],
-            'test': [], 'time': 0.0,
+            'test': [], 'test_V': [], 'test_F': [], 'time': 0.0,
             'train_rmse': [], 'train_rmse_V': [], 'train_rmse_Fr': [],
-            'test_rmse': [],
+            'test_rmse_V': [], 'test_rmse_F': [],
             'stage': []}                       # which stage produced each epoch
 
 
@@ -593,7 +593,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
             # Batch like accumulation of gradients: step every accum_steps trajectories or at the end of the epoch
             if (k + 1) % accum_steps == 0 or (k + 1) == len(order):
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -624,15 +624,23 @@ def _train_inner(model, train_trajs, test_trajs,
         # Test eval — uses the same V_mode as the training stage on every traj.
         model.eval()
         with torch.no_grad():
-            test_mse = 0.0
+            test_mse = test_mse_V = test_mse_F = 0.0
             for tr in test_trajs:
                 I_b, u_b, soc0_b, T = _traj_inputs(tr)
-                V_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
-                test_mse += torch.mean((V_pred[0] - tr['V']) ** 2).item()
+                V_pred, F_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+                test_mse_V += torch.mean((V_pred[0] - tr['V']) ** 2).item()
+                test_mse_F += torch.mean((F_pred[0] - tr['F']) ** 2).item()
+                test_mse += torch.mean((V_pred[0] - tr['V']) ** 2 + (F_pred[0] - tr['F']) ** 2).item()
             test_mse /= len(test_trajs)
-            test_rmse = float(np.sqrt(test_mse))
+            test_mse_V /= len(test_trajs)
+            test_mse_F /= len(test_trajs)
+            test_rmse_V = float(np.sqrt(test_mse_V))
+            test_rmse_F = float(np.sqrt(test_mse_F))
         history['test'].append(test_mse)
-        history['test_rmse'].append(test_rmse)
+        history['test_V'].append(test_mse_V)
+        history['test_F'].append(test_mse_F)
+        history['test_rmse_V'].append(test_rmse_V)
+        history['test_rmse_F'].append(test_rmse_F)
 
         if scheduler is not None:
             scheduler.step(ep_mse)
@@ -643,7 +651,7 @@ def _train_inner(model, train_trajs, test_trajs,
             tag = f"[{stage_label}] " if stage_label else ""
             print(f"  {tag}{epoch:4d}/{n_epochs} | ETA {eta:.1f}m "
                   f"| RMSE V {ep_rmse_V:.4f} Fr {ep_rmse_Fr:.4f} "
-                  f"| test V {test_rmse:.4f} | C1={C1:.0f}F | LR {optimizer.param_groups[0]['lr']:.2e}")
+                  f"| test V {test_rmse_V:.4f} F {test_rmse_F:.4f} | C1={C1:.0f}F | LR {optimizer.param_groups[0]['lr']:.2e}")
 
     history['time'] = history.get('time', 0.0) + (_time.time() - t0) / 60
     return history
@@ -996,8 +1004,10 @@ def plot_loss(history):
                 label=r'Train $V$  (final {:.4f} V)'.format(history['train_rmse_V'][-1]))
     ax.semilogy(epochs, history['train_rmse_Fr'], color=COLORS[1], lw=2,
                 label=r'Train $F_r$ (final {:.4f} GN)'.format(history['train_rmse_Fr'][-1]))
-    ax.semilogy(epochs, history['test_rmse'],     color=COLORS[2], lw=2, ls='--',
-                label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse'][-1]))
+    ax.semilogy(epochs, history['test_rmse_V'],     color=COLORS[2], lw=2, ls='--',
+                label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse_V'][-1]))
+    ax.semilogy(epochs, history['test_rmse_F'],     color=COLORS[3], lw=2, ls='--',
+                label=r'Test $F_r$  (final {:.4f} GN)'.format(history['test_rmse_F'][-1]))
 
     # Stage dividers (only present if staged training was used)
     n_s1  = history.get('stage1_epochs', 0)

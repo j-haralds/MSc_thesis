@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 as _lib
+import ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 import *
+from ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 import *
 # import ecmm_node_cleaner_swell_GP_lib as _lib
 # importlib.reload(_lib)
 # from ecmm_node_cleaner_swell_GP_lib import *
@@ -42,13 +42,13 @@ DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = True
-SAVE_MODELS = True
+SAVE_FIGS   = False
+SAVE_MODELS = False
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
 TRAIN_SPLIT = 0.8
-N_HIDDEN          = 32
+N_HIDDEN          = 16
 LR_STATIC         = 1e-3
 LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
@@ -66,7 +66,7 @@ CONFIG = {
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'true', 'k_min': 0.0, 'k_max': 1.0,    # [~ 0.04]  GN/1e-5m
-    's_constrained': 'true', 's_min': 0.0, 's_max': 1.0,     # [≤ 0.5]   1e-5 m
+    's_constrained': 'true', 's_min': 0.0, 's_max': 0.007,     # [≤ 0.5]   1e-5 m
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
@@ -163,7 +163,7 @@ if CONFIG['style'] == 'dynamic':
 elif CONFIG['style'] == 'static_no_R0':
     print(f"\nSingle-stage training: {EPOCHS_STATIC} epochs with static V1: VB = Ue - iR1 (no R0)")
     history = train_model(bat_model, _train_trajs, _test_trajs,
-                n_epochs=EPOCHS_STATIC, lr=LR_STATIC, print_every=5,
+                n_epochs=EPOCHS_STATIC, lr=LR_STATIC, print_every=1,
                 V_mode='static_no_R0', freeze=('R0_net', 'C1_net'))          #CONFIG['freeze_static_no_R0'])
 
     TOTAL_TIME = history['time']
@@ -255,6 +255,9 @@ if SAVE_FIGS:
 plot_param(bat_model, test_trajs, param='k')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(bat_model, test_trajs, param='ku')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='s')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_s_{SAVE_NAME}.pdf'), bbox_inches='tight')
