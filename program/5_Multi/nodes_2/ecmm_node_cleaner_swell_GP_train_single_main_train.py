@@ -37,14 +37,14 @@ from datetime import datetime
 # ════════════════════════════════════════════════════════════
 
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
-DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
+DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'Multi_data'))
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = True 
+SAVE_MODELS = False 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -55,7 +55,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = True
+USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -77,7 +77,7 @@ CONFIG = {
 
 # OBS: Specifiy only used training epochs, set rest to 0.
 EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 50      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_DYNAMIC    = 100      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -152,15 +152,18 @@ print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 #  TRAIN
 # ══════════════════════════════════════════════════════════════
 
-if USE_PULSE:
+if USE_PULSE == 'pulse':
     print("\nUsing pulse trajectories for training.")
     _train_trajs = pulse_train
     _test_trajs = pulse_test
-else:
+elif USE_PULSE == 'DC':
     print("\nUsing CC trajectories for training.")
     _train_trajs = train_trajs
     _test_trajs = test_trajs
-
+elif USE_PULSE == 'combo':
+    print("\nUsing combined CC + pulse trajectories for training.")
+    _train_trajs = combo_train
+    _test_trajs = combo_test
 
 
 if CONFIG['style'] == 'dynamic':
