@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 as _lib
+import ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 import *
+from ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 import *
 # import ecmm_node_cleaner_swell_GP_lib as _lib
 # importlib.reload(_lib)
 # from ecmm_node_cleaner_swell_GP_lib import *
@@ -69,7 +69,7 @@ CONFIG = {
     'k_constrained': 'true', 'k_min': 0.0, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
     's_constrained': 'true', 's_min': 0.0, 's_max': 0.005,     # [~ 0.5]   1e-5 m
     # OBS: With snode_lib_5 sdot = -beta i/Q0, and no s_net
-    # 'beta_constrained': 'false', 'beta_min': 0.0, 'beta_max': 1.0,
+    #'beta_constrained': 'false', 'beta_min': 0.0, 'beta_max': 1.0,
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
@@ -78,7 +78,7 @@ CONFIG = {
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 10  # Stage 1 : V static, train R1 and k
+EPOCHS_STATIC     = 50  # Stage 1 : V static, train R1 and k
 EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
@@ -107,6 +107,8 @@ print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.4f} A | u min: {U_MIN:
 # library from JN_GP) — no Ue_interp construction needed here anymore.
 
 print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
+
+
 
 # %% ══════════════════════════════════════════════════════════
 #  PREPARE TRAJECTORIES + ESTIMATE C1

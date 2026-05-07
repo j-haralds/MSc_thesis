@@ -214,6 +214,7 @@ class kNet(nn.Module):
             print('k unconstrained')
 
     def forward(self, soc, I_norm, u_norm):
+        # x = torch.stack([soc, I_norm, u_norm], dim=-1)
         x = torch.stack([soc, I_norm, u_norm], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
@@ -482,8 +483,8 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
 
 def prepare_data(data):
     trajs = []
-    for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in data.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])     # u = [1e-5m]
         C_val  = float(grp['C'].iloc[0])
         u_per = float(grp['u_par'].iloc[0])
@@ -499,8 +500,8 @@ def prepare_data(data):
 
 def prepare_pulse_data(pulse_raw):
     pulse_trajs = []
-    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in pulse_raw.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         pulse_trajs.append(dict(
             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
             u     = float(grp['u'].iloc[0]),
@@ -1102,6 +1103,7 @@ def plot_param(model, trajs, param='R1'):
             soc    = tr['soc']
             I_val  = float(tr['I'])
             u_val  = float(tr['u'])
+            print(u_val)
             u_per_val = float(tr['u_per'])
             C_val  = float(tr['C'])
             I_norm = torch.full_like(soc, I_val / model.I_ref)

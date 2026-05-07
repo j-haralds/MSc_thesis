@@ -397,7 +397,7 @@ class BatteryECMM(nn.Module):
         s_steps = [torch.zeros(B)]                     # (B,) initial step
         dt = 1.0
         for n in range(T-1):
-            ds = self.ds_net(s_steps[n], soc[:, n], I_norm[:, n], u_norm_exp[:, n])              # (B,)
+            ds = self.ds_net(s_steps[n], soc[:, n], I_norm[:, n], u_norm_exp[:, n])    # (B,)
             s_next = s_steps[n] + ds.squeeze(-1) * dt                          # (B,)
             s_steps.append(s_next)
         s = torch.stack(s_steps, dim=1)                 # (B, T)
@@ -473,8 +473,8 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
 
 def prepare_data(data):
     trajs = []
-    for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in data.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])     # u = [1e-5m]
         C_val  = float(grp['C'].iloc[0])
         u_per = float(grp['u_par'].iloc[0])
@@ -490,8 +490,8 @@ def prepare_data(data):
 
 def prepare_pulse_data(pulse_raw):
     pulse_trajs = []
-    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in pulse_raw.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         pulse_trajs.append(dict(
             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
             u     = float(grp['u'].iloc[0]),
