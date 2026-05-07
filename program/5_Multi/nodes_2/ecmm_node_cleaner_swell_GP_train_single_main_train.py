@@ -43,7 +43,7 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
-SAVE_MODELS = False
+SAVE_MODELS = True 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -65,18 +65,18 @@ CONFIG = {
     'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
-    'k_constrained': 'true', 'k_min': 0.0, 'k_max': 1.0,    # [~ 0.04]  GN/1e-5m
-    's_constrained': 'true', 's_min': 0.0, 's_max': 0.007,     # [≤ 0.5]   1e-5 m
+    'k_constrained': 'true', 'k_min': 0.0, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
+    's_constrained': 'true', 's_min': 0.0, 's_max': 0.005,     # [~ 0.5]   1e-5 m
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
+    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 100  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 200      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -109,7 +109,7 @@ print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 #  PREPARE TRAJECTORIES + ESTIMATE C1
 # ══════════════════════════════════════════════════════════════
 
-trajs = prepare_data(data, R0_func)
+trajs = prepare_data(data)
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
