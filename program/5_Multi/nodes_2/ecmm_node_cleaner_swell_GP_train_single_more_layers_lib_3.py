@@ -200,7 +200,7 @@ class kNet(nn.Module):
         super().__init__()
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(1, n_hidden),
+            nn.Linear(3, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
@@ -213,8 +213,8 @@ class kNet(nn.Module):
         else:
             print('k unconstrained')
 
-    def forward(self, u_norm):
-        x = torch.stack([u_norm], dim=-1)
+    def forward(self,soc,i_norm, u_norm):
+        x = torch.stack([soc,i_norm,u_norm], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)
@@ -391,7 +391,7 @@ class BatteryECMM(nn.Module):
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(u_norm_exp)              # (B, T)
+        k = self.k_net(soc,I_norm,u_norm_exp)              # (B, T)
         s = self.s_net(soc, I_norm, u_norm_exp)              # (B, T)
 
         with torch.no_grad():
@@ -586,7 +586,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
             loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * alpha_F  # scale up Fr loss to be in similar order as V loss
-            loss = (loss_V + loss_Fr) / accum_steps    # normalize loss to account for accumulation
+            loss = (loss_Fr) / accum_steps    # normalize loss to account for accumulation
 
             loss.backward()
 
@@ -830,7 +830,7 @@ def predict_np(model, config, traj, V_mode=None):
     u_t    = torch.from_numpy(u_np.astype(np.float32))             # raw u [1e-5 m]
     u_norm = u_t / model.u_ref                                     # normalized — what networks see
 
-    k = model.k_net(u_norm).numpy()
+    k = model.k_net(soc_t, I_norm, u_norm).numpy()
     s = model.s_net(soc_t, I_norm, u_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
 
@@ -1110,10 +1110,15 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
-                y = model.k_net(u_norm).numpy()
+                y = model.k_net(soc,I_norm,u_norm).numpy()
                 ylabel = r'$k$ [GN/mm]'
                 #k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
+
+            elif param == 'ku':
+                y = model.k_net(soc, I_norm, u_norm).numpy()
+                ylabel = r'$k$ [GN/mm]'
+                y = y * 1e2 
 
                 #ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
@@ -1124,7 +1129,10 @@ def plot_param(model, trajs, param='R1'):
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
 
-            ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
+            if not param == 'ku':
+                ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
+            else:
+                ax.plot(u_t.numpy(), y, 'o', color=cmap(norm(C_val)), lw=2)
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -1171,7 +1179,7 @@ def plot_force(model, trajs):
             u_norm = torch.full_like(soc, u_val / model.u_ref)   # what the networks see
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
-            k = model.k_net(u_norm).numpy()
+            k = model.k_net(soc,I_norm,u_norm).numpy()
             s = model.s_net(soc, I_norm, u_norm).numpy()
 
             F = - k * (u_phys.numpy() - s)                       # GN
@@ -1273,7 +1281,7 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
-        k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
+        k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
         s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
@@ -1303,7 +1311,7 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
+            k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
             s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
             frames.append(pd.DataFrame({
