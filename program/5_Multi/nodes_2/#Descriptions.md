@@ -24,3 +24,6 @@ trains only static with eta = R1 i or dynamic with full ode, or staged
 version 3 should be the same but with more layers in one
 
 Version 4 extension of 3 but with s node
+
+
+ecm_node_0507_1638_snode_lib4_combo_dynamic_netR0_R0c_R1c_C1c_89.52min_16h_0_100eps.pt

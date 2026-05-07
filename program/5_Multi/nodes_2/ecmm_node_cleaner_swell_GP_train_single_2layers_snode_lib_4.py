@@ -1446,9 +1446,9 @@ def load_nn_model(model_name, I_ref=None):
 def load_checkpoint(ckpt):
     history  = ckpt['history']
     CONFIG   = ckpt['config']
-    C1_final = ckpt['C1_final']
+    # C1_final = ckpt['C1_final']
     N_HIDDEN = ckpt['N_HIDDEN']
     EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
     EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
     EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
-    return history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
+    return history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE

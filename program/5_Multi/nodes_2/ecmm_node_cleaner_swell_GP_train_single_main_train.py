@@ -43,8 +43,8 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-SAVE_FIGS   = False
-SAVE_MODELS = False 
+SAVE_FIGS   = True
+SAVE_MODELS = True 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -55,7 +55,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
+USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -66,20 +66,20 @@ CONFIG = {
     'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
-    'k_constrained': 'true', 'k_min': 0.0, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
-    's_constrained': 'true', 's_min': 0.0, 's_max': 0.005,     # [~ 0.5]   1e-5 m
+    'k_constrained': 'true', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
+    's_constrained': 'false', 's_min': 0.0, 's_max': 0.005,     # s dot when lib4 [~ 0.5]   1e-5 m
     # OBS: With snode_lib_5 sdot = -beta i/Q0, and no s_net
     #'beta_constrained': 'false', 'beta_min': 0.0, 'beta_max': 1.0,
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
+    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 50  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 500      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -234,7 +234,7 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'swelling_{USE_PULSE}_{CONFIG["style"]}'
+SAVE_NAME = (f'snode_{USE_PULSE}_{CONFIG["style"]}'
              f'_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
