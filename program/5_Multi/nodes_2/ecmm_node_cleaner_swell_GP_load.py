@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_lib as _lib
+import ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_lib import *
+from ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 import *
 
 from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
@@ -45,7 +45,7 @@ SAVE_FIGS   = False
 SAVE_MODELS = False
 SAVE_DATA   = False
 
-MODEL_NAME= 'ecm_node_0430_1313_staged_swelling_netR0_25.28min_32h_2000_100_S2b20eps.pt'
+MODEL_NAME= 'ecm_node_0507_1638_snodeBeta_combo_dynamic_netR0_R0c_R1c_C1c_89.52min_16h_0_100eps.pt'
 
 Q0          = 17921.57581
 
@@ -73,7 +73,7 @@ print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 #  PREPARE TRAJECTORIES + ESTIMATE C1
 # ══════════════════════════════════════════════════════════════
 
-trajs = prepare_data(data, R0_func)
+trajs = prepare_data(data)
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
@@ -100,8 +100,8 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 # Pass I_ref explicitly because older checkpoints don't have it stored.
 # New checkpoints saved by the updated train script will carry it, in which
 # case the I_ref argument can be omitted.
-bat_model, ckpt = load_nn_model(MODEL_NAME, I_ref=I_MAX, u_ref=U_MAX)   # U_MAX when loading lib_3
-history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt)
+bat_model, ckpt = load_nn_model(MODEL_NAME, I_ref=I_MAX)   # U_MAX when loading lib_3
+history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt)
 
 n_params = sum(p.numel() for p in bat_model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
