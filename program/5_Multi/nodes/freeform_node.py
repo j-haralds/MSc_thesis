@@ -45,8 +45,8 @@ COLORS = plot_settings.colors()
 #  CONFIGURATION  (match ECM lite exactly)
 # ══════════════════════════════════════════════════════════════
 
-DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, '2_merged_data.txt')
+DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'Multi_data'))
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/2_merged_data.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 os.makedirs(FIGS_DIR, exist_ok=True)
 
