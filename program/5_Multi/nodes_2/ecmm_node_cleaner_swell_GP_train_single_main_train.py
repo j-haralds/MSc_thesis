@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 as _lib
+import ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 import *
+from ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 import *
 # import ecmm_node_cleaner_swell_GP_lib as _lib
 # importlib.reload(_lib)
 # from ecmm_node_cleaner_swell_GP_lib import *
@@ -55,7 +55,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
+USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -73,13 +73,13 @@ CONFIG = {
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
+    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 100      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 10  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -93,8 +93,8 @@ print(data.columns)
 
 # Normalization factors
 I_MAX = data['I'].max()
-U_MIN = data['u'].max()
-L_CELL = -(data['u'] / (data['u_par']/100))[0]
+U_MIN = abs(data['u'].min())
+L_CELL = 14.37325   #-(data['u'] / (data['u_par']/100))[0]
 F_max = data['F'].min()
 F_upar = data['F'][data['u_par'] == 26.5].values
 F_diff = F_upar[-1] - F_upar[0]
