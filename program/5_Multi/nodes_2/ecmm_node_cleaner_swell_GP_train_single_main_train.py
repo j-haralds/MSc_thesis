@@ -68,6 +68,8 @@ CONFIG = {
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'true', 'k_min': 0.0, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
     's_constrained': 'true', 's_min': 0.0, 's_max': 0.005,     # [~ 0.5]   1e-5 m
+    # OBS: With snode_lib_5 sdot = -beta i/Q0, and no s_net
+    # 'beta_constrained': 'false', 'beta_min': 0.0, 'beta_max': 1.0,
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
@@ -230,7 +232,7 @@ if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'swelling_{'pulse' if USE_PULSE else 'DC'}_{CONFIG["style"]}'
+SAVE_NAME = (f'swelling_{USE_PULSE}_{CONFIG["style"]}'
              f'_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'

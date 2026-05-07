@@ -1,4 +1,3 @@
-
 import os
 import sys
 
@@ -226,31 +225,41 @@ class kNet(nn.Module):
 #  s NETWORK (static)
 # ══════════════════════════════════════════════════════
 
+        
+class betaNet(nn.Module):
+    """(soc, I_norm, u_norm) → β > 0  [1e-5 m].
 
-class sdotNet(nn.Module):
-    """(soc, I_norm, u_norm) → s > 0  [GN/1e-5m].
+    Tier 2 kinematic NODE: ds/dt = -β · I/Q₀.   β has units of length [1e-5 m]
+    so that β · I/Q₀ has units of [length / time] (with Q₀ in [As], I in [A],
+    dt in [s]).  Equivalently: ds/dSOC = β, so β is the swelling-per-unit-SOC
+    gain (its integral over SOC gives the static s(SOC) curve).
+
+    Output is softplus-positive: discharge (I > 0) gives ds/dt < 0 (cell shrinks),
+    charge (I < 0) gives ds/dt > 0 (cell swells), with β ≥ 0 throughout —
+    consistent with monotone graphite expansion on lithiation.
     """
     def __init__(self, config, n_hidden=32):
-        super().__init__()                       
+        super().__init__()
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(4, n_hidden),
+            nn.Linear(3, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
-        self.s_min = config.get('s_min')
-        self.s_max = config.get('s_max')
-        if config.get('s_constrained', 'false') == 'true':
-            print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m')
+        self.beta_min = config.get('beta_min')
+        self.beta_max = config.get('beta_max')
+        if config.get('beta_constrained', 'false') == 'true':
+            print(f'beta constrained to [{self.beta_min}, {self.beta_max}] 1e-5 m')
         else:
-            print('s unconstrained')
-    def forward(self, s, soc, I_norm, u_norm):
-        x = torch.stack([s, soc, I_norm, u_norm], dim=-1)
-        if self.config.get('s_constrained', 'false') == 'true':
-            s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
-            return self.s_min + s * (self.s_max - self.s_min)
+            print('beta unconstrained')
+
+    def forward(self, soc, I_norm, u_norm):
+        x = torch.stack([soc, I_norm, u_norm], dim=-1)
+        if self.config.get('beta_constrained', 'false') == 'true':
+            g = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.beta_min + g * (self.beta_max - self.beta_min)
         else:
             return nn.functional.softplus(self.net(x)).squeeze(-1)
 
@@ -288,7 +297,7 @@ class BatteryECMM(nn.Module):
         self.k_net = kNet(config, n_hidden=nh, k=k)
 
         # ── s network (always; static algebraic stiffness) ──
-        self.ds_net = sdotNet(config, n_hidden=nh)
+        self.beta_net = betaNet(config, n_hidden=nh)
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -391,16 +400,16 @@ class BatteryECMM(nn.Module):
         R1 = self._R1(soc, I_norm, u_norm_exp)
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
-        # ── F branch (dynamic): k is an algebraic function, no state ──
+        # ── F branch: Tier 2 charge-driven kinematic NODE ──
+        #   ds/dt = -β(SOC, I, u) · I/Q₀
+        # No s on RHS → fully vectorizable, no Python loop, no stiffness possible.
+        # Forward-Euler integration as a cumulative sum, with the same indexing
+        # convention as the SOC integration above (s[:, 0] = 0).
         k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
+        beta = self.beta_net(soc, I_norm, u_norm_exp)        # (B, T)
 
-        s_steps = [torch.zeros(B)]                     # (B,) initial step
-        dt = 1.0
-        for n in range(T-1):
-            ds = self.ds_net(s_steps[n], soc[:, n], I_norm[:, n], u_norm_exp[:, n])              # (B,)
-            s_next = s_steps[n] + ds.squeeze(-1) * dt                          # (B,)
-            s_steps.append(s_next)
-        s = torch.stack(s_steps, dim=1)                 # (B, T)
+        ds_seq = beta * I_seq / self.Q0                    # (B, T)
+        s = torch.cumsum(ds_seq, dim=1) - ds_seq[:, :1]      # (B, T), s[:, 0] = 0
 
         Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
 
@@ -432,7 +441,7 @@ class BatteryECMM(nn.Module):
             raise ValueError(f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
 
-        return V, Fr, soc, U1, R1, s
+        return V, Fr, soc, U1, R1, s, beta
 
 
 def vmode_from_style(style):
@@ -577,7 +586,7 @@ def _train_inner(model, train_trajs, test_trajs,
             tr = train_trajs[i]
             I_b, u_b, soc0_b, T = _traj_inputs(tr)
 
-            V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+            V_pred, Fr_pred, *_ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
             loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * alpha_F  # scale up Fr loss to be in similar order as V loss
@@ -620,7 +629,7 @@ def _train_inner(model, train_trajs, test_trajs,
             test_mse = test_mse_V = test_mse_F = 0.0
             for tr in test_trajs:
                 I_b, u_b, soc0_b, T = _traj_inputs(tr)
-                V_pred, F_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+                V_pred, F_pred, *_ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
                 test_mse_V += torch.mean((V_pred[0] - tr['V']) ** 2).item()
                 test_mse_F += torch.mean((F_pred[0] - tr['F']) ** 2).item()
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2 + (F_pred[0] - tr['F']) ** 2).item()
@@ -813,10 +822,11 @@ def predict_np(model, config, traj, V_mode=None):
     pulse = 'I_seq' in traj
     I_b, u_b, soc0_b, T = _traj_inputs(traj)
 
-    V, Fr, soc, U1, R1, s = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
-    V   = V[0].numpy();   Fr = Fr[0].numpy()
-    soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy();  s  = s[0].numpy()
+    V, Fr, soc, U1, R1, s, beta = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+    V    = V[0].numpy();    Fr   = Fr[0].numpy()
+    soc  = soc[0].numpy();  U1   = U1[0].numpy()
+    R1   = R1[0].numpy();   s    = s[0].numpy()
+    beta = beta[0].numpy()
 
     # Trajectory-shape arrays for parameter evaluation
     I_np   = traj['I_seq'].numpy() if pulse else np.full(T, traj['I'])
@@ -834,7 +844,8 @@ def predict_np(model, config, traj, V_mode=None):
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_norm)
 
-    return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
+    return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, beta=beta,
+                C1=C1, R0=R0, I=I_np)
 
 
 # ══════════════════════════════════════════════════════════
@@ -870,13 +881,13 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     pulse = 'I_seq' in trajs[0]
     if pulse and V_mode in ('static', 'static_no_R0'):
         # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
-        rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's', 'beta']
     elif pulse:
-        rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's', 'beta']
     elif V_mode in ('static', 'static_no_R0'):
-        rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
+        rows = ['V', 'eta', 'R', 'Fr', 'k', 's', 'beta']
     elif V_mode == 'dynamic':
-        rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+        rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's', 'beta']
     else:
         raise ValueError(
             f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
@@ -891,6 +902,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         out = predict_np(model, config, tr, V_mode=V_mode)
         V, soc_np, U1 = out['V'], out['soc'], out['U1']
         R1, Fr, k_pred, s_pred = out['R1'], out['Fr'], out['k'], out['s']
+        beta_pred = out['beta']
         C1, R0, I_np = out['C1'], out['R0'], out['I']
 
         # x-axis: time index when time=True OR for pulse data (SOC isn't monotonic
@@ -970,9 +982,16 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
 
             elif name == 's':
-                # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
-                ax.plot(x, s_pred/100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                # s integrated from ds/dt = -β·I/Q₀ inside the model.  s[0] = 0
+                # by convention (anchored at trajectory's starting SOC).
+                ax.plot(x, s_pred / 100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
                 ax.set_ylabel(r'$s$ [mm]'); ax.legend()
+
+            elif name == 'beta':
+                # β: kinematic gain ds/dSOC.  Path-independence diagnostic — if
+                # β(SOC) overlays across C-rates, the data is path-independent.
+                ax.plot(x, beta_pred, '-', color=COLORS[0], label=r'Predicted $\beta$', lw=2)
+                ax.set_ylabel(r'$\beta$ [$10^{-5}$ m]'); ax.legend()
 
     # x-label + axis direction handled per-trajectory-kind
     for ax in axes.flat:
@@ -1118,9 +1137,19 @@ def plot_param(model, trajs, param='R1'):
 
             
             elif param == 's':
-                s_ref = torch.zeros_like(soc)
-                y = model.ds_net(s_ref, soc, I_norm, u_norm).numpy() / 100.0    # 1e-5 m – mm
+                # Tier 2: s is path-dependent.  Integrate -β·I/Q₀ along this
+                # CC trajectory (dt=1) using the same convention as model.forward.
+                beta_t = model.beta_net(soc, I_norm, u_norm)
+                ds = beta_t * I_real / model.Q0                  # (T,)
+                s_t = torch.cumsum(ds, dim=0) - ds[:1]            # s[0] = 0
+                y = s_t.numpy() / 100.0                            # 1e-5 m → mm
                 ylabel = r'$s$ [mm]'
+
+            elif param == 'beta':
+                # Path-independence diagnostic: overlay β(SOC) across C-rates.
+                # If they collapse, β depends only on SOC ⇒ data is path-indep.
+                y = model.beta_net(soc, I_norm, u_norm).numpy()
+                ylabel = r'$\beta$ [$10^{-5}$ m]'
 
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
@@ -1177,8 +1206,10 @@ def plot_force(model, trajs):
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
             k = model.k_net(soc, I_norm, u_norm).numpy()
-            s_ref = torch.zeros_like(soc)
-            s = model.ds_net(s_ref, soc, I_norm, u_norm).numpy()  # 1e-5 m
+            # Tier 2: integrate s = ∫(-β·I/Q₀)dt along this CC trajectory
+            beta_t = model.beta_net(soc, I_norm, u_norm)
+            ds = -beta_t * I_val / model.Q0
+            s = (torch.cumsum(ds, dim=0) - ds[:1]).numpy()       # s[0] = 0
 
             F = - k * (u_phys.numpy() - s)                       # GN
             F_true = tr['F'].numpy()
@@ -1227,11 +1258,11 @@ def plot_swelling(model, trajs):
             I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_norm = torch.full_like(soc, u_per_val / model.u_ref)   # what the networks see
 
-            # s_net output is dimensionless (lives on the same scale as u_norm).
-            # To recover [1e-5 m]: s_phys = s_net_output * u_ref. Then to mm: / 100.
-            # s = s_predict(model, soc, I_norm, u_norm, T).numpy() / 100.0   # convert from 1e-5 m to mm
-            s_ref = torch.zeros_like(soc)
-            s = model.ds_net(s_ref, soc, I_norm, u_norm).numpy()  # 1e-5 m
+            # Tier 2: s is path-dependent — integrate along this CC trajectory.
+            I_real = torch.full_like(soc, I_val)
+            beta_t = model.beta_net(soc, I_norm, u_norm)
+            ds = beta_t * I_real / model.Q0
+            s = (torch.cumsum(ds, dim=0) - ds[:1]).numpy()        # s[0] = 0
             x = np.full(len(soc), u_per_val)                # constant per traj
 
             # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
@@ -1253,8 +1284,14 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
     before being fed to the networks (so e.g. a scalar c_rate against a list
     of SOCs Just Works).
 
-    Returns (R1, C1, R0, k, s) numpy arrays of the broadcast shape, or a single
-    array if `element` ('R0' / 'R1' / 'C1' / 'k' / 's') is given.
+    Returns (R1, C1, R0, k, beta) numpy arrays of the broadcast shape, or a
+    single array if `element` ('R0' / 'R1' / 'C1' / 'k' / 'beta') is given.
+
+    Note on `s` vs `beta`: in Tier 2 the swelling s is path-dependent (it's the
+    time-integral of -β·I/Q₀), so there is no static s(SOC, I, u) map to query
+    pointwise.  This function returns the kinematic gain β instead — the
+    state-function that *does* exist pointwise.  Use predict_np to obtain s
+    along an actual trajectory.
 
     Notes on units (must match training):
         c_rate  → I_real = c_rate · Q0 / 3600   [A]
@@ -1283,18 +1320,21 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
-        k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
-        s_ref = torch.zeros_like(soc)
-        s = model.ds_net(s_ref, soc, I_norm, u_norm).numpy()                   # [1e-5 m]
+        k  = model.k_net(soc, I_norm, u_norm).numpy()            # GN/1e-5m
+        beta = model.beta_net(soc, I_norm, u_norm).numpy()       # [1e-5 m]
 
-    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
-    return out[element] if element is not None else (R1, C1, R0, k, s)
+    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 'beta': beta}
+    return out[element] if element is not None else (R1, C1, R0, k, beta)
 
 
 def data_param(model, trajs):
     """
-    Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
-    trajectories — one row per (trajectory, soc-sample).
+    Return a long-form DataFrame of R0, R1, C1, k, and β across SOC for all
+    given trajectories — one row per (trajectory, soc-sample).
+
+    β here is the kinematic gain ds/dSOC, evaluated pointwise from beta_net.
+    The integrated swelling s is path-dependent and not returned by this
+    function — use predict_np for trajectory-level s values.
     """
     model.eval()
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
@@ -1314,9 +1354,8 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
-            s_ref = torch.zeros_like(soc)
-            s = model.ds_net(s_ref, soc, I_norm, u_norm).numpy()                   # [1e-5 m]
+            k  = model.k_net(soc, I_norm, u_norm).numpy()            # GN/1e-5m
+            beta = model.beta_net(soc, I_norm, u_norm).numpy()       # [1e-5 m]
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -1329,7 +1368,7 @@ def data_param(model, trajs):
                 'C1': C1,
                 'R0': R0,
                 'k': k,
-                's': s}))
+                'beta': beta}))
 
     return pd.concat(frames, ignore_index=True)
 
