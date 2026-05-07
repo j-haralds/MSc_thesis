@@ -70,13 +70,13 @@ CONFIG = {
 
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
+    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 200      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_STATIC     = 100  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 

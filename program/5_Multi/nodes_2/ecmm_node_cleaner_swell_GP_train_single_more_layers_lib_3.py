@@ -576,7 +576,7 @@ def _train_inner(model, train_trajs, test_trajs,
 
         ''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
         accum_steps = 1
-        alpha_F = 1000  # approx last MSE_V / last MSE_Fr
+        alpha_F = 1  # approx last MSE_V / last MSE_Fr
         optimizer.zero_grad()
 
         for k, i in enumerate(order):
@@ -850,10 +850,10 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         CC traj,    V_mode='dynamic'        - 7 rows (V, eta, R, C1, Fr, k, s)
         CC traj,    V_mode in static modes  - 6 rows (V, eta, R, Fr, k, s) C1 omitted
 
-    eta is the overpotential η = V − Uₑ taken straight from the data column —
-    model-independent.  Predicted η is built from the model's V equation:
-        static_no_R0     →  η_pred = -I·R₁
-        static / dynamic →  η_pred = -(I·R₀ + U₁)
+    eta is the overpotential eta = V − Uₑ taken straight from the data column —
+    model-independent.  Predicted eta is built from the model's V equation:
+        static_no_R0     →  eta_pred = -I·R₁
+        static / dynamic →  eta_pred = -(I·R₀ + U₁)
 
     When V_mode is None (default), it is derived from config['style'] via
     vmode_from_style().
@@ -970,7 +970,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
 
             elif name == 's':
                 # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
-                ax.plot(x, s_pred, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                ax.plot(x, s_pred/100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
                 ax.set_ylabel(r'$s$ [mm]'); ax.legend()
 
     # x-label + axis direction handled per-trajectory-kind
