@@ -24,9 +24,17 @@ def read_data(file_name):
     # cols = u_par,C,t,V,I,F,u,Ue,eta,trajectory,dV,dF,soc
     #df.columns = ['u_par','C','t','V','I','F','u','Ue','eta','trajectory','dV','dF','soc']
     # Sort by time within each batch
-    df['k'] = df['k'] * 100
+    
     return df
 
+
+def read_raw_data(file_name):
+    df = pd.read_csv(
+        f"{file_name}.txt",
+        sep=';',
+        comment="%"
+    )
+    return df
 
 def prepare_data(data, index = 0, test = False):
     if test:
@@ -142,7 +150,7 @@ def plot_trajs_SOC(data, models, varis, X_train, Y_train, X_test,Y_test, ind = 0
         tr = prepare_data(data, index = ind, test=test)
     X = tr[['C', 'u_per', 'soc']].values
     
-    for i, var in enumerate(vars):
+    for i, var in enumerate(varis):
         Y_pred = models[var].predict(X)
     
     

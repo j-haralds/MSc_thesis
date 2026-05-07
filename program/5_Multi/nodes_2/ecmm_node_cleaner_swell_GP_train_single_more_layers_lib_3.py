@@ -464,7 +464,7 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
 #  DATA FUNCTIONS
 # ══════════════════════════════════════════════════════════════
 
-def prepare_data(data, R0_func):
+def prepare_data(data):
     trajs = []
     for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
         grp = grp.reset_index(drop=True)
