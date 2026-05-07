@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-N = 25                       # number of sample points (simulations to run)
+N = 15                       # number of sample points (simulations to run)
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
