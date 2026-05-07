@@ -40,6 +40,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
+COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 SAVE_FIGS   = False
@@ -54,7 +55,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = False
+USE_PULSE         = True
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -76,7 +77,7 @@ CONFIG = {
 
 # OBS: Specifiy only used training epochs, set rest to 0.
 EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 200      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_DYNAMIC    = 50      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -125,6 +126,17 @@ split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
 pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
 print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
         f"(T per traj: {pulse_trajs[0]['T']})")
+
+# %% ══════════════════════════════════════════════════════════
+#  PREPARE COMBINED TRAJECTORIES
+# ══════════════════════════════════════════════════════════════
+
+combo_data = pd.read_csv(COMBO_FILE, sep=';', comment='%')
+combo_trajs = prepare_pulse_data(combo_data)
+split_c = int(len(combo_trajs) * TRAIN_SPLIT)
+combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
+print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)} "
+        f"(T per traj: {combo_trajs[0]['T']})")
 
 
 # %% ══════════════════════════════════════════════════════════

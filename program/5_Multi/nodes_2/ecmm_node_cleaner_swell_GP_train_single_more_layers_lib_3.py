@@ -198,10 +198,9 @@ class kNet(nn.Module):
     """
     def __init__(self, config, n_hidden=32, k=53.0):
         super().__init__()
-        self.k = float(k)                          # reference k0 from data
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(1, n_hidden),
+            nn.Linear(3, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
@@ -214,8 +213,8 @@ class kNet(nn.Module):
         else:
             print('k unconstrained')
 
-    def forward(self, u):
-        x = torch.stack([u], dim=-1)
+    def forward(self, soc, I_norm, u_norm):
+        x = torch.stack([soc, I_norm, u_norm], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)
@@ -234,7 +233,7 @@ class sNet(nn.Module):
         super().__init__()                       
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(2, n_hidden),
+            nn.Linear(3, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
@@ -246,8 +245,8 @@ class sNet(nn.Module):
             print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m')
         else:
             print('s unconstrained')
-    def forward(self, soc, I_norm):
-        x = torch.stack([soc, I_norm], dim=-1)   # (..., 2)
+    def forward(self, soc, I_norm, u_norm):
+        x = torch.stack([soc, I_norm, u_norm], dim=-1)   # (..., 2)
         if self.config.get('s_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.s_min + s * (self.s_max - self.s_min)
@@ -392,8 +391,8 @@ class BatteryECMM(nn.Module):
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
         # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(u_norm_exp)              # (B, T)
-        s = self.s_net(soc, I_norm)              # (B, T)
+        k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
+        s = self.s_net(soc, I_norm, u_norm_exp)              # (B, T)
 
         with torch.no_grad():
             Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
@@ -831,8 +830,8 @@ def predict_np(model, config, traj, V_mode=None):
     u_t    = torch.from_numpy(u_np.astype(np.float32))             # raw u [1e-5 m]
     u_norm = u_t / model.u_ref                                     # normalized — what networks see
 
-    k = model.k_net(u_norm).numpy()
-    s = model.s_net(soc_t, I_norm).numpy()
+    k = model.k_net(soc_t, I_norm, u_norm).numpy()
+    s = model.s_net(soc_t, I_norm, u_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
 
     if V_mode in ('static', 'static_no_R0'):
@@ -1119,7 +1118,7 @@ def plot_param(model, trajs, param='R1'):
                 ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
             elif param == 's':
-                y = model.s_net(soc, I_norm).numpy() / 100.0    # 1e-5 m – mm
+                y = model.s_net(soc, I_norm, u_norm).numpy() / 100.0    # 1e-5 m – mm
                 ylabel = r'$s$ [mm]'
 
             else:
@@ -1172,8 +1171,8 @@ def plot_force(model, trajs):
             u_norm = torch.full_like(soc, u_val / model.u_ref)   # what the networks see
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
-            k = model.k_net(u_norm).numpy()
-            s = model.s_net(soc, I_norm).numpy()
+            k = model.k_net(soc, I_norm, u_norm).numpy()
+            s = model.s_net(soc, I_norm, u_norm).numpy()
 
             F = - k * (u_phys.numpy() - s)                       # GN
             F_true = tr['F'].numpy()
@@ -1219,10 +1218,10 @@ def plot_swelling(model, trajs):
             C_val     = float(tr['C'])
             u_per_val = float(tr['u_per'])
             I_norm = torch.full_like(soc, I_val / model.I_ref)
-
+            u_norm = torch.full_like(soc, u_per_val / model.u_ref)
             # s_net output is dimensionless (lives on the same scale as u_norm).
             # To recover [1e-5 m]: s_phys = s_net_output * u_ref. Then to mm: / 100.
-            s = model.s_net(soc, I_norm).numpy() / 100.0   # convert from 1e-5 m to mm
+            s = model.s_net(soc, I_norm, u_norm).numpy() / 100.0   # convert from 1e-5 m to mm
             x = np.full(len(soc), u_per_val)                # constant per traj
 
             # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
@@ -1274,8 +1273,8 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
-        k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
-        s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
+        k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+        s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
     return out[element] if element is not None else (R1, C1, R0, k, s)
@@ -1304,8 +1303,8 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
-            s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
+            k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+            s  = model.s_net(soc, I_norm, u_norm).numpy()                    # [1e-5 m]
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
