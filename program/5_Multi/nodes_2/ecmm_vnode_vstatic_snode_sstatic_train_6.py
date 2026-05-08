@@ -44,13 +44,15 @@ DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
 # DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_low_comp.txt') # low compression
 
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
-COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
+
+COMBO_FILE  = os.path.join(DATA_DIR, 'combo_half.txt')
 #COMBO_FILE  = os.path.join(DATA_DIR, 'combo_low_c_d.txt')
+
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = False 
+SAVE_MODELS = True 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -61,7 +63,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
+USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -89,7 +91,7 @@ CONFIG = {
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
     # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
-    'style_F': 'static',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
 
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
@@ -101,6 +103,9 @@ EPOCHS  = 650  # For single-stage training (style_V='static_no_R0' or 'dynamic')
 EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
 EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
+
+NAME_START = f'combo_full'
+
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -145,6 +150,7 @@ print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 # ══════════════════════════════════════════════════════════════
 
 pulse_data = pd.read_csv(PULSE_FILE, sep=';', comment='%')
+print(pulse_data.columns)
 pulse_trajs = prepare_pulse_data(pulse_data)
 split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
 pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
@@ -156,6 +162,7 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 # ══════════════════════════════════════════════════════════════
 
 combo_data = pd.read_csv(COMBO_FILE, sep=';', comment='%')
+print(combo_data.columns)
 combo_trajs = prepare_pulse_data(combo_data)
 split_c = int(len(combo_trajs) * TRAIN_SPLIT)
 combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
@@ -254,26 +261,25 @@ elif CONFIG['style_V'] == 'staged':
 # Build save name from active flags — much cleaner than the prior 6-branch chain.
 # Includes both style_V (V branch) and style_F (F branch) so checkpoints for
 # the four combinations (static/dynamic × static/dynamic) don't collide.
-constr_tags = []
-if CONFIG.get('R0_constrained', 'false') == 'true': constr_tags.append('R0c')
-if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
-if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
-constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
+# constr_tags = []
+# if CONFIG.get('R0_constrained', 'false') == 'true': constr_tags.append('R0c')
+# if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
+# if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
+# constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
 # Tag style as e.g. 'V-dynamic_F-static' to make the F branch visible in the filename.
 style_tag = f'V-{CONFIG["style_V"]}_F-{CONFIG["style_F"]}'
 
-SAVE_NAME = (f'snode_{USE_PULSE}_{style_tag}'
-             f'_{CONFIG["R0_mode"]}R0_{constr}'
+SAVE_NAME = (f'{NAME_START}_{USE_PULSE}_{style_tag}'
+            #  f'_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
-             f'_{EPOCHS}eps_{EPOCHS_STATIC}stat_{EPOCHS_DYNAMIC}dyn'
-             f'{f"_{EPOCHS_UNFREEZE}" if EPOCHS_UNFREEZE > 0 else ""}'
-             f'eps')
+             f'_{EPOCHS}eps')
+
 print(SAVE_NAME)
 
 plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ', n_show=3)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'test_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
 plt.show()
 
@@ -283,7 +289,7 @@ plt.show()
 
 plot_loss(history)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TIMESTAMP}_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'loss_{TIMESTAMP}_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
 plt.show()
 
@@ -293,32 +299,32 @@ plt.show()
 
 plot_param(bat_model, test_trajs, param='R0')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='R1')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='C1')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='k')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'k_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='ku')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='s')
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_s_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f's_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 
 
 plot_force(bat_model, test_trajs)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'F_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_swelling(bat_model, test_trajs)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_su_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'su_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -328,7 +334,7 @@ plt.show()
 sort = 'u_per'  # 'C_rate' or 'u_per'
 plot_predicts(bat_model, CONFIG, test_trajs, predict='F', sort=sort)
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
+    plt.savefig(os.path.join(FIGS_DIR, f'F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -339,7 +345,7 @@ plt.show()
 plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
                  n_show=min(3, len(pulse_test)))
 if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}.pdf'),
+    plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),
                 bbox_inches='tight')
 plt.show()
 
@@ -367,9 +373,9 @@ if SAVE_MODELS:
         'EPOCHS_DYNAMIC': EPOCHS_DYNAMIC,
         'EPOCHS_UNFREEZE': EPOCHS_UNFREEZE,
         'USE_PULSE': USE_PULSE,
-    }, os.path.join(MODEL_DIR, f'ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt'))
+    }, os.path.join(MODEL_DIR, f'{TIMESTAMP}_{SAVE_NAME}.pt'))
 
-    print(f"Saved: ecm_node_{TIMESTAMP}_{SAVE_NAME}.pt")
+    print(f"Saved: {TIMESTAMP}_{SAVE_NAME}.pt")
 
 # %% ══════════════════════════════════════════════════════════
 # ELEMENT SAVER
@@ -377,8 +383,8 @@ if SAVE_MODELS:
 
 element_data = data_param(bat_model, trajs)
 if SAVE_ELEMENTS:
-    element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
-    print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
+    element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
+    print(f"Saved element data: elements_{TIMESTAMP}_{SAVE_NAME}.txt")
 
 
 
