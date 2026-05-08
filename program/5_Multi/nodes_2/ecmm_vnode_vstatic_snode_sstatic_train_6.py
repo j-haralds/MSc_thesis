@@ -22,12 +22,12 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-# import ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 as _lib
-# importlib.reload(_lib)
-# from ecmm_node_cleaner_swell_GP_train_single_2layers_snode_lib_4 import *
-import ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
 importlib.reload(_lib)
-from ecmm_node_cleaner_swell_GP_train_single_more_layers_lib_3 import *
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+# import ecmm_node_cleaner_swell_GP_lib as _lib
+# importlib.reload(_lib)
+# from ecmm_node_cleaner_swell_GP_lib import *
 
 from datetime import datetime
 
@@ -67,20 +67,33 @@ CONFIG = {
     'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'true', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
-    #'s_constrained': 'true', 's_min': 0.0, 's_max': 0.005,     # for sdot lib4 (not s lib3!!??) [~ 0.5]   1e-5 m/s
-    's_constrained': 'false', 's_min': 0.0, 's_max': 0.005*100,  # for s lib3 1e-5m
-    # OBS: With snode_lib_5 sdot = -beta i/Q0, and no s_net
-    #'beta_constrained': 'false', 'beta_min': 0.0, 'beta_max': 1.0,
+    # ── F-branch swelling constraints — split per style_F mode ──
+    # style_F='static'  uses  s_constrained / s_min / s_max     — bounds on s itself        [1e-5 m]
+    # style_F='dynamic' uses  sdot_constrained / sdot_min / sdot_max — bounds on ds/dt  [1e-5 m / s]
+    # Backward compat: if the sdot_* keys are absent, sdotNet falls back to the s_* keys
+    # (so old checkpoints which only had s_* keys still load and behave identically).
+    's_constrained':    'true', 's_min':    0.0, 's_max':    0.005*100,   # static sNet  [1e-5 m]
+    'sdot_constrained': 'true', 'sdot_min': 0.0, 'sdot_max': 0.005,   # dynamic sdotNet [1e-5 m / s]
 
+    # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' | 'staged' ──
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
     # OBS 'staged' uses CC for static and pulse for dynamic regardless of USE_PULSE
-    'style': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'staged'
+    'style_V': 'dynamic',  # 'static_no_R0', 'dynamic', 'staged'
+
+    # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
+    # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
+    # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
+    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS_STATIC     = 1000  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS  = 5  # For single-stage training (style_V='static_no_R0' or 'dynamic')
+
+# Only for staged
+EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
+EPOCHS_DYNAMIC    = 5      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -171,28 +184,32 @@ elif USE_PULSE == 'combo':
     _test_trajs = combo_test
 
 
-if CONFIG['style'] == 'dynamic':
-    print(f"\nSingle-stage training: {EPOCHS_DYNAMIC} epochs with dynamic V")
+if CONFIG['style_V'] == 'dynamic':
+    print(f"\nSingle-stage training: {EPOCHS} epochs with dynamic V"
+          f"  (style_F={CONFIG['style_F']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
-                n_epochs=EPOCHS_DYNAMIC, lr=LR_DYNAMIC, print_every=1,
+                n_epochs=EPOCHS, lr=LR_DYNAMIC, print_every=1,
                 V_mode='dynamic', freeze=None)
 
     TOTAL_TIME = history['time']
     print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 
-elif CONFIG['style'] == 'static_no_R0':
-    print(f"\nSingle-stage training: {EPOCHS_STATIC} epochs with static V1: VB = Ue - iR1 (no R0)")
+elif CONFIG['style_V'] == 'static_no_R0':
+    print(f"\nSingle-stage training: {EPOCHS} epochs with static V1: VB = Ue - iR1 (no R0)"
+          f"  (style_F={CONFIG['style_F']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
-                n_epochs=EPOCHS_STATIC, lr=LR_STATIC, print_every=1,
+                n_epochs=EPOCHS, lr=LR_STATIC, print_every=1,
                 V_mode='static_no_R0', freeze=('R0_net', 'C1_net'))          #CONFIG['freeze_static_no_R0'])
 
     TOTAL_TIME = history['time']
     print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
 
-elif CONFIG['style'] == 'staged':
+
+
+elif CONFIG['style_V'] == 'staged':
     print(f"\nStaged training: S1={EPOCHS_STATIC}ep static, S2={EPOCHS_DYNAMIC}ep dynamic"
         f"{f', S2b={EPOCHS_UNFREEZE}ep R1-unfrozen' if EPOCHS_UNFREEZE > 0 else ''}"
-        f"{' (pulse Stage 2)'}")
+        f"{' (pulse Stage 2)'}  (style_F={CONFIG['style_F']!r})")
 
     def _post_stage1(bat_model, history):
         """Plot test predictions at the end of Stage 1, before Stage 2 starts.
@@ -229,16 +246,21 @@ elif CONFIG['style'] == 'staged':
 # ══════════════════════════════════════════════════════════════
 
 # Build save name from active flags — much cleaner than the prior 6-branch chain.
+# Includes both style_V (V branch) and style_F (F branch) so checkpoints for
+# the four combinations (static/dynamic × static/dynamic) don't collide.
 constr_tags = []
 if CONFIG.get('R0_constrained', 'false') == 'true': constr_tags.append('R0c')
 if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
 if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
 constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
-SAVE_NAME = (f'snode_{USE_PULSE}_{CONFIG["style"]}'
+# Tag style as e.g. 'V-dynamic_F-static' to make the F branch visible in the filename.
+style_tag = f'V-{CONFIG["style_V"]}_F-{CONFIG["style_F"]}'
+
+SAVE_NAME = (f'snode_{USE_PULSE}_{style_tag}'
              f'_{CONFIG["R0_mode"]}R0_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
-             f'_{EPOCHS_STATIC}_{EPOCHS_DYNAMIC}'
+             f'_{EPOCHS}eps_{EPOCHS_STATIC}stat_{EPOCHS_DYNAMIC}dyn'
              f'{f"_{EPOCHS_UNFREEZE}" if EPOCHS_UNFREEZE > 0 else ""}'
              f'eps')
 print(SAVE_NAME)
@@ -334,6 +356,7 @@ if SAVE_MODELS:
         'I_ref': float(I_MAX),
         'u_ref': float(U_MIN),  
         'N_HIDDEN': N_HIDDEN,
+        'EPOCHS': EPOCHS,
         'EPOCHS_STATIC': EPOCHS_STATIC,
         'EPOCHS_DYNAMIC': EPOCHS_DYNAMIC,
         'EPOCHS_UNFREEZE': EPOCHS_UNFREEZE,

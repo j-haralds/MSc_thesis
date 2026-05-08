@@ -34,6 +34,34 @@ EPOCHS      = 2
 LR          = 1e-3
 PAT         = 400   # # Extrmely high pateience to omitt scheduler (epochs with no improvement on test loss before reducing LR)
 
+
+# ══════════════════════════════════════════════════════════
+#  Config helpers — read style_V / style_F with backward compat
+# ══════════════════════════════════════════════════════════
+#
+# CONFIG carries two orthogonal style flags:
+#
+#   style_V  ('static' / 'static_no_R0' / 'dynamic' / 'staged')
+#       Controls the V branch — what equation V follows and (for 'staged')
+#       which staged-training schedule to run.  Old checkpoints stored this
+#       under the key 'style' instead of 'style_V'; readers fall back to
+#       'style' if 'style_V' is absent.
+#
+#   style_F  ('static' / 'dynamic')
+#       Controls the F branch — whether s is algebraic (sNet, lib_3 style)
+#       or integrated as a NODE (sdotNet, lib_4 style).  Old checkpoints
+#       didn't have this key at all; readers default to 'dynamic' which
+#       reproduces the previous lib_4 behaviour exactly.
+
+def _style_V(config):
+    """Read CONFIG['style_V'], falling back to legacy 'style' for old checkpoints."""
+    return config.get('style_V', config.get('style', 'dynamic'))
+
+def _style_F(config):
+    """Read CONFIG['style_F']; default 'dynamic' = previous lib_4 behaviour."""
+    return config.get('style_F', 'dynamic')
+
+
 # ══════════════════════════════════════════════════════════
 #  R1 NETWORK
 # ══════════════════════════════════════════════════════════════
@@ -44,6 +72,8 @@ class R1Net(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -59,6 +89,8 @@ class R1NetConstrained(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -82,6 +114,8 @@ class C1Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
@@ -96,6 +130,8 @@ class C1NetConstrained(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -119,6 +155,8 @@ class R0Net(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
             nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
 
@@ -134,6 +172,8 @@ class R0NetConstrained(nn.Module):
         self.I_ref = I_ref
         self.net = nn.Sequential(
             nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -154,6 +194,8 @@ class R0NetNoSOC(nn.Module):
         self.config = config
         self.net = nn.Sequential(
             nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -187,7 +229,9 @@ class kNet(nn.Module):
         self.k = float(k)                          # reference k0 from data
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(1, n_hidden),
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
@@ -198,8 +242,8 @@ class kNet(nn.Module):
         else:
             print('k unconstrained')
 
-    def forward(self, u):
-        x = torch.stack([u], dim=-1)
+    def forward(self, soc, I_norm, u_norm):
+        x = torch.stack([soc, I_norm, u_norm], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)
@@ -211,23 +255,93 @@ class kNet(nn.Module):
 # ══════════════════════════════════════════════════════
 
 
-class sNet(nn.Module):
-    """(soc, I_norm) → s > 0  [GN/1e-5m].  Algebraic — no integration.
+class sdotNet(nn.Module):
+    """(s, soc, I_norm, u_norm) → ds/dt   [1e-5 m / s].
+
+    Used when CONFIG['style_F'] == 'dynamic'.  Output is the *rate* of swelling,
+    not the swelling itself, so the constraint pair (sdot_min, sdot_max) bounds
+    ds/dt — i.e. the maximum allowable change per integration step (dt = 1 s).
+
+    Constraint keys:
+        sdot_constrained / sdot_min / sdot_max     (preferred)
+        s_constrained    / s_min    / s_max        (legacy fallback for old
+                                                    checkpoints that pre-date
+                                                    the split — silently used
+                                                    if the sdot_* keys are
+                                                    absent.)
     """
     def __init__(self, config, n_hidden=32):
-        super().__init__()                       
+        super().__init__()
+        self.config = config
+        self.net = nn.Sequential(
+            nn.Linear(4, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
+        # Prefer the new sdot_* keys; fall back to the legacy s_* keys so that
+        # old checkpoints (which only had s_min/s_max/s_constrained, used for
+        # both modes before the split) keep loading and behaving identically.
+        self.sdot_min = config.get('sdot_min', config.get('s_min'))
+        self.sdot_max = config.get('sdot_max', config.get('s_max'))
+        if config.get('sdot_constrained', config.get('s_constrained', 'false')) == 'true':
+            print(f'ds/dt constrained to [{self.sdot_min}, {self.sdot_max}] 1e-5 m / s  (dynamic sdotNet)')
+        else:
+            print('ds/dt unconstrained  (dynamic sdotNet)')
+
+    def _is_constrained(self):
+        return self.config.get('sdot_constrained', self.config.get('s_constrained', 'false')) == 'true'
+
+    def forward(self, s, soc, I_norm, u_norm):
+        x = torch.stack([s, soc, I_norm, u_norm], dim=-1)
+        if self._is_constrained():
+            sd = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
+            return self.sdot_min + sd * (self.sdot_max - self.sdot_min)
+        else:
+            return nn.functional.softplus(self.net(x)).squeeze(-1)
+
+# ══════════════════════════════════════════════════════════
+#  s NETWORK (static, algebraic — lib_3 style)
+# ══════════════════════════════════════════════════════════
+#
+# Algebraic counterpart to sdotNet.  Used when CONFIG['style_F'] == 'static':
+#
+#     style_F='static'   →  s = sNet(soc, I_norm)            (no integration)
+#     style_F='dynamic'  →  ds/dt = sdotNet(s, soc, I_norm, u_norm), Euler-rolled
+#
+# Architecture: 2 hidden layers, matching every other network in this library
+# (R1Net / C1Net / R0Net / kNet / sdotNet).  Inputs (soc, I_norm) are the
+# same as lib_3's sNet — u is intentionally not an input, since the algebraic
+# s captures the SOC-driven swelling and u enters the force only via the
+# (u - s) term in F = -k·(u - s).
+#
+# Constraint keys (now split from the dynamic sdotNet's keys):
+#     s_constrained / s_min / s_max     — bound s itself in [1e-5 m]
+# The dynamic sdotNet uses sdot_constrained / sdot_min / sdot_max instead
+# (with backward-compat fallback to s_*) — see sdotNet for details.
+# ══════════════════════════════════════════════════════════
+
+class sNet(nn.Module):
+    """(soc, I_norm) → s ≥ 0  [1e-5 m].  Algebraic — no integration.
+    """
+    def __init__(self, config, n_hidden=32):
+        super().__init__()
         self.config = config
         self.net = nn.Sequential(
             nn.Linear(2, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, 1),
         )
         self.s_min = config.get('s_min')
         self.s_max = config.get('s_max')
         if config.get('s_constrained', 'false') == 'true':
-            print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m')
+            print(f's constrained to [{self.s_min}, {self.s_max}] 1e-5 m  (static sNet)')
         else:
-            print('s unconstrained')
+            print('s unconstrained  (static sNet)')
+
     def forward(self, soc, I_norm):
         x = torch.stack([soc, I_norm], dim=-1)   # (..., 2)
         if self.config.get('s_constrained', 'false') == 'true':
@@ -253,6 +367,20 @@ class BatteryECMM(nn.Module):
     SOC is integrated by cumulative sum in both cases (analytically equivalent
     to soc0 - I·t/Q0 when I is constant).  V_mode='static' is only meaningful
     for the CC case; it is rejected if a sequence is provided.
+
+    Two orthogonal style flags in CONFIG control the V and F branches:
+
+      CONFIG['style_V']  ('static' | 'static_no_R0' | 'dynamic' | 'staged')
+          V branch — algebraic vs RC-integrated voltage (and the staged-
+          training schedule).  Legacy key 'style' is also accepted.
+
+      CONFIG['style_F']  ('static' | 'dynamic')        default: 'dynamic'
+          F branch — controls how s is produced:
+            'static'   →  s = sNet(soc, I_norm)              (algebraic, lib_3 style)
+            'dynamic'  →  ds/dt = sdotNet(s, soc, I_norm, u_norm), Euler-rolled
+                          from s(0)=0  (lib_4 style — the previous default).
+          Only one of {self.s_net, self.ds_net} is instantiated, chosen at
+          __init__ time from CONFIG['style_F'].  k_net is unaffected.
     """
     def __init__(self, config, Q0=Q0, I_ref=24.7915, u_ref=-4.2976, k=53.0):
         super().__init__()
@@ -269,8 +397,18 @@ class BatteryECMM(nn.Module):
         # ── k network (always; static algebraic stiffness) ──
         self.k_net = kNet(config, n_hidden=nh, k=k)
 
-        # ── s network (always; static algebraic stiffness) ──
-        self.s_net = sNet(config, n_hidden=nh)
+        # ── s/ds network — switch on CONFIG['style_F'] ──
+        # 'static'   : sNet(soc, I_norm) → s          (algebraic, lib_3 style)
+        # 'dynamic'  : sdotNet(s, soc, I_norm, u_norm) → ds/dt, Euler-rolled
+        sF = _style_F(config)
+        if sF == 'static':
+            self.s_net = sNet(config, n_hidden=nh)
+        elif sF == 'dynamic':
+            self.ds_net = sdotNet(config, n_hidden=nh)
+        else:
+            raise ValueError(
+                f"Unknown style_F: {sF!r}.  Use 'static' (algebraic sNet) "
+                f"or 'dynamic' (integrated sdotNet).")
 
         # ── R1 net — always network, optionally constrained ──
         if config.get('R1_constrained', 'false') == 'true':
@@ -329,6 +467,49 @@ class BatteryECMM(nn.Module):
             return self.R0_net(I_norm, u_exp)
         raise ValueError(f"Unsupported R0_mode: {m!r}.")
 
+    def _s(self, soc, I_norm, u_norm_exp, B, T):
+        """Trajectory-shape s (B, T).
+
+        style_F='static'   →  s = sNet(soc, I_norm)            (one-shot algebraic)
+        style_F='dynamic'  →  ds/dt = sdotNet(s, soc, I_norm, u_norm), forward
+                              Euler integrated from s(0)=0 with dt=1 s.
+
+        Same return shape (B, T) in both modes, so forward() and downstream
+        callers stay shape-agnostic with respect to style_F.
+        """
+        sF = _style_F(self.config)
+        if sF == 'static':
+            return self.s_net(soc, I_norm)
+        elif sF == 'dynamic':
+            s_steps = [torch.zeros(B)]                     # (B,) initial step
+            dt = 1.0
+            for n in range(T - 1):
+                ds = self.ds_net(s_steps[n], soc[:, n], I_norm[:, n], u_norm_exp[:, n])  # (B,)
+                s_next = s_steps[n] + ds.squeeze(-1) * dt
+                s_steps.append(s_next)
+            return torch.stack(s_steps, dim=1)             # (B, T)
+        raise ValueError(f"Unsupported style_F: {sF!r}.")
+
+    def _s_diag(self, soc, I_norm, u_norm):
+        """Single-shot diagnostic s output for per-state plots (plot_param,
+        plot_force, plot_swelling, element_predict, data_param).
+
+        style_F='static'   →  returns s = sNet(soc, I_norm)        in [1e-5 m]
+        style_F='dynamic'  →  returns ds/dt at s=0 = sdotNet(0, soc, I_norm, u_norm)
+
+        Note the dynamic branch returns a *rate* (ds/dt at the zero-state),
+        not the integrated s.  This preserves the prior lib_4 plotting
+        convention (which evaluated `model.ds_net(s_ref=zeros, …)` directly).
+        For the integrated s along a trajectory, call predict_np() instead.
+        """
+        sF = _style_F(self.config)
+        if sF == 'static':
+            return self.s_net(soc, I_norm)
+        elif sF == 'dynamic':
+            s_ref = torch.zeros_like(soc)
+            return self.ds_net(s_ref, soc, I_norm, u_norm)
+        raise ValueError(f"Unsupported style_F: {sF!r}.")
+
     def forward(self, I_batch, u_batch, soc0_batch, T=None, V_mode='dynamic'):
         """
         I_batch    : (B,)     constant current per traj         → CC mode
@@ -373,14 +554,21 @@ class BatteryECMM(nn.Module):
         R1 = self._R1(soc, I_norm, u_norm_exp)
         R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
 
-        # ── F branch (static): k is an algebraic function, no state ──
-        k = self.k_net(u_norm_exp)              # (B, T)
-        s = self.s_net(soc, I_norm)              # (B, T)
+        # ── F branch ──
+        # k is always algebraic (no time integration).
+        # s is algebraic (style_F='static', sNet) or integrated (style_F='dynamic', sdotNet).
+        # The _s dispatcher returns a (B, T) tensor in both cases so the
+        # F = -k·(u - s) computation below is shape-agnostic.
+        k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
+        s = self._s(soc, I_norm, u_norm_exp, B, T)           # (B, T)
 
+        Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
+
+
+        # ── V branch: static or dynamic U1 ──
         with torch.no_grad():
             Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
 
-        # ── V branch: static or dynamic U1 ──
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
             U1 = I_seq * R1
@@ -403,15 +591,13 @@ class BatteryECMM(nn.Module):
         else:
             raise ValueError(f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
-        
-        
-        Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
 
-        return V, Fr, soc, U1, R1
+        return V, Fr, soc, U1, R1, s
 
 
 def vmode_from_style(style):
-    """Map a CONFIG['style'] to the V_mode the model should run in for inference."""
+    """Map a CONFIG['style_V'] (legacy 'style') value to the V_mode the model
+    should run in for inference.  Pass `_style_V(config)` for the right key."""
     if style == 'static_no_R0':
         return 'static_no_R0'
     elif style == 'static':
@@ -419,7 +605,7 @@ def vmode_from_style(style):
     elif style in ('dynamic', 'staged'):
         return 'dynamic'
     else:
-        raise ValueError(f"Unknown style: {style!r}")
+        raise ValueError(f"Unknown style_V: {style!r}")
 
 
 def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
@@ -448,8 +634,8 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
 
 def prepare_data(data):
     trajs = []
-    for _, grp in data.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in data.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         I_val, u_val = float(grp['I'].iloc[0]), float(grp['u'].iloc[0])     # u = [1e-5m]
         C_val  = float(grp['C'].iloc[0])
         u_per = float(grp['u_par'].iloc[0])
@@ -465,8 +651,8 @@ def prepare_data(data):
 
 def prepare_pulse_data(pulse_raw):
     pulse_trajs = []
-    for _, grp in pulse_raw.sort_values(['trajectory', 't']).groupby('trajectory'):
-        grp = grp.reset_index(drop=True)
+    for _, grp in pulse_raw.groupby('trajectory', sort=False):
+        grp = grp.sort_values('t').reset_index(drop=True)
         pulse_trajs.append(dict(
             I_seq = torch.tensor(grp['I'].values,   dtype=torch.float32),  # sequence!
             u     = float(grp['u'].iloc[0]),
@@ -536,7 +722,6 @@ def _train_inner(model, train_trajs, test_trajs,
 
     t0 = _time.time()
 
-
     for epoch in range(1, n_epochs + 1):
         model.train()
         order = np.random.permutation(len(train_trajs))
@@ -545,7 +730,7 @@ def _train_inner(model, train_trajs, test_trajs,
         n_steps = 0
 
         ''' Mark 2: batch-like accumulation of gradients over accum_steps trajectories '''
-        accum_steps = 2
+        accum_steps = 1
         alpha_F = 1  # approx last MSE_V / last MSE_Fr
         optimizer.zero_grad()
 
@@ -553,7 +738,7 @@ def _train_inner(model, train_trajs, test_trajs,
             tr = train_trajs[i]
             I_b, u_b, soc0_b, T = _traj_inputs(tr)
 
-            V_pred, Fr_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+            V_pred, Fr_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
 
             loss_V  = ((V_pred[0]  - tr['V']) ** 2).mean()
             loss_Fr = ((Fr_pred[0] - tr['F']) ** 2).mean() * alpha_F  # scale up Fr loss to be in similar order as V loss
@@ -563,7 +748,6 @@ def _train_inner(model, train_trajs, test_trajs,
 
             # Batch like accumulation of gradients: step every accum_steps trajectories or at the end of the epoch
             if (k + 1) % accum_steps == 0 or (k + 1) == len(order):
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 optimizer.zero_grad()
 
@@ -597,7 +781,7 @@ def _train_inner(model, train_trajs, test_trajs,
             test_mse = test_mse_V = test_mse_F = 0.0
             for tr in test_trajs:
                 I_b, u_b, soc0_b, T = _traj_inputs(tr)
-                V_pred, F_pred, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+                V_pred, F_pred, _, _, _, _ = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
                 test_mse_V += torch.mean((V_pred[0] - tr['V']) ** 2).item()
                 test_mse_F += torch.mean((F_pred[0] - tr['F']) ** 2).item()
                 test_mse += torch.mean((V_pred[0] - tr['V']) ** 2 + (F_pred[0] - tr['F']) ** 2).item()
@@ -764,6 +948,8 @@ def train_staged(model, train_trajs, test_trajs,
 #  PREDICT  (single-trajectory rollout, returns a dict)
 # ══════════════════════════════════════════════════════════════
 
+
+
 @torch.no_grad()
 def predict_np(model, config, traj, V_mode=None):
     """Single-trajectory rollout for plotting.  Auto-detects CC vs pulse from
@@ -772,9 +958,10 @@ def predict_np(model, config, traj, V_mode=None):
     V_mode controls the V equation — 'static' (V = Ue - I·R0 - I·R1),
     'static_no_R0' (V = Ue - I·R1) or 'dynamic' (Euler RC integration with
     V = Ue - I·R0 - U1).  When V_mode is None (default) it is derived from
-    config['style'] via vmode_from_style().  V_mode is honoured for both CC
-    and pulse trajectories — no implicit override — so a static-trained model
-    can be evaluated on pulses to show the algebraic V can't follow them.
+    config['style_V'] (legacy 'style') via vmode_from_style().  V_mode is
+    honoured for both CC and pulse trajectories — no implicit override — so a
+    static-trained model can be evaluated on pulses to show the algebraic V
+    can't follow them.
 
     For V_mode in ('static', 'static_no_R0') C1 is returned as None so plots
     can omit any C1-dependent panels.
@@ -784,14 +971,14 @@ def predict_np(model, config, traj, V_mode=None):
     in CC mode, so plotting code can treat them uniformly).
     """
     if V_mode is None:
-        V_mode = vmode_from_style(config.get('style', 'dynamic'))
+        V_mode = vmode_from_style(_style_V(config))
     pulse = 'I_seq' in traj
     I_b, u_b, soc0_b, T = _traj_inputs(traj)
 
-    V, Fr, soc, U1, R1 = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
+    V, Fr, soc, U1, R1, s = model(I_b, u_b, soc0_b, T=T, V_mode=V_mode)
     V   = V[0].numpy();   Fr = Fr[0].numpy()
     soc = soc[0].numpy(); U1 = U1[0].numpy()
-    R1  = R1[0].numpy()
+    R1  = R1[0].numpy();  s  = s[0].numpy()
 
     # Trajectory-shape arrays for parameter evaluation
     I_np   = traj['I_seq'].numpy() if pulse else np.full(T, traj['I'])
@@ -801,15 +988,13 @@ def predict_np(model, config, traj, V_mode=None):
     u_t    = torch.from_numpy(u_np.astype(np.float32))             # raw u [1e-5 m]
     u_norm = u_t / model.u_ref                                     # normalized — what networks see
 
-    k = model.k_net(u_norm).numpy()
-    s = model.s_net(soc_t, I_norm).numpy()
+    k = model.k_net(soc_t, I_norm, u_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
 
     if V_mode in ('static', 'static_no_R0'):
         C1 = None       # C1 not used when V is algebraic — don't evaluate it
     else:
         C1 = get_C1(model, scalar=False, soc=soc_t, I_norm=I_norm, u_exp=u_norm)
-
 
     return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
 
@@ -828,17 +1013,17 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
         CC traj,    V_mode='dynamic'        - 7 rows (V, eta, R, C1, Fr, k, s)
         CC traj,    V_mode in static modes  - 6 rows (V, eta, R, Fr, k, s) C1 omitted
 
-    eta is the overpotential η = V − Uₑ taken straight from the data column —
-    model-independent.  Predicted η is built from the model's V equation:
-        static_no_R0     →  η_pred = -I·R₁
-        static / dynamic →  η_pred = -(I·R₀ + U₁)
+    eta is the overpotential eta = V − Uₑ taken straight from the data column —
+    model-independent.  Predicted eta is built from the model's V equation:
+        static_no_R0     →  eta_pred = -I·R₁
+        static / dynamic →  eta_pred = -(I·R₀ + U₁)
 
-    When V_mode is None (default), it is derived from config['style'] via
-    vmode_from_style().
+    When V_mode is None (default), it is derived from config['style_V']
+    (legacy 'style') via vmode_from_style().
     All trajectories in `trajs` should be the same kind (all CC or all pulse).
     """
     if V_mode is None:
-        V_mode = vmode_from_style(config.get('style', 'dynamic'))
+        V_mode = vmode_from_style(_style_V(config))
     n = min(n_show, len(trajs))
     if n == 0:
         raise ValueError("trajs is empty")
@@ -948,7 +1133,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
 
             elif name == 's':
                 # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
-                ax.plot(x, s_pred, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                ax.plot(x, s_pred/100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
                 ax.set_ylabel(r'$s$ [mm]'); ax.legend()
 
     # x-label + axis direction handled per-trajectory-kind
@@ -1081,7 +1266,7 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
-                y = model.k_net(u_norm).numpy()
+                y = model.k_net(soc, I_norm, u_norm).numpy()
                 ylabel = r'$k$ [GN/mm]'
                 # k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
@@ -1089,13 +1274,15 @@ def plot_param(model, trajs, param='R1'):
                 #ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
             elif param == 'ku':
-                y = model.k_net(u_norm).numpy()
+                y = model.k_net(soc, I_norm, u_norm).numpy()
                 ylabel = r'$k$ [GN/mm]'
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
 
             
             elif param == 's':
-                y = model.s_net(soc, I_norm).numpy() / 100.0    # 1e-5 m – mm
+                # _s_diag returns s [1e-5 m] in static mode and ds/dt at s=0 in
+                # dynamic mode (preserving prior lib_4 plotting convention).
+                y = model._s_diag(soc, I_norm, u_norm).numpy() / 100.0    # 1e-5 m – mm
                 ylabel = r'$s$ [mm]'
 
             else:
@@ -1144,6 +1331,7 @@ def plot_force(model, trajs):
     with torch.no_grad():
         for tr in trajs:
             soc       = tr['soc']
+            T        = tr['T']
             I_val     = float(tr['I'])
             u_val     = float(tr['u'])
             u_per_val = float(tr['u_per'])
@@ -1151,8 +1339,8 @@ def plot_force(model, trajs):
             u_norm = torch.full_like(soc, u_val / model.u_ref)   # what the networks see
             u_phys = torch.full_like(soc, u_val)                 # raw u [1e-5 m] for force calculation
 
-            k = model.k_net(u_norm).numpy()
-            s = model.s_net(soc, I_norm).numpy()
+            k = model.k_net(soc, I_norm, u_norm).numpy()
+            s = model._s_diag(soc, I_norm, u_norm).numpy()    # 1e-5 m  (or ds/dt at s=0 in dynamic mode)
 
             F = - k * (u_phys.numpy() - s)                       # GN
             F_true = tr['F'].numpy()
@@ -1197,11 +1385,14 @@ def plot_swelling(model, trajs):
             I_val     = float(tr['I'])
             C_val     = float(tr['C'])
             u_per_val = float(tr['u_per'])
+            T         = tr['T']
             I_norm = torch.full_like(soc, I_val / model.I_ref)
+            u_norm = torch.full_like(soc, u_per_val / model.u_ref)   # what the networks see
 
-            # s_net output is dimensionless (lives on the same scale as u_norm).
-            # To recover [1e-5 m]: s_phys = s_net_output * u_ref. Then to mm: / 100.
-            s = model.s_net(soc, I_norm).numpy() / 100.0   # convert from 1e-5 m to mm
+            # s_net output is in [1e-5 m] in static mode, or ds/dt at s=0 in dynamic
+            # mode (preserving prior lib_4 plotting convention).  _s_diag dispatches
+            # on CONFIG['style_F'].
+            s = model._s_diag(soc, I_norm, u_norm).numpy()  # 1e-5 m
             x = np.full(len(soc), u_per_val)                # constant per traj
 
             # ax.scatter(u_per_val, s.max(), c=C_val, cmap=cmap, norm=norm, s=6)
@@ -1253,8 +1444,8 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
-        k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
-        s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
+        k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+        s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
 
     out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
     return out[element] if element is not None else (R1, C1, R0, k, s)
@@ -1283,8 +1474,8 @@ def data_param(model, trajs):
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
-            k  = model.k_net(u_norm).numpy()                         # GN/1e-5m
-            s  = model.s_net(soc, I_norm).numpy()                    # [1e-5 m]
+            k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+            s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -1414,9 +1605,9 @@ def load_nn_model(model_name, I_ref=None):
 def load_checkpoint(ckpt):
     history  = ckpt['history']
     CONFIG   = ckpt['config']
-    C1_final = ckpt['C1_final']
+    # C1_final = ckpt['C1_final']
     N_HIDDEN = ckpt['N_HIDDEN']
     EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
     EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
     EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
-    return history, CONFIG, C1_final, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
+    return history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
