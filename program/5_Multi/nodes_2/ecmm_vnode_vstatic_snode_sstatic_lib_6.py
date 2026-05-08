@@ -1004,7 +1004,7 @@ def predict_np(model, config, traj, V_mode=None):
 # ════════════════════════════════════════════════
 
 def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
-                     V_mode=None):
+                     V_mode=None, VB_only = False):
     """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
 
     Row layout:
@@ -1027,28 +1027,31 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     n = min(n_show, len(trajs))
     if n == 0:
         raise ValueError("trajs is empty")
-
-    # Determine kind from first trajectory; assume the rest are the same.
     pulse = 'I_seq' in trajs[0]
-    if pulse and V_mode in ('static', 'static_no_R0'):
-        # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
-        rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
-    elif pulse:
-        rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
-    elif V_mode in ('static', 'static_no_R0'):
-        rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
-    elif V_mode == 'dynamic':
-        rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+    if VB_only:
+        rows = ['V']
     else:
-        raise ValueError(
-            f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
+    # Determine kind from first trajectory; assume the rest are the same.
+        if pulse and V_mode in ('static', 'static_no_R0'):
+            # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
+            rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
+        elif pulse:
+            rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+        elif V_mode in ('static', 'static_no_R0'):
+            rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
+        elif V_mode == 'dynamic':
+            rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+        else:
+            raise ValueError(
+                f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
     n_rows = len(rows)
-    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
+    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.5 * n_rows), squeeze=False,sharey='col')
     model.eval()
 
     for j in range(n):
-        tr = trajs[j + 3]   # Hard code skip the first 3 trajs to show more interesting ones
+        inds = [2, 5 , 12]
+        tr = trajs[inds[j]]   # Hard code skip the first 3 trajs to show more interesting ones
         T  = tr['T']
         out = predict_np(model, config, tr, V_mode=V_mode)
         V, soc_np, U1 = out['V'], out['soc'], out['U1']
@@ -1062,9 +1065,9 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
 
         # Trajectory header — used in the title of the topmost row
         if pulse:
-            traj_header = f'{title}pulse traj {j}, u={tr["u"]:.3f}'
+            traj_header = f'{title}pulse traj {j}, u={tr["u_per"]:.1f}'
         else:
-            traj_header = f'{title}I={tr["I"]:.1f}, u={tr["u"]:.3f}'
+            traj_header = f'{title}I={tr["I"]:.1f}, u={tr["u_per"]:.1f}'
 
         for r, name in enumerate(rows):
             ax = axes[r, j]
@@ -1078,6 +1081,11 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 ax.plot(x, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
                 ax.plot(x, V,               '-',  color=COLORS[0], label=r'Predicted $V$', lw=2)
                 ax.set_ylabel(r'$V$ [V]'); ax.legend()
+                if pulse:
+                    ax.set_title(f'Crate = {max(tr['I_seq'] *3600 / Q0):.1f} | u_per = {tr['u_per']:.1f}')
+                else: 
+                    print(f'Crate = {tr["I"] *3600 / Q0:.1f} | u_per = {tr["u_per"]:.1f}')
+                ax.set_ylim([2.2, 4.4])  # zoom in on discharge or charge region
                 if not pulse:        # for CC, V is the topmost row
                     ax.set_title(traj_header)
 

@@ -39,14 +39,16 @@ from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'Multi_data'))
 # Choose data file
-# DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
 # # DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_high_comp.txt') # high compression
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_low_comp.txt') # low compression
+# DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_low_comp.txt') # low compression
 
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
+#COMBO_FILE  = os.path.join(DATA_DIR, 'combo_low_c_d.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
+#MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
 SAVE_MODELS = False 
 SAVE_ELEMENTS = False
@@ -87,13 +89,13 @@ CONFIG = {
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
     # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
-    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+    'style_F': 'static',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
 
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS  = 400  # For single-stage training (style_V='static_no_R0' or 'dynamic')
+EPOCHS  = 650  # For single-stage training (style_V='static_no_R0' or 'dynamic')
 
 # Only for staged
 EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
