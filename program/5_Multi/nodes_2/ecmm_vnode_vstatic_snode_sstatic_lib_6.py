@@ -1160,7 +1160,7 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
 
 
 def plot_report(model, config, trajs, time=False, title='', n_show=3,
-                     V_mode=None):
+                     V_mode=None, inds = [0,1]):
     """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
 
     Row layout:
@@ -1204,7 +1204,6 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
     model.eval()
 
     for j in range(n):
-        inds = [5 , 12]
         tr = trajs[inds[j]]   # Hard code skip the first 3 trajs to show more interesting ones
         T  = tr['T']
         out = predict_np(model, config, tr, V_mode=V_mode)
@@ -1240,8 +1239,8 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
                 #else: 
                 #    print(f'Crate = {tr["I"] *3600 / Q0:.1f} | u_per = {tr["u_per"]:.1f}')
                 ax.set_ylim([2.2, 4.4])  # zoom in on discharge or charge region
-                if not pulse:        # for CC, V is the topmost row
-                    ax.set_title(traj_header)
+                #if not pulse:        # for CC, V is the topmost row
+                    #ax.set_title(traj_header)
 
             elif name == 'soc':     # pulse-only — SOC consistency check
                 ax.plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1],

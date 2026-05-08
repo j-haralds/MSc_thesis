@@ -233,8 +233,8 @@ importlib.reload(_lib)
 from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 
-plot_report(bat_model, CONFIG, pulse_test, title='Pulse test: ',
-                 n_show=min(2, len(pulse_test)))
+plot_report(bat_model, CONFIG, test_trajs, title='Pulse test: ',
+                 n_show=min(2, len(pulse_test)), time = True)
 plt.show()
 
 #plt.savefig(os.path.join(FIGS_DIR, f'static_VF_pulse.pdf'), bbox_inches='tight')
