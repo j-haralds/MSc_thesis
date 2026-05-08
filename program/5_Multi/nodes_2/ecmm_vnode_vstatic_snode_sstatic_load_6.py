@@ -21,6 +21,8 @@ plot_settings.apply()
 COLORS = plot_settings.colors()
 
 
+
+
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
 import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
 importlib.reload(_lib)
@@ -38,6 +40,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
+ALL_DATA =  os.path.join(DATA_DIR, 'merged_combo.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
@@ -46,7 +49,7 @@ SAVE_FIGS   = True
 SAVE_MODELS = False
 SAVE_DATA   = False
 
-MODEL_NAME= 'ecm_node_0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
+MODEL_NAME= '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 
 Q0          = 17921.57581
 
@@ -59,6 +62,9 @@ Q0          = 17921.57581
 print("Loading data...")
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
+
+RMSE_scales = rmse_scale(pd.read_csv(ALL_DATA, sep=';', comment='%'))
+
     
 I_MAX = data['I'].max()
 U_MAX = abs(data['u'].min())
@@ -75,6 +81,7 @@ print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 # ══════════════════════════════════════════════════════════════
 
 trajs = prepare_data(data)
+print(trajs[0].keys())
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
@@ -86,6 +93,7 @@ print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")
 
 pulse_data = pd.read_csv(PULSE_FILE, sep=';', comment='%')
 pulse_trajs = prepare_pulse_data(pulse_data)
+print(pulse_trajs[0].keys())
 split_p = int(len(pulse_trajs) * TRAIN_SPLIT)
 pulse_train, pulse_test = pulse_trajs[:split_p], pulse_trajs[split_p:]
 print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
@@ -193,17 +201,17 @@ plt.show()
 
 # plot_predictions auto-detects pulse trajectories (they carry 'I_seq');
 plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
-                 n_show=min(3, len(pulse_test)),VB_only = True)
+                 n_show=min(3, len(pulse_test)))
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_pulse_{SAVE_NAME}.pdf'),
                 bbox_inches='tight')
 plt.show()
 
 # Numeric RMSE summary across the pulse test set
-rmses = rmse_pulse(bat_model, pulse_trajs)
-print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
-        f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
-        f"({len(rmses)} trajs)")
+#rmseV,rmseF = rmse_pulse(bat_model, pulse_trajs)
+#print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
+#        f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
+#        f"({len(rmses)} trajs)")
 
 # %% ══════════════════════════════════════════════════════════
 # ELEMENT SAVER
@@ -217,8 +225,31 @@ if SAVE_DATA:
 
 
 # %% ══════════════════════════════════════════════════════════
-# EXTRA TEST: SINGLE TRAJ PREDICTION
+# PLOT PREDICTIONS 
 # ══════════════════════════════════════════════════════════════
+
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+
+
+plot_report(bat_model, CONFIG, pulse_test, title='Pulse test: ',
+                 n_show=min(2, len(pulse_test)))
+plt.show()
+
+#plt.savefig(os.path.join(FIGS_DIR, f'static_VF_pulse.pdf'), bbox_inches='tight')
+
+# %% ══════════════════════════════════════════════════════════
+# INPUT ERROR MAPS
+# ══════════════════════════════════════════════════════════════
+
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+
+input_map(bat_model, test_trajs,rmse_scales=RMSE_scales)
+print(rmse_pulse(bat_model, pulse_trajs)[0].mean()/RMSE_scales['V'], rmse_pulse(bat_model, pulse_trajs)[1].mean()/RMSE_scales['F'])
+plt.show()
 
 
 

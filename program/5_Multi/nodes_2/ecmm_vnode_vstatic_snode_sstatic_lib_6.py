@@ -664,6 +664,7 @@ def prepare_pulse_data(pulse_raw):
             F     = torch.tensor(grp['F'].values,   dtype=torch.float32),
             soc   = torch.tensor(grp['soc'].values, dtype=torch.float32),
             eta   = torch.tensor(grp['eta'].values, dtype=torch.float32),
+            C  = float(grp['C'].iloc[0]),
         ))
     return pulse_trajs
 
@@ -1004,7 +1005,7 @@ def predict_np(model, config, traj, V_mode=None):
 # ════════════════════════════════════════════════
 
 def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
-                     V_mode=None, VB_only = False):
+                     V_mode=None):
     """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
 
     Row layout:
@@ -1028,25 +1029,23 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     if n == 0:
         raise ValueError("trajs is empty")
     pulse = 'I_seq' in trajs[0]
-    if VB_only:
-        rows = ['V']
-    else:
+
     # Determine kind from first trajectory; assume the rest are the same.
-        if pulse and V_mode in ('static', 'static_no_R0'):
+    if pulse and V_mode in ('static', 'static_no_R0'):
             # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
-            rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
-        elif pulse:
-            rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
-        elif V_mode in ('static', 'static_no_R0'):
-            rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
-        elif V_mode == 'dynamic':
-            rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
-        else:
-            raise ValueError(
-                f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
+    elif pulse:
+        rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+    elif V_mode in ('static', 'static_no_R0'):
+        rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
+    elif V_mode == 'dynamic':
+        rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
+    else:
+        raise ValueError(
+            f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
 
     n_rows = len(rows)
-    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.5 * n_rows), squeeze=False,sharey='col')
+    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
     model.eval()
 
     for j in range(n):
@@ -1081,11 +1080,11 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
                 ax.plot(x, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
                 ax.plot(x, V,               '-',  color=COLORS[0], label=r'Predicted $V$', lw=2)
                 ax.set_ylabel(r'$V$ [V]'); ax.legend()
-                if pulse:
-                    ax.set_title(f'Crate = {max(tr['I_seq'] *3600 / Q0):.1f} | u_per = {tr['u_per']:.1f}')
-                else: 
-                    print(f'Crate = {tr["I"] *3600 / Q0:.1f} | u_per = {tr["u_per"]:.1f}')
-                ax.set_ylim([2.2, 4.4])  # zoom in on discharge or charge region
+                #if pulse:
+                    #print(f'Crate = {max(tr['I_seq'] *3600 / Q0):.1f} | u_per = {tr['u_per']:.1f}')
+                #else: 
+                #    print(f'Crate = {tr["I"] *3600 / Q0:.1f} | u_per = {tr["u_per"]:.1f}')
+                #ax.set_ylim([2.2, 4.4])  # zoom in on discharge or charge region
                 if not pulse:        # for CC, V is the topmost row
                     ax.set_title(traj_header)
 
@@ -1158,6 +1157,164 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     return fig
 
 
+
+
+def plot_report(model, config, trajs, time=False, title='', n_show=3,
+                     V_mode=None):
+    """Per-trajectory diagnostic grid.  Auto-detects CC vs pulse per trajectory.
+
+    Row layout:
+        pulse traj, V_mode='dynamic'        - 9 rows (I, V, soc, eta, R, C1, Fr, k, s)
+        pulse traj, V_mode in static modes  - 8 rows (I, V, soc, eta, R, Fr, k, s) C1 omitted
+        CC traj,    V_mode='dynamic'        - 7 rows (V, eta, R, C1, Fr, k, s)
+        CC traj,    V_mode in static modes  - 6 rows (V, eta, R, Fr, k, s) C1 omitted
+
+    eta is the overpotential eta = V − Uₑ taken straight from the data column —
+    model-independent.  Predicted eta is built from the model's V equation:
+        static_no_R0     →  eta_pred = -I·R₁
+        static / dynamic →  eta_pred = -(I·R₀ + U₁)
+
+    When V_mode is None (default), it is derived from config['style_V']
+    (legacy 'style') via vmode_from_style().
+    All trajectories in `trajs` should be the same kind (all CC or all pulse).
+    """
+    if V_mode is None:
+        V_mode = vmode_from_style(_style_V(config))
+    n = min(n_show, len(trajs))
+    if n == 0:
+        raise ValueError("trajs is empty")
+    pulse = 'I_seq' in trajs[0]
+
+    # Determine kind from first trajectory; assume the rest are the same.
+    if pulse and V_mode in ('static', 'static_no_R0'):
+            # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
+        rows = ['I', 'V', 'Fr' ]
+    elif pulse:
+        rows = ['V', 'Fr']
+    elif V_mode in ('static', 'static_no_R0'):
+        rows = ['I', 'V', 'Fr' ]
+    elif V_mode == 'dynamic':
+        rows = ['I', 'V', 'Fr' ]
+    else:
+        raise ValueError(
+            f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
+
+    n_rows = len(rows)
+    fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)
+    model.eval()
+
+    for j in range(n):
+        inds = [5 , 12]
+        tr = trajs[inds[j]]   # Hard code skip the first 3 trajs to show more interesting ones
+        T  = tr['T']
+        out = predict_np(model, config, tr, V_mode=V_mode)
+        V, soc_np, U1 = out['V'], out['soc'], out['U1']
+        R1, Fr, k_pred, s_pred = out['R1'], out['Fr'], out['k'], out['s']
+        C1, R0, I_np = out['C1'], out['R0'], out['I']
+
+        # x-axis: time index when time=True OR for pulse data (SOC isn't monotonic
+        # under repeated charge/discharge pulses, so SOC-on-x makes no sense).
+        use_time_x = time or pulse
+        x = np.arange(T) if use_time_x else soc_np
+
+        # Trajectory header — used in the title of the topmost row
+        if pulse:
+            traj_header = f'{title}pulse traj {j}, {max(tr['I_seq']*3600/Q0):.1f},  u={tr["u_per"]:.1f}'
+        else:
+            traj_header = f'{title}I={tr["I"]:.1f}, u={tr["u_per"]:.1f}'
+
+        for r, name in enumerate(rows):
+            ax = axes[r, j]
+
+            if name == 'I':         # pulse-only
+                ax.plot(x, I_np, '-', color=COLORS[0], lw=2)
+                ax.set_ylabel(r'$I$ [A]')
+                ax.set_title(traj_header)
+
+            elif name == 'V':
+                ax.plot(x, tr['V'].numpy(), '--', color=COLORS[1], label=r'True $V$', lw=2)
+                ax.plot(x, V,               '-',  color=COLORS[0], label=r'Predicted $V$', lw=2)
+                ax.set_ylabel(r'$V$ [V]'); ax.legend()
+                #if pulse:
+                    #print(f'Crate = {max(tr['I_seq'] *3600 / Q0):.1f} | u_per = {tr['u_per']:.1f}')
+                #else: 
+                #    print(f'Crate = {tr["I"] *3600 / Q0:.1f} | u_per = {tr["u_per"]:.1f}')
+                ax.set_ylim([2.2, 4.4])  # zoom in on discharge or charge region
+                if not pulse:        # for CC, V is the topmost row
+                    ax.set_title(traj_header)
+
+            elif name == 'soc':     # pulse-only — SOC consistency check
+                ax.plot(np.arange(T), tr['soc'].numpy(), '--', color=COLORS[1],
+                        label='True SOC', lw=2)
+                ax.plot(np.arange(T), soc_np, '-', color=COLORS[0],
+                        label='Predicted SOC', lw=2)
+                ax.set_ylabel('SOC'); ax.legend()
+                ax.set_xlabel('Time [s]')   # always indexed in time
+
+            elif name == 'eta':
+                # eta_true = V_data - Ue, taken directly from the data column —
+                # model-independent, no R0 assumption, identical across V_modes.
+                # eta_pred follows the model's V equation:
+                #   static_no_R0:    eta = V - Ue = -U1                = -I·R1
+                #   static / dynamic: eta = V - Ue = -(I·R0 + U1)
+                eta_true = tr['eta'].numpy()
+                if V_mode == 'static_no_R0':
+                    eta_pred = U1
+                else:
+                    eta_pred = (I_np * R0 + U1)
+                ax.plot(x, eta_true, '--', color=COLORS[1], label=r'True $\eta$', lw=2)
+                ax.plot(x, eta_pred, '-',  color=COLORS[0], label=r'Predicted $\eta$', lw=2)
+                ax.set_ylabel(r'$\eta$ [V]'); ax.legend()
+
+            elif name == 'R':
+                if config['R0_mode'] in ('func', 'net', 'net_no_soc'):
+                    ax.plot(x, R0 * 1000, '--', color=COLORS[0], label=r'$R_0$', lw=2)
+                else:   # 'param'
+                    R0_val = float(R0[0])
+                    ax.axhline(R0_val * 1000, ls='--', color=COLORS[0],
+                               label=r'$R_0$' + fr' = {R0_val*1000:.1f} m$\Omega$', lw=2)
+                ax.plot(x, R1 * 1000, '-', color=COLORS[0], label=r'$R_1$', lw=2)
+                ax.set_ylabel(r'$R$ [m$\Omega$]'); ax.legend()
+
+            elif name == 'C1':
+                ax.plot(x, C1, ls='--', color=COLORS[0], label=r'$C_1$', lw=2)
+                ax.set_ylabel(r'$C_1$ [F]'); ax.legend()
+
+            elif name == 'Fr':
+                ax.plot(x, tr['F'].numpy()*1000, '--', color=COLORS[1], label=r'True $F$', lw=2)
+                ax.plot(x, Fr*1000,              '-',  color=COLORS[0], label=r'Predicted $F$', lw=2)
+                ax.set_ylabel(r'$F$ [MN]'); ax.legend()
+
+            elif name == 'k':
+                # Empirical stiffness directly from the data: k_true = -F/u
+                k_true = -tr['F'] / tr['u'] * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
+                k_pred = k_pred * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
+                # ax.plot(x, k_true, '--', color=COLORS[1], label=r'INVALID! True $k = -F/u$', lw=2, alpha=0.7)
+                ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
+                ax.set_ylabel(r'$k$ [GN/mm]'); ax.legend()
+
+            elif name == 's':
+                # ax.plot(x, s_true, '--', color=COLORS[1], label=r'True $s$', lw=2, alpha=0.7)
+                ax.plot(x, s_pred/100, '-',  color=COLORS[0], label=r'Predicted $s$', lw=2)
+                ax.set_ylabel(r'$s$ [mm]'); ax.legend()
+
+    # x-label + axis direction handled per-trajectory-kind
+    for ax in axes.flat:
+        if ax.get_xlabel() == 'Time [s]':
+            continue        # 'soc' panel already labelled itself
+        if pulse or time:
+            ax.set_xlabel('Time [s]')
+        else:
+            ax.set_xlabel('State of Charge')
+            ax.invert_xaxis()
+
+    fig.tight_layout()
+    return fig
+
+
+
+
+
 def plot_loss(history):
     """Plot RMSE curves with Stage dividers when staged training was used."""
     fig, ax = plt.subplots(figsize=(7, 4.2))
@@ -1207,11 +1364,17 @@ def plot_loss(history):
 # =════════════════════════════════════════════════════════════════
 
 def rmse_pulse(model, pulse_trajs):
-    rmse = []
+    rmse_V = []
+    rmse_F = []
+    C = []
+    d = []
     for tr in pulse_trajs:
         out = predict_np(model, model.config, tr)
-        rmse.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2))))
-    return rmse
+        rmse_V.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2))))
+        rmse_F.append(float(np.sqrt(np.mean((out['Fr'] - tr['F'].numpy())**2))))
+        C.append(float(tr['C']))
+        d.append(float(tr['u_per']))
+    return np.array(rmse_V), np.array(rmse_F), np.array(C), np.array(d)
 
 
 # =═════════════════════════════════════════════════════════
@@ -1577,6 +1740,78 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
     return fig
 
+def input_map(model, pulse_trajs, rmse_scales):
+
+    rmse_V, rmse_F, C,d = rmse_pulse(model, pulse_trajs)
+    rmse_V = np.array(rmse_V) / rmse_scales['V']
+    rmse_F = np.array(rmse_F) /  rmse_scales['F']
+
+    rmse_NN = np.vstack((rmse_V, rmse_F)).T
+    obs_inpt = np.vstack((C, d)).T
+    rmse_SR = rmse_NN.copy()  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    f, ax = plt.subplots(2, 2, figsize=(10, 6), sharex='col', sharey='col')
+
+    for a in ax.flat:
+        a.vlines(0.5,0,30, color='gray', linestyle='--')
+        a.vlines(5,0,30, color='gray', linestyle='--')
+        a.hlines(0,0.5,5, color='gray', linestyle='--')
+        a.hlines(30,0.5,5, color='gray', linestyle='--')
+        a.fill_between([0.5, 5], 0, 30, color='gray', alpha=0.1)
+
+    ax[0,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
+    ax[1,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
+    ax[1,0].set_xlabel('C-rate [Ah]')
+    ax[1,1].set_xlabel('C-rate [Ah]')
+    for a in ax[0, :]:
+        a.tick_params(labelbottom=False)  # hide top row x labels
+
+    for a in ax[:, 1]:
+        a.tick_params(labelleft=False)    # hide right column y labels
+
+    # Scatter plots with different colormaps
+    sc0 = ax[0,0].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_NN[:,1] ,
+        cmap='copper',   # changed color
+        label='Test'
+    )
+
+    sc1 = ax[0,1].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_SR[:,0],
+        cmap='copper',  # changed color
+        label='Train'
+    )
+
+    sc2 = ax[1,0].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_NN[:,1],
+        cmap='copper',   # changed color
+        label='Test'
+    )
+
+    sc3 = ax[1,1].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_SR[:,0],
+        cmap='copper',  # changed color
+        label='Train'
+    )
+
+    # Attach each colorbar to its own axis
+    cb0 = plt.colorbar(sc0, ax=ax[0,0], label = 'RMSE for $F$')
+    cb1 = plt.colorbar(sc1, ax=ax[0,1], label = 'RMSE for $V$')
+    cb2 = plt.colorbar(sc2, ax=ax[1,0], label = 'RMSE for $F$')
+    cb3 = plt.colorbar(sc3, ax=ax[1,1], label = 'RMSE for $V$')
+
+    plt.tight_layout()
+    plt.show()
+
+
 def load_nn_model(model_name, I_ref=None):
     """Load a saved BatteryECMM checkpoint.
     Parameters
@@ -1619,3 +1854,11 @@ def load_checkpoint(ckpt):
     EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
     EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
     return history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
+
+def rmse_scale(df,variables = ['V','F']):
+    range_val = {}
+    for var in variables:
+        min_val = df[var].min()
+        max_val = df[var].max()
+        range_val[var] = (max_val - min_val)
+    return range_val
