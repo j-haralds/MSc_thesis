@@ -38,7 +38,11 @@ from datetime import datetime
 
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'Multi_data'))
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
+# Choose data file
+# DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
+# # DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_high_comp.txt') # high compression
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/DC_low_comp.txt') # low compression
+
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 COMBO_FILE  = os.path.join(DATA_DIR, 'merged_combo.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
@@ -55,7 +59,7 @@ LR_DYNAMIC        = 1e-3
 LR_UNFREEZE       = 1e-3     # smaller LR once R1 is being refined
 
 # Use pulse trajectories for Stage 2 (and 2b).  Stage 1 always uses CC trajs.
-USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
+USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse for training)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -73,7 +77,7 @@ CONFIG = {
     # Backward compat: if the sdot_* keys are absent, sdotNet falls back to the s_* keys
     # (so old checkpoints which only had s_* keys still load and behave identically).
     's_constrained':    'true', 's_min':    0.0, 's_max':    0.005*100,   # static sNet  [1e-5 m]
-    'sdot_constrained': 'true', 'sdot_min': 0.0, 'sdot_max': 0.005,   # dynamic sdotNet [1e-5 m / s]
+    'sdot_constrained': 'true', 'sdot_min': 0.0, 'sdot_max': 0.001,   # dynamic sdotNet [1e-5 m / s]
 
     # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' | 'staged' ──
     # OBS: for only static training U1 = I*R1, use only stage 1 with 'staged' style. It freezes C1.
@@ -89,11 +93,11 @@ CONFIG = {
 }
 
 # OBS: Specifiy only used training epochs, set rest to 0.
-EPOCHS  = 5  # For single-stage training (style_V='static_no_R0' or 'dynamic')
+EPOCHS  = 400  # For single-stage training (style_V='static_no_R0' or 'dynamic')
 
 # Only for staged
 EPOCHS_STATIC     = 0  # Stage 1 : V static, train R1 and k
-EPOCHS_DYNAMIC    = 5      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
+EPOCHS_DYNAMIC    = 0      # Stage 2 : V dynamic, train C1 and k (R1 frozen)
 EPOCHS_UNFREEZE   = 0     # Stage 2b: V dynamic, R1 unfrozen (0 = skip)
 
 
@@ -110,9 +114,9 @@ I_MAX = data['I'].max()
 U_MIN = abs(data['u'].min())
 L_CELL = 14.37325   #-(data['u'] / (data['u_par']/100))[0]
 F_max = data['F'].min()
-F_upar = data['F'][data['u_par'] == 26.5].values
-F_diff = F_upar[-1] - F_upar[0]
-print(F_diff)
+# F_upar = data['F'][data['u_par'] == 26.5].values
+# F_diff = F_upar[-1] - F_upar[0]
+# print(F_diff)
 V_max = data['V'].max()
 print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.4f} A | u min: {U_MIN:.4f} 1e-5m'
       f'\nF max: {F_max:.4f} GN | k max: {F_max/(0-U_MIN)}|')
