@@ -2177,5 +2177,6 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
     return fig, axes
 
 
-
+def volt_nrmse_bars():
+    pass
 
