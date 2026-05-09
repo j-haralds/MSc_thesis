@@ -1809,7 +1809,7 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_sho
             soc_np = out['soc']
             if predict == 'V':
                 y_true = tr['V'].numpy(); y_pred = out['V']
-                
+                Ue = Ue_GP.soc_to_Ue(soc_np)
                 ylabel = r'$V$ [V]'
             elif predict == 'F':
                 y_true = tr['F'].numpy(); y_pred = out['Fr']
@@ -1817,6 +1817,7 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_sho
             bar_val = C_val if sort == 'C_rate' else u_per_val
             ax.plot(soc_np, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
             ax.plot(soc_np, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
+            ax.plot(soc_np, Ue, ':',  color='black', lw=2)
 
     ax.set_xlabel('State of Charge')
     ax.set_ylabel(ylabel)
