@@ -2083,8 +2083,8 @@ from matplotlib.transforms import blended_transform_factory
 def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
                     metric_names=('Voltage', 'Force'),
                     metric_colors=None,
-                    figsize_per_metric=(4.8, 4),
-                    group_gap=0.5, bar_width=0.7, ecm_fix=False):
+                    figsize_per_metric=(8, 4),
+                    group_gap=0.5, bar_width=0.7, ECM_fix=False):
     """
     Bar plot of NRMSE per model, grouped by test set, one subplot per metric.
 
@@ -2101,43 +2101,49 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
     """
     if metric_colors is None:
         metric_colors = {
-            'Voltage': plt.cm.copper(0.4),
-            'Force':   sns.color_palette('flare', as_cmap=True)(0.75),
+            'Voltage': plt.cm.Blues(1-0.05),
+            'Force':   plt.cm.Reds(1-0.05),
+            #'Force':   sns.color_palette('flare', as_cmap=True)(0.75),
         }
 
     model_names = list(models.keys())
-    # if ecm_fix:
-    #     model_names.append('ECM-Fix')
+    if ECM_fix and 'Voltage' in metric_names and 'Force' not in metric_names:
+         model_names.append('ECM-Fix')
     test_sets   = list(trajs_by_set.keys())
-
-
-    def _nrmse(model, trajs):
-        r = rmse_pulse(model, trajs)
-        return (np.asarray(r[0]) / rmse_scales['V'],
-                np.asarray(r[1]) / rmse_scales['F'])
-
-    results = {ts: {mn: _nrmse(models[mn], trajs_by_set[ts])
-                    for mn in model_names}
-               for ts in test_sets}
-    # if ecm_fix:
-    #     results= {ts: {'ECM-Fix':(rmse_fix(trajs_by_set[ts], rmse_scales), None)} for ts in test_sets}
-    #     model_names.append('ECM-Fix')
-    # n_models    = len(model_names)
-
-    if ecm_fix:
-        model_names.append('ECM-Fix')
-        for ts in test_sets:
-            v_fix = rmse_fix(trajs_by_set[ts], rmse_scales)
-            results[ts]['ECM-Fix'] = (
-                np.asarray(v_fix),          # Voltage NRMSE
-                np.full_like(v_fix, np.nan) # No force metric
-            )
     n_models = len(model_names)
 
+
+    def _nrmse(model, trajs, voltage = True, force = True, ECM_fix = False):
+        r = rmse_pulse(model, trajs)
+        if voltage and force:
+             return (np.asarray(r[0]) / rmse_scales['V'],
+                    np.asarray(r[1]) / rmse_scales['F'])
+        elif voltage:
+            if ECM_fix:
+                return rmse_fix(trajs, rmse_scales)
+            else:
+                return np.asarray(r[0]) / rmse_scales['V']
+        elif force:
+            return np.asarray(r[1]) / rmse_scales['F']
+
+    results = {}
+    for ts in test_sets:
+        results[ts] = {}
+        for mn in model_names:
+      #      print(f"Calculating NRMSE for model '{mn}' on test set '{ts}'...")
+            if mn == 'ECM-Fix':
+                results[ts][mn] = rmse_fix(trajs_by_set[ts], rmse_scales)
+            else:
+                results[ts][mn] = _nrmse(models[mn], trajs_by_set[ts], voltage=('Voltage' in metric_names), force=('Force' in metric_names), ECM_fix=False)
+     #       print(f"NRMSE for model '{mn}' on test set '{ts}': {results[ts][mn]}")  
+    #print("\nAll NRMSE calculations complete. Preparing to plot...")
+    print(results.keys())
 
     positions = np.array([g * (n_models + group_gap) + m
                           for g in range(len(test_sets))
                           for m in range(n_models)])
+    
+    print(f"Bar positions: {positions}")
 
     fig, axes = plt.subplots(1, len(metric_names),
                              figsize=(figsize_per_metric[0] * len(metric_names),
@@ -2153,7 +2159,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
         means, ticks = [], []
         for ts in test_sets:
             for mn in model_names:
-                means.append(results[ts][mn][idx].mean())
+                means.append(results[ts][mn][idx])
                 ticks.append(mn)
         means = np.asarray(means)
 
@@ -2173,10 +2179,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
             center = g * (n_models + group_gap) + (n_models - 1) / 2
             ax.text(center, -0.15, f'Predicted on {ts}',
                     transform=trans, ha='center', va='top', fontweight='bold')
-
+        #ax.set_yscale('log')
     return fig, axes
 
-
-def volt_nrmse_bars():
-    pass
 
