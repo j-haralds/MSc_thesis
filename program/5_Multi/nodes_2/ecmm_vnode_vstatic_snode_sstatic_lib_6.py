@@ -12,6 +12,7 @@ from scipy.interpolate import interp1d
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.cm import ScalarMappable
 import time as _time
+import importlib
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
@@ -25,7 +26,7 @@ COLORS = plot_settings.colors()
 # GP-quality values with interpolant speed.
 import Ue_GP
 import fix_ecm
-
+importlib.reload(fix_ecm)
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
 LIMON_CELL0 = 14.37325  # cell length [1e-5m]
@@ -657,6 +658,7 @@ def prepare_data(data):
             F=torch.tensor(grp['F'].values, dtype=torch.float32),
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
             eta=torch.tensor(grp['eta'].values, dtype=torch.float32),
+            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
         ))
     return trajs
 
@@ -1407,14 +1409,6 @@ def plot_param(model, trajs, param='R1'):
 
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
     C_vals = np.array([tr['C'] for tr in trajs_sorted])
-def rmse_pulse(model, pulse_trajs):
-    rmse_V = []
-    rmse_F = []
-    C = []
-    d = []
-    for tr in pulse_trajs:
-        out = predict_np(model, model.config, tr)
-        rmse_V.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2))))
     base = plt.cm.Blues_r
     Blues_cut = LinearSegmentedColormap.from_list(
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
@@ -1927,9 +1921,13 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
 
 def rmse_fix(trajs, rmse_scales):
     rmse_V = np.zeros(len(trajs))
-    V_true = tr['V'].numpy()
     for i,tr in enumerate(trajs):
-        out = fix_ecm.parameter_estimation_curvefit(tr)
+        if 'I' in tr.keys():
+            I = tr['I'] * np.ones_like(tr['soc'])
+        else:        
+            I = tr['I_seq'].numpy()
+        V_true = tr['V'].numpy()
+        out = Ue_GP.soc_to_Ue(tr['soc']) -fix_ecm.parameter_estimation_curvefit(tr,I)
         rmse_V[i]=(float(np.sqrt(np.mean((out -V_true)**2))))
     return np.array(rmse_V) / rmse_scales['V']
 
@@ -1986,32 +1984,6 @@ def rmse_scale(df,variables = ['V','F']):
         range_val[var] = (max_val - min_val)
     return range_val
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # HÄR IFRÅN
 
 import seaborn as sns
@@ -2021,7 +1993,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
                     metric_names=('Voltage', 'Force'),
                     metric_colors=None,
                     figsize_per_metric=(4.8, 4),
-                    group_gap=0.5, bar_width=0.7):
+                    group_gap=0.5, bar_width=0.7, ecm_fix=False):
     """
     Bar plot of NRMSE per model, grouped by test set, one subplot per metric.
 
@@ -2043,8 +2015,10 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
         }
 
     model_names = list(models.keys())
+    # if ecm_fix:
+    #     model_names.append('ECM-Fix')
     test_sets   = list(trajs_by_set.keys())
-    n_models    = len(model_names)
+
 
     def _nrmse(model, trajs):
         r = rmse_pulse(model, trajs)
@@ -2054,6 +2028,21 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
     results = {ts: {mn: _nrmse(models[mn], trajs_by_set[ts])
                     for mn in model_names}
                for ts in test_sets}
+    # if ecm_fix:
+    #     results= {ts: {'ECM-Fix':(rmse_fix(trajs_by_set[ts], rmse_scales), None)} for ts in test_sets}
+    #     model_names.append('ECM-Fix')
+    # n_models    = len(model_names)
+
+    if ecm_fix:
+        model_names.append('ECM-Fix')
+        for ts in test_sets:
+            v_fix = rmse_fix(trajs_by_set[ts], rmse_scales)
+            results[ts]['ECM-Fix'] = (
+                np.asarray(v_fix),          # Voltage NRMSE
+                np.full_like(v_fix, np.nan) # No force metric
+            )
+    n_models = len(model_names)
+
 
     positions = np.array([g * (n_models + group_gap) + m
                           for g in range(len(test_sets))

@@ -315,7 +315,9 @@ plt.show()
 # %% ══════════════════════════════════════════════════════════
 # MODEL COMPARISON AVGNRMSE
 # ══════════════════════════════════════════════════════════════
-
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
 
@@ -327,7 +329,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
                         'Dynamic': bat_model_dynamic_DC},
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
-)
+ecm_fix = False)
 plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
 plt.show()
 # %%

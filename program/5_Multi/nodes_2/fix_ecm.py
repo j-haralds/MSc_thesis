@@ -31,13 +31,13 @@ def ECM_solve_curvefit(x, R0, R1, C1):
     eta_model = ECM_solve_du(theta=[R0, R1, C1], i=i, t=t)
     return eta_model
 
-def parameter_estimation_curvefit(tr,lims = LIMS, U0 = 0, ret_elements = False):
+def parameter_estimation_curvefit(tr,I,lims = LIMS, U0 = 0, ret_elements = False):
     bounds = ([lims['R0'][0], lims['R1'][0], lims['C1'][0]], [lims['R0'][1], lims['R1'][1], lims['C1'][1]])
     p0 = [(lims['R0'][0] + lims['R0'][1]) / 2, (lims['R1'][0] + lims['R1'][1]) / 2, (lims['C1'][0] + lims['C1'][1]) / 2]
-    if len(tr['I']) == 0:
-        I = tr['I']*np.ones_like(tr['t'])
-    else:
-        I = tr['I']
+    # if type(tr['I']) == float:
+    #     I = tr['I']*np.ones_like(tr['t'])
+    # else:
+    #     I = tr['I']
     xdata = [tr['t'], I]
     ydata = tr['eta']
     popt, pcov = scipy.optimize.curve_fit(ECM_solve_curvefit, xdata, ydata, p0=p0, bounds=bounds)
@@ -46,4 +46,4 @@ def parameter_estimation_curvefit(tr,lims = LIMS, U0 = 0, ret_elements = False):
     if ret_elements:
         return eta, R0, R1, C1
     else:
-        return tr['Ue'] - eta 
+        return eta 
