@@ -41,7 +41,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 ALL_DATA =  os.path.join(DATA_DIR, 'merged_combo.txt')
-HALF_COMBO = os.path.join(DATA_DIR, 'combo_half.txt')
+HALF_COMBO = os.path.join(DATA_DIR, 'combo_half.txt'); OTHER_HALF_COMBO = os.path.join(DATA_DIR, 'combo_other_half.txt')
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
@@ -104,8 +104,8 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 # PREPARE COMBO TRAJECTORIES
 # ══════════════════════════════════════════════════════════════
 
-combo_data = pd.read_csv(HALF_COMBO, sep=';', comment='%')
-combo_trajs = prepare_data(combo_data)
+combo_data = pd.read_csv(OTHER_HALF_COMBO, sep=';', comment='%')
+combo_trajs = prepare_pulse_data(combo_data)
 print(combo_trajs[0].keys())
 split_c = int(len(combo_trajs) * TRAIN_SPLIT)
 combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
@@ -273,8 +273,8 @@ plt.show()
 import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
 importlib.reload(_lib)
 from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
-MODEL_NAME_LOW = MODEL_NAME#''
-MODEL_NAME_HIGH = MODEL_NAME#''
+MODEL_NAME_LOW = '0509_0103_combo_low_c_d_combo_V-dynamic_F-dynamic_netR0_R0c_R1c_C1c_428.58min_16h_650eps_0stat_0dyneps.pt'
+MODEL_NAME_HIGH = '0509_0102_combo_full_combo_V-dynamic_F-dynamic_359.65min_16h_650eps.pt'
 
 
 bat_model_low, ckpt_low = load_nn_model(MODEL_NAME_LOW, I_ref=I_MAX)   # U_MAX when loading lib_3
@@ -283,7 +283,7 @@ history_low, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = 
 bat_model_high, ckpt_high = load_nn_model(MODEL_NAME_HIGH, I_ref=I_MAX)   # U_MAX when loading lib_3
 history_high, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_high)
 
-input_map_comparison(bat_model_low, bat_model_high,combo_test  , rmse_scales=RMSE_scales)
+fig,ax = input_map_comparison(bat_model_low, bat_model_high,combo_trajs  , rmse_scales=RMSE_scales)
 plt.show()
 
 

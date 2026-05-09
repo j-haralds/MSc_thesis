@@ -24,6 +24,7 @@ COLORS = plot_settings.colors()
 # Tabulate the GP on a dense SOC grid once at startup, use np.interp for lookups. 
 # GP-quality values with interpolant speed.
 import Ue_GP
+import fix_ecm
 
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
@@ -1406,7 +1407,14 @@ def plot_param(model, trajs, param='R1'):
 
     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
     C_vals = np.array([tr['C'] for tr in trajs_sorted])
-
+def rmse_pulse(model, pulse_trajs):
+    rmse_V = []
+    rmse_F = []
+    C = []
+    d = []
+    for tr in pulse_trajs:
+        out = predict_np(model, model.config, tr)
+        rmse_V.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2))))
     base = plt.cm.Blues_r
     Blues_cut = LinearSegmentedColormap.from_list(
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
@@ -1849,11 +1857,23 @@ def custom_cmap():
     return cmap, cm
 
 def input_map_comparison(model_low,model_high, trajs, rmse_scales):
+    # extract pulses 
+    import matplotlib.colors as colors
+    pulse_trajs = []
+    CC_trajs = []
+    
+    for tr in trajs:
+        #print(tr['V'])
+        if tr['I_seq'][0] != tr['I_seq'][1]:
+            pulse_trajs.append(tr)
+        else:
+            CC_trajs.append(tr)
+    
     cmap_V,cmap_F = custom_cmap()
-    obs_inpt, rmse_low = merge_RMSE(model_low, trajs, rmse_scales)
-    _, rmse_high = merge_RMSE(model_high, trajs, rmse_scales)
+    obs_inpt, rmse_low = merge_RMSE(model_low,CC_trajs, rmse_scales)
+    _, rmse_high = merge_RMSE(model_high, CC_trajs, rmse_scales)
 
-    f, ax = plt.subplots(2, 2, figsize=(10, 6), sharex='col', sharey='col')
+    f, ax = plt.subplots(2, 2, figsize=(10, 7), sharex='col', sharey='col')
     high_domain = [[0.5,5], [0,30]]
     low_domain =  [[0.5,3.5], [0,20]]
 
@@ -1879,58 +1899,39 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
     #     a.hlines(30,0.5,5, color='gray', linestyle='--')
     #     a.fill_between([0.5, 5], 0, 30, color='gray', alpha=0.1)
 
-    ax[0,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
-    ax[1,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
-    ax[1,0].set_xlabel('C-rate [Ah]')
-    ax[1,1].set_xlabel('C-rate [Ah]')
+    ax[0,0].set_ylabel(r'$\widetilde{d}$ [a.u.]')
+    ax[1,0].set_ylabel(r'$\widetilde{d}$ [a.u.]')
+    ax[1,0].set_xlabel('C-rate [a.u.]')
+    ax[1,1].set_xlabel('C-rate [a.u.]')
     for a in ax[0, :]:
         a.tick_params(labelbottom=False)  # hide top row x labels
 
     for a in ax[:, 1]:
         a.tick_params(labelleft=False)    # hide right column y labels
 
-    # Scatter plots with different colormaps
-    sc0 = ax[0,0].scatter(
-        obs_inpt[:,0],
-        obs_inpt[:,1],
-        c=rmse_high[:,0] ,
-        cmap=cmap_V,   # changed color
-        label='Test'
-    )
-    cb0 = plt.colorbar(sc0, ax=ax[0,0], label = 'NRMSE for $V_B$',  cmap=cmap_V)
+    norm_V = colors.Normalize(vmin=min(rmse_high[:,0].min(), rmse_low[:,0].min()),vmax=max(rmse_high[:,0].max(), rmse_low[:,0].max()))
 
-    sc1 = ax[0,1].scatter(
-        obs_inpt[:,0],
-        obs_inpt[:,1],
-        c=rmse_low[:,0],
-        cmap=cmap_V,  # changed color
-        label='Train'
-    )
-    cb1 = plt.colorbar(sc1, ax=ax[0,1], label = 'NRMSE for $V_B$',cmap=cmap_V)
+    norm_F = colors.Normalize(vmin=min(rmse_high[:,1].min(), rmse_low[:,1].min()),vmax=max(rmse_high[:,1].max(), rmse_low[:,1].max()))
 
-    sc2 = ax[1,0].scatter(
-        obs_inpt[:,0],
-        obs_inpt[:,1],
-        c=rmse_high[:,1],
-        cmap=cmap_F,   # changed color
-        label='Test'
-    )
-    cb2 = plt.colorbar(sc2, ax=ax[1,0], label = 'NRMSE for $F$',cmap=cmap_F)
+    sc0 = ax[0,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,0],cmap=cmap_V,norm=norm_V)
+    sc1 = ax[0,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,0],cmap=cmap_V,norm=norm_V)
+    sc2 = ax[1,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,1],cmap=cmap_F,norm=norm_F,)
+    sc3 = ax[1,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,1],cmap=cmap_F,norm=norm_F,)
 
-    sc3 = ax[1,1].scatter(
-        obs_inpt[:,0],
-        obs_inpt[:,1],
-        c=rmse_low[:,1],
-        cmap=cmap_F,  # changed color
-        label='Train'
-    )
-    cb3 = plt.colorbar(sc3, ax=ax[1,1], label = 'NRMSE for $F$',cmap=cmap_F)
+    # One shared colorbar for top row
 
+    cb0 = f.colorbar(sc0,ax=ax[0,:],label='NRMSE for $V_B$')
+    cb1 = f.colorbar(sc2,ax=ax[1,:],label='NRMSE for $F$')
+    #f.tight_layout()
+    return f, ax
 
-    plt.tight_layout()
-    plt.show()
-
-
+def rmse_fix(trajs, rmse_scales):
+    rmse_V = np.zeros(len(trajs))
+    V_true = tr['V'].numpy()
+    for i,tr in enumerate(trajs):
+        out = fix_ecm.parameter_estimation_curvefit(tr)
+        rmse_V[i]=(float(np.sqrt(np.mean((out -V_true)**2))))
+    return np.array(rmse_V) / rmse_scales['V']
 
 
 
