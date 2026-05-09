@@ -1851,7 +1851,6 @@ def custom_cmap():
     return cmap, cm
 
 def input_map_comparison(model_low,model_high, trajs, rmse_scales):
-    # extract pulses 
     import matplotlib.colors as colors
     pulse_trajs = []
     CC_trajs = []
