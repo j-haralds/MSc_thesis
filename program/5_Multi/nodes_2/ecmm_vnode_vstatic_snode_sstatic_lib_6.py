@@ -1446,6 +1446,12 @@ def plot_param(model, trajs, param='R1'):
                 y = model._C1(soc, I_norm, u_norm).numpy()
                 ylabel = r'$C_1$ [F]'
 
+            elif param == 'tau':
+                C1 = model._C1(soc, I_norm, u_norm).numpy()
+                R1 = model._R1(soc, I_norm, u_norm).numpy()
+                y = R1 * C1  # tau = R1*C1 in seconds
+                ylabel = r'$\tau$ [s]'
+
             elif param == 'R0':
                 y = model._R0(soc, I_norm, u_norm, I_real).numpy() * 1e3
                 ylabel = r'$R_0$ [m$\Omega$]'
@@ -1533,6 +1539,65 @@ def plot_force(model, trajs):
 
             ax.scatter(x, F, c=soc.numpy(), cmap=cmap, norm=norm, s=6)
             ax.scatter(x, F_true, c=soc.numpy(), cmap=cmap_r, norm=norm, s=2, linewidths=0.1)
+
+    ax.set_xlabel(r'$u$ $[\%]$')
+    ax.set_ylabel(r'$F$ [GN]')
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='State of Charge')
+    fig.tight_layout()
+    return fig
+
+def plot_force_report(model, config, trajs, n_show=3):
+    """Plot reaction force F vs u [%], colored by SOC.
+
+    Each trajectory contributes len(soc) scatter points (predicted F from the
+    model's full forward pass, true F from data). On top, n_show SOC slices
+    (lowest and highest of the common SOC range, evenly spaced in between)
+    are connected with lines across trajectories sorted by u_per.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    base = plt.cm.Reds_r
+    cmap_r = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+    norm = Normalize(vmin=0, vmax=1)
+
+    traj_data = []
+    with torch.no_grad():
+        for tr in trajs:
+            out       = predict_np(model, config, tr)
+            soc_np    = out['soc']
+            F_pred    = out['Fr']           # ← integrated through forward()
+            F_true    = tr['F'].numpy()
+            u_per_val = float(tr['u_per'])
+
+            traj_data.append({'u_per': u_per_val, 'soc': soc_np,
+                              'F_pred': F_pred, 'F_true': F_true})
+
+    # ── connect points at fixed SOC across trajectories ──
+    traj_data.sort(key=lambda d: d['u_per'])
+    u_per_arr   = np.array([d['u_per'] for d in traj_data])
+    soc_lo      = max(d['soc'].min() for d in traj_data)
+    soc_hi      = min(d['soc'].max() for d in traj_data)
+    soc_targets = np.linspace(soc_lo, soc_hi, n_show)
+
+    for soc_target in soc_targets:
+        F_pred_line = np.array([d['F_pred'][np.argmin(np.abs(d['soc'] - soc_target))]
+                                for d in traj_data])
+        F_true_line = np.array([d['F_true'][np.argmin(np.abs(d['soc'] - soc_target))]
+                                for d in traj_data])
+        ax.plot(u_per_arr, F_true_line, '--', color=cmap_r(norm(soc_target)), lw=2)
+        ax.plot(u_per_arr, F_pred_line, '-',  color=cmap(norm(soc_target)),   lw=2)
+
+    from matplotlib.lines import Line2D
+    ax.legend(handles=[
+        Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted'),
+    ])
 
     ax.set_xlabel(r'$u$ $[\%]$')
     ax.set_ylabel(r'$F$ [GN]')
@@ -1755,9 +1820,10 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     return fig
 
 
-def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_show=5):
+def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate',
+                         n_show=5, time=False):
     """
-    Plot V or F prediction vs true across SOC for selected CC trajectories.
+    Plot V or F prediction vs true across SOC (or time) for selected CC trajectories.
 
     Parameters
     ----------
@@ -1768,6 +1834,8 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_sho
     n_show : int or None
         Number of trajectories to plot. Always includes the lowest and highest;
         the rest are evenly spaced in between. None (or >= len(trajs)) plots all.
+    time : bool
+        If True, x-axis is time index [s] instead of SOC.
     """
     assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
@@ -1775,14 +1843,13 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_sho
 
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
-        C_vals = np.array([tr['C'] for tr in trajs_sorted])
-        norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+        vals_arr = np.array([tr['C'] for tr in trajs_sorted])
         bar_name = 'C-rate [a.u.]'
     elif sort == 'u_per':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
-        u_per_vals = np.array([tr['u_per'] for tr in trajs_sorted])
-        norm = Normalize(vmin=u_per_vals.min(), vmax=u_per_vals.max())
+        vals_arr = np.array([tr['u_per'] for tr in trajs_sorted])
         bar_name = r'$u$ $[\%]$'
+    norm = Normalize(vmin=vals_arr.min(), vmax=vals_arr.max())
 
     # ── subsample evenly, always including the endpoints ──
     if n_show is None or n_show >= len(trajs_sorted):
@@ -1793,41 +1860,50 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_sho
         trajs_plot = [trajs_sorted[i] for i in idx]
 
     base = plt.cm.Blues_r
-    Blues_cut = LinearSegmentedColormap.from_list(
+    cmap_b = LinearSegmentedColormap.from_list(
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
-    cmap_b = Blues_cut
     base = plt.cm.Reds_r
-    Reds_cut = LinearSegmentedColormap.from_list(
+    cmap_r = LinearSegmentedColormap.from_list(
         "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
-    cmap_r = Reds_cut
 
     with torch.no_grad():
-        for tr in trajs_plot:                     # ← was trajs_sorted
+        for tr in trajs_plot:
             C_val     = float(tr['C'])
             u_per_val = float(tr['u_per'])
             out = predict_np(model, config, tr)
             soc_np = out['soc']
+            x = np.arange(tr['T']) if time else soc_np
+
             if predict == 'V':
                 y_true = tr['V'].numpy(); y_pred = out['V']
                 Ue = Ue_GP.soc_to_Ue(soc_np)
                 ylabel = r'$V$ [V]'
+                ax.plot(x, Ue, ':', color='black', lw=1.5)
             elif predict == 'F':
                 y_true = tr['F'].numpy(); y_pred = out['Fr']
                 ylabel = r'$F$ [GN]'
-            bar_val = C_val if sort == 'C_rate' else u_per_val
-            ax.plot(soc_np, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
-            ax.plot(soc_np, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
-            ax.plot(soc_np, Ue, ':',  color='black', lw=2)
 
-    ax.set_xlabel('State of Charge')
+            bar_val = C_val if sort == 'C_rate' else u_per_val
+            ax.plot(x, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
+            ax.plot(x, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
+
+    if time:
+        ax.set_xlabel('Time [s]')
+    else:
+        ax.set_xlabel('State of Charge')
+        ax.invert_xaxis()
     ax.set_ylabel(ylabel)
-    ax.invert_xaxis()
 
     from matplotlib.lines import Line2D
-    ax.legend(handles=[
+    handles = [
         Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
-        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-', label='Predicted'),
-    ])
+        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted'),
+    ]
+    if predict == 'V':
+        handles.append(Line2D([0], [0], color='black', lw=1.5, linestyle=':',
+                              label=r'$U_{eq}$'))
+    ax.legend(handles=handles)
+
     fig.tight_layout()
     sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)

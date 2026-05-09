@@ -281,13 +281,22 @@ from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
+MODEL_NAME_FULL = '0509_0102_combo_full_combo_V-dynamic_F-dynamic_359.65min_16h_650eps.pt'
 
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
-plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5)
+bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
+# plot_predicts_report(bat_model_dynamic_DC, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=3, time=True)
 
+plot_param(bat_model_full, test_trajs, param='R0')
+plot_param(bat_model_full, test_trajs, param='R1')
+plot_param(bat_model_full, test_trajs, param='C1')
+plot_param(bat_model_full, test_trajs, param='tau')
 
-
+plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='F', sort='u_per', n_show=10, time=False)
+plot_force_report(bat_model_full, CONFIG, test_trajs, n_show=3)
+plt.show()
 
 
 
