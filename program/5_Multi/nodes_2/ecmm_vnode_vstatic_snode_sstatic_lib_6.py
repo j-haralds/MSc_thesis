@@ -1984,3 +1984,37 @@ def rmse_scale(df,variables = ['V','F']):
         max_val = df[var].max()
         range_val[var] = (max_val - min_val)
     return range_val
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# HÄR IFRÅN
+
+
+
+
+
+
