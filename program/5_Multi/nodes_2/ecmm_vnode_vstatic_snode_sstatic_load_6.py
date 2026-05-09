@@ -316,6 +316,44 @@ plt.show()
 # MODEL COMPARISON AVGNRMSE
 # ══════════════════════════════════════════════════════════════
 
+MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
+MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
 
+bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
 
+# USE FOR REPORT. COMPARISON BAR PLOT STATIC AND DYNAMIC TRAINED ON CC
+plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
+                        'Dynamic': bat_model_dynamic_DC},
+    trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
+    rmse_scales  = RMSE_scales,
+)
+plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
+plt.show()
+# %%
+# USE FOR REPORT. STATIC TRAINED ON CC
+#
 
+history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_stat)
+plot_report(bat_model_static_DC, CONFIG, test_trajs, title='CC test: ',
+                 n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_ccPred.pdf'), bbox_inches='tight')
+plt.show()
+plot_report(bat_model_static_DC, CONFIG, pulse_test, title='Pulse test: ',
+                 n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_pulsePred.pdf'), bbox_inches='tight')
+plt.show()
+
+# %%
+# USE FOR REPORT. DYNAMIC TRAINED ON CC
+#
+
+history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_dyna)
+plot_report(bat_model_dynamic_DC, CONFIG, test_trajs, title='CC test: ',
+                 n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_ccPred.pdf'), bbox_inches='tight')
+plt.show()
+plot_report(bat_model_dynamic_DC, CONFIG, pulse_test, title='Pulse test: ',
+                 n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_pulsePred.pdf'), bbox_inches='tight')
+plt.show()
