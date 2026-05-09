@@ -580,6 +580,16 @@ class BatteryECMM(nn.Module):
             C1 = self._C1(soc, I_norm, u_norm_exp)
             U1_steps = [torch.zeros(B)]
             dt = 1.0
+            U1 = torch.zeros(B, T, device=I_seq.device)
+
+            # for n in range(T - 1):
+            #     C1_n = C1[:, n]
+
+            #     U1[:, n+1] = (
+            #         U1[:, n] + dt * I_seq[:, n] / C1_n
+            #     ) / (
+            #         1.0 + dt / (R1[:, n] * C1_n)
+
             for n in range(T - 1):
                 C1_n = C1[:, n] if C1.ndim == 2 else C1
                 # Semi-implicit Euler — unconditionally stable
@@ -1402,6 +1412,9 @@ def plot_param(model, trajs, param='R1'):
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
     cmap = Blues_cut
 
+
+
+
     base = plt.cm.Reds_r
     Reds_cut = LinearSegmentedColormap.from_list(
         "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
@@ -1773,7 +1786,7 @@ def input_map(model, pulse_trajs, rmse_scales):
         obs_inpt[:,0],
         obs_inpt[:,1],
         c=rmse_NN[:,1] ,
-        cmap='copper',   # changed color
+        cmap='bone',   # changed color
         label='Test'
     )
 
@@ -1809,6 +1822,116 @@ def input_map(model, pulse_trajs, rmse_scales):
 
     plt.tight_layout()
     plt.show()
+
+
+
+def merge_RMSE(model, trajs,rmse_scales):
+    rmse_V, rmse_F, C,d = rmse_pulse(model, trajs)
+    rmse_V = np.array(rmse_V) / rmse_scales['V']
+    rmse_F = np.array(rmse_F) /  rmse_scales['F']
+
+    rmse_NN = np.vstack((rmse_V, rmse_F)).T
+    obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    return obs_inpt, rmse_NN
+
+
+def custom_cmap():
+    # import color pallet form seaborn
+    import seaborn as sns
+    
+    base = plt.cm.Blues_r
+    bone_cut = LinearSegmentedColormap.from_list(
+        "bone_custom", base(np.linspace(0, 0.75, 256)))
+    cmap = bone_cut
+    cmap = 'copper'#sns.color_palette("copper", as_cmap=True)
+    cm = sns.color_palette("flare_r", as_cmap=True)
+    return cmap, cm
+
+def input_map_comparison(model_low,model_high, trajs, rmse_scales):
+    cmap_V,cmap_F = custom_cmap()
+    obs_inpt, rmse_low = merge_RMSE(model_low, trajs, rmse_scales)
+    _, rmse_high = merge_RMSE(model_high, trajs, rmse_scales)
+
+    f, ax = plt.subplots(2, 2, figsize=(10, 6), sharex='col', sharey='col')
+    high_domain = [[0.5,5], [0,30]]
+    low_domain =  [[0.5,3.5], [0,20]]
+
+    # plot lines to show the domain boundaries of the two models, and shaded area for the low-domain region
+    for a in ax[:,0]:
+        a.vlines(high_domain[0][0],high_domain[1][0],high_domain[1][1], color='gray', linestyle='--')
+        a.vlines(high_domain[0][1],high_domain[1][0],high_domain[1][1], color='gray', linestyle='--')
+        a.hlines(high_domain[1][0],high_domain[0][0],high_domain[0][1], color='gray', linestyle='--')
+        a.hlines(high_domain[1][1],high_domain[0][0],high_domain[0][1], color='gray', linestyle='--')
+        a.fill_between([high_domain[0][0], high_domain[0][1]], high_domain[1][0], high_domain[1][1], color='gray', alpha=0.1)
+
+    for a in ax[:,1]:
+        a.vlines(low_domain[0][0],low_domain[1][0],low_domain[1][1], color='gray', linestyle='--')
+        a.vlines(low_domain[0][1],low_domain[1][0],low_domain[1][1], color='gray', linestyle='--')
+        a.hlines(low_domain[1][0],low_domain[0][0],low_domain[0][1], color  ='gray', linestyle='--')
+        a.hlines(low_domain[1][1],low_domain[0][0],low_domain[0][1], color  ='gray', linestyle='--')
+        a.fill_between([low_domain[0][0], low_domain[0][1]], low_domain[1][0], low_domain[1][1], color='gray', alpha=0.1)
+
+    # for a in ax.flat:
+    #     a.vlines(0.5,0,30, color='gray', linestyle='--')
+    #     a.vlines(5,0,30, color='gray', linestyle='--')
+    #     a.hlines(0,0.5,5, color='gray', linestyle='--')
+    #     a.hlines(30,0.5,5, color='gray', linestyle='--')
+    #     a.fill_between([0.5, 5], 0, 30, color='gray', alpha=0.1)
+
+    ax[0,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
+    ax[1,0].set_ylabel(r'$\Delta u / L_{tot}$ [a.u.]')
+    ax[1,0].set_xlabel('C-rate [Ah]')
+    ax[1,1].set_xlabel('C-rate [Ah]')
+    for a in ax[0, :]:
+        a.tick_params(labelbottom=False)  # hide top row x labels
+
+    for a in ax[:, 1]:
+        a.tick_params(labelleft=False)    # hide right column y labels
+
+    # Scatter plots with different colormaps
+    sc0 = ax[0,0].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_high[:,0] ,
+        cmap=cmap_V,   # changed color
+        label='Test'
+    )
+    cb0 = plt.colorbar(sc0, ax=ax[0,0], label = 'NRMSE for $V_B$',  cmap=cmap_V)
+
+    sc1 = ax[0,1].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_low[:,0],
+        cmap=cmap_V,  # changed color
+        label='Train'
+    )
+    cb1 = plt.colorbar(sc1, ax=ax[0,1], label = 'NRMSE for $V_B$',cmap=cmap_V)
+
+    sc2 = ax[1,0].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_high[:,1],
+        cmap=cmap_F,   # changed color
+        label='Test'
+    )
+    cb2 = plt.colorbar(sc2, ax=ax[1,0], label = 'NRMSE for $F$',cmap=cmap_F)
+
+    sc3 = ax[1,1].scatter(
+        obs_inpt[:,0],
+        obs_inpt[:,1],
+        c=rmse_low[:,1],
+        cmap=cmap_F,  # changed color
+        label='Train'
+    )
+    cb3 = plt.colorbar(sc3, ax=ax[1,1], label = 'NRMSE for $F$',cmap=cmap_F)
+
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 
 def load_nn_model(model_name, I_ref=None):
