@@ -255,13 +255,13 @@ plt.show()
 # INPUT ERROR MAP
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+# import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+# importlib.reload(_lib)
+# from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
-input_map(bat_model, test_trajs,rmse_scales=RMSE_scales)
-print(rmse_pulse(bat_model, pulse_trajs)[0].mean()/RMSE_scales['V'], rmse_pulse(bat_model, pulse_trajs)[1].mean()/RMSE_scales['F'])
-plt.show()
+# input_map(bat_model, test_trajs,rmse_scales=RMSE_scales)
+# print(rmse_pulse(bat_model, pulse_trajs)[0].mean()/RMSE_scales['V'], rmse_pulse(bat_model, pulse_trajs)[1].mean()/RMSE_scales['F'])
+# plt.show()
 
 
 

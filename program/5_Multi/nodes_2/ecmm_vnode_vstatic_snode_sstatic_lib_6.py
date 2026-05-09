@@ -1862,9 +1862,6 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
         else:
             CC_trajs.append(tr)
     
-    cmap_V,cmap_F = custom_cmap()
-    obs_inpt, rmse_low = merge_RMSE(model_low,CC_trajs, rmse_scales)
-    _, rmse_high = merge_RMSE(model_high, CC_trajs, rmse_scales)
 
     f, ax = plt.subplots(2, 2, figsize=(10, 7), sharex='col', sharey='col')
     high_domain = [[0.5,5], [0,30]]
@@ -1902,14 +1899,26 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
     for a in ax[:, 1]:
         a.tick_params(labelleft=False)    # hide right column y labels
 
+    cmap_V,cmap_F = custom_cmap()
+    obs_inpt, rmse_low = merge_RMSE(model_low,CC_trajs, rmse_scales)
+    _, rmse_high = merge_RMSE(model_high, CC_trajs, rmse_scales)
+
+    _, rmse_high_p = merge_RMSE(model_high, pulse_trajs, rmse_scales)
+    _, rmse_low_p = merge_RMSE(model_low, pulse_trajs, rmse_scales)
+
+
     norm_V = colors.Normalize(vmin=min(rmse_high[:,0].min(), rmse_low[:,0].min()),vmax=max(rmse_high[:,0].max(), rmse_low[:,0].max()))
 
     norm_F = colors.Normalize(vmin=min(rmse_high[:,1].min(), rmse_low[:,1].min()),vmax=max(rmse_high[:,1].max(), rmse_low[:,1].max()))
 
     sc0 = ax[0,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,0],cmap=cmap_V,norm=norm_V)
+    sc0 = ax[0,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high_p[:,0],cmap=cmap_V,norm=norm_V, marker='d')
     sc1 = ax[0,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,0],cmap=cmap_V,norm=norm_V)
+    sc1 = ax[0,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low_p[:,0],cmap=cmap_V,norm=norm_V, marker='d')
     sc2 = ax[1,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,1],cmap=cmap_F,norm=norm_F,)
+    sc2 = ax[1,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high_p[:,1],cmap=cmap_F,norm=norm_F, marker='d')
     sc3 = ax[1,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,1],cmap=cmap_F,norm=norm_F,)
+    sc3 = ax[1,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low_p[:,1],cmap=cmap_F,norm=norm_F, marker='d')
 
     # One shared colorbar for top row
 
