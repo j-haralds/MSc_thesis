@@ -1754,6 +1754,85 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
     return fig
 
+
+def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate', n_show=5):
+    """
+    Plot V or F prediction vs true across SOC for selected CC trajectories.
+
+    Parameters
+    ----------
+    model : BatteryECMM
+    trajs : list of CC trajectory dicts (e.g. test_trajs)
+    predict : 'V' or 'F'
+    sort : 'C_rate' or 'u_per'
+    n_show : int or None
+        Number of trajectories to plot. Always includes the lowest and highest;
+        the rest are evenly spaced in between. None (or >= len(trajs)) plots all.
+    """
+    assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
+    fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    model.eval()
+
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+        C_vals = np.array([tr['C'] for tr in trajs_sorted])
+        norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+        bar_name = 'C-rate [a.u.]'
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
+        u_per_vals = np.array([tr['u_per'] for tr in trajs_sorted])
+        norm = Normalize(vmin=u_per_vals.min(), vmax=u_per_vals.max())
+        bar_name = r'$u$ $[\%]$'
+
+    # ── subsample evenly, always including the endpoints ──
+    if n_show is None or n_show >= len(trajs_sorted):
+        trajs_plot = trajs_sorted
+    else:
+        idx = np.unique(np.linspace(0, len(trajs_sorted) - 1,
+                                    n_show).round().astype(int))
+        trajs_plot = [trajs_sorted[i] for i in idx]
+
+    base = plt.cm.Blues_r
+    Blues_cut = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    cmap_b = Blues_cut
+    base = plt.cm.Reds_r
+    Reds_cut = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+    cmap_r = Reds_cut
+
+    with torch.no_grad():
+        for tr in trajs_plot:                     # ← was trajs_sorted
+            C_val     = float(tr['C'])
+            u_per_val = float(tr['u_per'])
+            out = predict_np(model, config, tr)
+            soc_np = out['soc']
+            if predict == 'V':
+                y_true = tr['V'].numpy(); y_pred = out['V']
+                
+                ylabel = r'$V$ [V]'
+            elif predict == 'F':
+                y_true = tr['F'].numpy(); y_pred = out['Fr']
+                ylabel = r'$F$ [GN]'
+            bar_val = C_val if sort == 'C_rate' else u_per_val
+            ax.plot(soc_np, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
+            ax.plot(soc_np, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
+
+    ax.set_xlabel('State of Charge')
+    ax.set_ylabel(ylabel)
+    ax.invert_xaxis()
+
+    from matplotlib.lines import Line2D
+    ax.legend(handles=[
+        Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-', label='Predicted'),
+    ])
+    fig.tight_layout()
+    sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
+    fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
+    return fig
+
+
 def input_map(model, pulse_trajs, rmse_scales):
 
     rmse_V, rmse_F, C,d = rmse_pulse(model, pulse_trajs)

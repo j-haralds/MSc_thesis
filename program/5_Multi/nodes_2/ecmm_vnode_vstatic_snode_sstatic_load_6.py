@@ -271,10 +271,20 @@ plt.show()
 
 
 
+# %% ══════════════════════════════════════════════════════════
+# DISCHARGE DIFFERENT C-RATES
+# ══════════════════════════════════════════════════════════════
 
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
+MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
+MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
 
-
+bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5)
 
 
 
