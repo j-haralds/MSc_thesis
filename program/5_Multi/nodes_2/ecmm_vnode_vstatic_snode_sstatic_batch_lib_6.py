@@ -613,39 +613,45 @@ class BatteryECMM(nn.Module):
         elif V_mode == 'static_no_R0':
             U1 = I_seq * R1
             V  = Ue - U1
-        # elif V_mode == 'dynamic':
-        #     C1 = self._C1(soc, I_norm, u_norm_exp)
-        #     U1_steps = [torch.zeros(B)]
-        #     dt = 1.0
-        #     for n in range(T - 1):
-        #         C1_n = C1[:, n] if C1.ndim == 2 else C1
-        #         # Semi-implicit Euler — unconditionally stable
-        #         U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
-        #         U1_steps.append(U1_next)
-        #     U1 = torch.stack(U1_steps, dim=1)
-
-        #     V  = Ue - I_seq * R0 - U1
-
-        # Faster than semi-implicit by about 20% ––––
         elif V_mode == 'dynamic':
             C1 = self._C1(soc, I_norm, u_norm_exp)
-            dt = 1.0
-            tau = R1 * C1                                      # (B, T)
-            alpha = torch.exp(-dt / tau)                       # decay factor per step
-            drive = I_seq * R1                                 # steady-state target per step
-            beta  = (1.0 - alpha) * drive                 # the (1-α)·I·R1 term
             U1_steps = [torch.zeros(B)]
-
-            alpha_list = alpha.unbind(dim=1)   # tuple of T tensors of shape (B,)
-            beta_list  = beta.unbind(dim=1)
+            #U1_steps = torch.zeros(B, T, device=I_seq.device)
+            dt = 1.0
             for n in range(T - 1):
-                # U1[n+1] = U1[n]·α + I·R1·(1-α)  — EXACT for piecewise-const coefs
-                # U1_next = U1_steps[n] * alpha[:, n] + beta[:, n]
-                U1_next = U1_steps[n] * alpha_list[n] + beta_list[n]
+                C1_n = C1[:, n] if C1.ndim == 2 else C1
+                # Semi-implicit Euler — unconditionally stable
+                #U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
+
+                # Explicit Euler — faster but conditionally stable; can diverge if dt is too large for the given R1, C1.  dt=1 is stable for our learned parameters, but may not be for all possible R1/C1 pairs in the early stages of training, so we use the semi-implicit method by default.  Can switch to explicit for a speed boost once we're sure the parameters are in a good range.
+                U1_next = U1_steps[n] + dt * (I_seq[:, n] / C1_n - U1_steps[n] / (R1[:, n] * C1_n))
                 U1_steps.append(U1_next)
+                #U1_steps[:, n + 1] = (U1_steps[:, n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
             U1 = torch.stack(U1_steps, dim=1)
-            V = Ue - I_seq * R0 - U1
-        # ––––
+            # U1 = U1_steps
+
+            V  = Ue - I_seq * R0 - U1
+
+        # Faster than semi-implicit by about 20% ––––
+        # elif V_mode == 'dynamic':
+        #     C1 = self._C1(soc, I_norm, u_norm_exp)
+        #     dt = 1.0
+        #     tau = R1 * C1                                      # (B, T)
+        #     alpha = torch.exp(-dt / tau)                       # decay factor per step
+        #     drive = I_seq * R1                                 # steady-state target per step
+        #     beta  = (1.0 - alpha) * drive                 # the (1-α)·I·R1 term
+        #     U1_steps = [torch.zeros(B)]
+
+        #     alpha_list = alpha.unbind(dim=1)   # tuple of T tensors of shape (B,)
+        #     beta_list  = beta.unbind(dim=1)
+        #     for n in range(T - 1):
+        #         # U1[n+1] = U1[n]·α + I·R1·(1-α)  — EXACT for piecewise-const coefs
+        #         # U1_next = U1_steps[n] * alpha[:, n] + beta[:, n]
+        #         U1_next = U1_steps[n] * alpha_list[n] + beta_list[n]
+        #         U1_steps.append(U1_next)
+        #     U1 = torch.stack(U1_steps, dim=1)
+        #     V = Ue - I_seq * R0 - U1
+        #––––
 
         # elif V_mode == 'dynamic':
         #     C1 = self._C1(soc, I_norm, u_norm_exp)
