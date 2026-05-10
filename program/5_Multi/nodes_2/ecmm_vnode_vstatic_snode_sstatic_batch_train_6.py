@@ -61,7 +61,7 @@ LR_DYNAMIC        = 1e-3
 # Batched-training controls.  Trajectories of any length mix freely — each
 # mini-batch is padded to its own max-T and the loss is masked to ignore
 # padded positions, so DC and pulse data work identically.
-BATCH_SIZE  = 16     # mini-batch size; 16-32 is reasonable
+BATCH_SIZE  = 4     # mini-batch size
 EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
@@ -73,9 +73,9 @@ CONFIG = {
     'C1_mode': 'net',   # 'net'
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.2,      # Ohm
-    'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 50000.0,  # F
-    'R0_constrained': 'true', 'R0_min': 0.008, 'R0_max': 0.015,    # Ohm
+    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
+    'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
+    'R0_constrained': 'true', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'true', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
     # ── F-branch swelling constraints — split per style_F mode ──
@@ -100,9 +100,9 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 650  # Total training epochs
+EPOCHS  = 2000  # Total training epochs
 
-NAME_START = f'combo_full'
+NAME_START = f'b{BATCH_SIZE}_combo_full'
 
 
 
@@ -285,6 +285,9 @@ if SAVE_FIGS:
 plot_param(bat_model, test_trajs, param='C1')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+plot_param(bat_model, test_trajs, param='tau')
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'tau_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='k')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'k_{SAVE_NAME}.pdf'), bbox_inches='tight')
@@ -294,6 +297,7 @@ if SAVE_FIGS:
 plot_param(bat_model, test_trajs, param='s')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f's_{SAVE_NAME}.pdf'), bbox_inches='tight')
+
 plt.show()
 
 

@@ -1328,46 +1328,79 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
 
 
 def plot_loss(history):
-    """Plot RMSE curves with Stage dividers when staged training was used."""
-    fig, ax = plt.subplots(figsize=(7, 4.2))
-    epochs = np.arange(1, len(history['train_rmse']) + 1)
+    # """Plot RMSE curves with Stage dividers when staged training was used."""
+    # fig, ax = plt.subplots(figsize=(7, 4.2))
+    # epochs = np.arange(1, len(history['train_rmse']) + 1)
 
-    ax.semilogy(epochs, history['train_rmse_V'],  color=COLORS[0], lw=2,
-                label=r'Train $V$  (final {:.4f} V)'.format(history['train_rmse_V'][-1]))
-    ax.semilogy(epochs, history['train_rmse_Fr'], color=COLORS[1], lw=2,
-                label=r'Train $F_r$ (final {:.4f} GN)'.format(history['train_rmse_Fr'][-1]))
-    ax.semilogy(epochs, history['test_rmse_V'],     color=COLORS[2], lw=2, ls='--',
-                label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse_V'][-1]))
-    ax.semilogy(epochs, history['test_rmse_F'],     color=COLORS[3], lw=2, ls='--',
-                label=r'Test $F_r$  (final {:.4f} GN)'.format(history['test_rmse_F'][-1]))
+    # ax.semilogy(epochs, history['train_rmse_V'],  color=COLORS[0], lw=2,
+    #             label=r'Train $V$  (final {:.4f} V)'.format(history['train_rmse_V'][-1]))
+    # ax.semilogy(epochs, history['train_rmse_Fr'], color=COLORS[1], lw=2,
+    #             label=r'Train $F_r$ (final {:.4f} GN)'.format(history['train_rmse_Fr'][-1]))
+    # ax.semilogy(epochs, history['test_rmse_V'],     color=COLORS[2], lw=2, ls='--',
+    #             label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse_V'][-1]))
+    # ax.semilogy(epochs, history['test_rmse_F'],     color=COLORS[3], lw=2, ls='--',
+    #             label=r'Test $F_r$  (final {:.4f} GN)'.format(history['test_rmse_F'][-1]))
 
-    # Stage dividers (only present if staged training was used)
-    n_s1  = history.get('stage1_epochs', 0)
-    n_s2  = history.get('stage2_epochs', 0)
-    n_s2b = history.get('stage2b_epochs', 0)
-    ymin, ymax = ax.get_ylim()
+    # # Stage dividers (only present if staged training was used)
+    # n_s1  = history.get('stage1_epochs', 0)
+    # n_s2  = history.get('stage2_epochs', 0)
+    # n_s2b = history.get('stage2b_epochs', 0)
+    # ymin, ymax = ax.get_ylim()
 
-    if n_s1 > 0 and n_s2 > 0:
-        b1 = n_s1 + 0.5
-        ax.axvline(b1, color='0.4', ls=':', lw=1.2)
-        ax.text(0.5 + n_s1 / 2, ymax, 'Stage 1\n(static $V$)',
-                ha='center', va='top', fontsize=9, color='0.3')
-        if n_s2b > 0:
-            b2 = n_s1 + n_s2 + 0.5
-            ax.axvline(b2, color='0.4', ls=':', lw=1.2)
-            ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dyn., $R_1$ frozen)',
-                    ha='center', va='top', fontsize=9, color='0.3')
-            ax.text(b2 + n_s2b / 2, ymax, 'Stage 2b\n(dyn., $R_1$ unfrozen)',
-                    ha='center', va='top', fontsize=9, color='0.3')
-        else:
-            ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dynamic $V$)',
-                    ha='center', va='top', fontsize=9, color='0.3')
+    # if n_s1 > 0 and n_s2 > 0:
+    #     b1 = n_s1 + 0.5
+    #     ax.axvline(b1, color='0.4', ls=':', lw=1.2)
+    #     ax.text(0.5 + n_s1 / 2, ymax, 'Stage 1\n(static $V$)',
+    #             ha='center', va='top', fontsize=9, color='0.3')
+    #     if n_s2b > 0:
+    #         b2 = n_s1 + n_s2 + 0.5
+    #         ax.axvline(b2, color='0.4', ls=':', lw=1.2)
+    #         ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dyn., $R_1$ frozen)',
+    #                 ha='center', va='top', fontsize=9, color='0.3')
+    #         ax.text(b2 + n_s2b / 2, ymax, 'Stage 2b\n(dyn., $R_1$ unfrozen)',
+    #                 ha='center', va='top', fontsize=9, color='0.3')
+    #     else:
+    #         ax.text(b1 + n_s2 / 2, ymax, 'Stage 2\n(dynamic $V$)',
+    #                 ha='center', va='top', fontsize=9, color='0.3')
 
-    ax.set_xlabel('Epoch')
-    ax.set_ylabel('RMSE')
-    ax.grid(True, which='both', ls=':', color='0.8')
-    ax.legend(loc='lower left')
-    fig.tight_layout()
+    # ax.set_xlabel('Epoch')
+    # ax.set_ylabel('RMSE')
+    # ax.grid(True, which='both', ls=':', color='0.8')
+    # ax.legend(loc='lower left')
+    # fig.tight_layout()
+
+    fig, ax = plt.subplot_mosaic(
+            [
+                # ["loss", "combined"],
+                ["V_loss", "combined"],
+                ["F_loss", "combined"]
+            ],
+            figsize=(12, 5),
+            sharex=True
+            )
+
+    # Individual plots
+    # ax["loss"].semilogy(history["train_rmse"], label="Train loss", color=COLORS[0])
+    ax["V_loss"].semilogy(history["train_rmse_V"], label=r"Train $V$ loss", color=COLORS[1])
+    ax["F_loss"].semilogy(history["train_rmse_Fr"], label=r"Train $F$ loss", color=COLORS[2])
+
+    # Combined plot (all together)
+    # ax["combined"].semilogy(history["train_rmse"], label="Loss", color=COLORS[0])
+    ax["combined"].semilogy(history["train_rmse_V"], label=r"$V$ loss", color=COLORS[1])
+    ax["combined"].semilogy(history["test_rmse_V"], label=r"$V$ test loss", color='black', alpha=0.5, ls='--')
+    ax["combined"].semilogy(history["train_rmse_Fr"], label=r"$F$ loss", color=COLORS[2])
+    ax["combined"].semilogy(history["test_rmse_F"], label=r"$F$ test loss", color='black', alpha=0.5, ls='--')
+
+    # Labels and styling
+    ax["F_loss"].set_xlabel("epoch")
+    ax["combined"].set_xlabel("epoch")
+
+    for key in ["V_loss", "F_loss", "combined"]:
+        ax[key].set_ylabel("RMSE")
+        ax[key].legend()
+        ax[key].grid(True, which="both", ls="--", lw=0.5)
+
+    plt.tight_layout()
     return fig
 
 
