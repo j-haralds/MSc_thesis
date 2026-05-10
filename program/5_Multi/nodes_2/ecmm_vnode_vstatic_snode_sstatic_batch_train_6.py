@@ -100,7 +100,7 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 2000  # Total training epochs
+EPOCHS  = 2500  # Total training epochs
 
 NAME_START = f'b{BATCH_SIZE}_combo_full'
 
