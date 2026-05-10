@@ -49,7 +49,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = False 
+SAVE_MODELS = True 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -73,7 +73,7 @@ CONFIG = {
     'C1_mode': 'net',   # 'net'
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
+    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
     'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
     'R0_constrained': 'true', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
