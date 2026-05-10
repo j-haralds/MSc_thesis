@@ -1737,7 +1737,7 @@ def data_param(model, trajs):
             ds_steps = [model.ds_net(s_ref, soc, I_norm, u_norm)]
             dt = 1.0
             for n in range(T - 1):
-                ds = model.ds_net(s_steps[n], soc[n], I_norm[n], u_norm[n])  # (B,)
+                ds = model.ds_net(s_steps[n], soc[:, n], I_norm[:, :n], u_norm[:, n])  # (B,)
                 ds_steps.append(ds)
                 s_next = s_steps[n] + ds.squeeze(-1) * dt
                 s_steps.append(s_next)
