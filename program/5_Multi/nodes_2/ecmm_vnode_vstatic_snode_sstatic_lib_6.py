@@ -1721,7 +1721,7 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
 
         I_real = c_rate * Q0 / 3600.0          # actual current [A]
         I_norm = I_real / model.I_ref          # what the networks were trained on
-        u_real = u_per * L0                    # cell displacement [1e-5 m]
+        u_real = u_per * L0 / 100                   # cell displacement [1e-5 m]
         u_norm = u_real / model.u_ref          # what the networks were trained on
 
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
@@ -1854,7 +1854,7 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
 
 
 def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate',
-                         n_show=5, time=False):
+                         n_show=5, time=False, pulse=False):
     """
     Plot V or F prediction vs true across SOC (or time) for selected CC trajectories.
 
@@ -1888,9 +1888,12 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate',
     if n_show is None or n_show >= len(trajs_sorted):
         trajs_plot = trajs_sorted
     else:
-        idx = np.unique(np.linspace(0, len(trajs_sorted) - 1,
-                                    n_show).round().astype(int))
-        trajs_plot = [trajs_sorted[i] for i in idx]
+        if not pulse:
+            idx = np.unique(np.linspace(0, len(trajs_sorted) - 1, n_show).round().astype(int))
+            trajs_plot = [trajs_sorted[i] for i in idx]
+        else:
+            idx = np.unique(np.linspace(2, len(trajs_sorted) - 1, n_show).round().astype(int))
+            trajs_plot = [trajs_sorted[i] for i in idx]
 
     base = plt.cm.Blues_r
     cmap_b = LinearSegmentedColormap.from_list(

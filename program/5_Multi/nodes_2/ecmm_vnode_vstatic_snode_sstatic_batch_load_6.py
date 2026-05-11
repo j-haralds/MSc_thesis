@@ -104,7 +104,7 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 # PREPARE COMBO TRAJECTORIES
 # ══════════════════════════════════════════════════════════════
 
-combo_data = pd.read_csv(OTHER_HALF_COMBO, sep=';', comment='%')
+combo_data = pd.read_csv(HALF_COMBO, sep=';', comment='%')
 combo_trajs = prepare_pulse_data(combo_data)
 print(combo_trajs[0].keys())
 split_c = int(len(combo_trajs) * TRAIN_SPLIT)
@@ -142,10 +142,7 @@ constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
 TOTAL_TIME = history.get('time', 0.0)
 
-SAVE_NAME = (f'staged_swelling'
-             f'{CONFIG["R0_mode"]}R0_{constr}'
-             f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
-             f'_{EPOCHS}eps')
+SAVE_NAME = (f'_{MODEL_NAME}_')
 print(SAVE_NAME)
 
 plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ')
@@ -231,11 +228,30 @@ import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
 from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
-element_data = data_param(bat_model, trajs)
-if SAVE_DATA:
-    element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
-    print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
+# element_data = data_param(bat_model, trajs)
+# if SAVE_DATA:
+#     element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
+#     print(f"Saved element data: ecm_node_elements_{TIMESTAMP}_{SAVE_NAME}.txt")
 
+
+def R0_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='R0')
+
+def R1_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='R1')
+
+def C1_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='C1')
+
+def k_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='k')
+
+for c_rate in [0.5, 1, 2]:
+    plt.plot(np.linspace(0, 1, 1000), R0_nn(c_rate, 0, np.linspace(0, 1, 1000)), label=f'R0 ({c_rate} C)')
+
+plot_param(bat_model, test_trajs, param='R0')
+plt.legend()
+plt.show()
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -283,21 +299,17 @@ from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
-MODEL_NAME_FULL = '0509_0102_combo_full_combo_V-dynamic_F-dynamic_359.65min_16h_650eps.pt'
+MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 
-bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
-bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+# bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+# bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
-plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
-# plot_predicts_report(bat_model_dynamic_DC, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=3, time=True)
+# plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
+plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=4, time=True, pulse=True)
 
-plot_param(bat_model_full, test_trajs, param='R0')
-plot_param(bat_model_full, test_trajs, param='R1')
-plot_param(bat_model_full, test_trajs, param='C1')
-plot_param(bat_model_full, test_trajs, param='tau')
 
-plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='F', sort='u_per', n_show=10, time=False)
-plot_force_report(bat_model_full, CONFIG, test_trajs, n_show=3)
+# plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='F', sort='u_per', n_show=10, time=False)
+# plot_force_report(bat_model_full, CONFIG, test_trajs, n_show=3)
 plt.show()
 
 
@@ -368,7 +380,7 @@ plt.show()
 # USE FOR REPORT. STATIC TRAINED ON CC
 #
 
-history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_stat)
+history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
 plot_report(bat_model_static_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_ccPred.pdf'), bbox_inches='tight')
@@ -382,7 +394,7 @@ plt.show()
 # USE FOR REPORT. DYNAMIC TRAINED ON CC
 #
 
-history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_dyna)
+history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
 plot_report(bat_model_dynamic_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_ccPred.pdf'), bbox_inches='tight')
@@ -397,16 +409,54 @@ plt.show()
 # 
  
 MODEL_NAME_LOW = '0510_2034_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
-MODEL_NAME_HIGH = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 
 
 bat_model_low, ckpt_low = load_nn_model(MODEL_NAME_LOW, I_ref=I_MAX)   # U_MAX when loading lib_3
 history_low, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_low)
 
-bat_model_high, ckpt_high = load_nn_model(MODEL_NAME_HIGH, I_ref=I_MAX)   # U_MAX when loading lib_3
-history_high, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_high)
+bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+history_full, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
-fig,ax = input_map_comparison(bat_model_low, bat_model_high,combo_trajs  , rmse_scales=RMSE_scales)
+fig,ax = input_map_comparison(bat_model_low, bat_model_full,combo_trajs  , rmse_scales=RMSE_scales)
 plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
+
+
+# %% USE FOR REPORT
+
+# MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+# MODEL_NAME_LOW = '0510_2034_b4_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
+
+# bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+# bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+
+# bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+
+plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
+# plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=4, time=True, pulse=True)
+# plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_pulse_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+
+plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='F', sort='C_rate', n_show=3, time=False)
+plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='F', sort='C_rate', n_show=10, time=True)
+
+# plot_param(bat_model_low, test_trajs, param='R0')
+# # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_low, test_trajs, param='R1')
+# # plt.savefig(os.path.join(FIGS_DIR, f'R1_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_low, test_trajs, param='C1')
+# # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_low, test_trajs, param='tau')
+# # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
+
+# plot_param(bat_model_full, test_trajs, param='R0')
+# # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_full, test_trajs, param='R1')
+# # plt.savefig(os.path.join(FIGS_DIR, f'R1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_full, test_trajs, param='C1')
+# # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_full, test_trajs, param='tau')
+# # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
  
+plot_force_report(bat_model_full, CONFIG, pulse_test, n_show=3)
