@@ -56,29 +56,31 @@ def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None)
     model = PySRRegressor(
         model_selection=selection,
         niterations=its,
-        binary_operators=["+", "*", '-','/'],
-        unary_operators=['sqrt','square', 'cube','exp','log'],
+        binary_operators=["+", "*", '-','/','^'],
+        unary_operators=['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan', 'sinh', 'cosh', 'tanh'],
         populations=pops,
-        # nested_constraints = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
-        #                   'cos':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
-        #                   'tan':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
-        #                   'sinh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
-        #                   'cosh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
-        #                   'tanh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
-        #                   'log':  {'sin': 0, 'cos': 0, 'tan': 0},
-        #                   'exp':  {'sin': 0, 'cos': 0, 'tan': 0},
-        #                   },
+        nested_constraints = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                          'cos':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                          'tan':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                          'sinh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
+                          'cosh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
+                          'tanh': {'sinh': 0, 'cosh': 0, 'tanh': 0},
+                          'log':  {'sin': 0, 'cos': 0, 'tan': 0},
+                          'exp':  {'sin': 0, 'cos': 0, 'tan': 0},
+                          },
         verbosity=0,         
-        #constraints={"^": (-1, 1)},
+        constraints={"^": (-1, 1)},
         batching = True,
-        maxsize = 18,
-        batch_size = 512,
+        complexity_of_operators = {"+": 1, "*": 1, '-': 1, '/': 1,'^':3, 'sqrt': 2, 'square': 2, 'cube': 2,'exp': 3,'log': 3, 'sin': 4, 'cos': 4, 'tan': 4, 'sinh': 4, 'cosh': 4, 'tanh': 4},
+        complexity_of_constants = 1,
+        maxsize = 30,
+        batch_size = 1024,
         run_id= run_id
     )
     return model
 
 
-def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 30, selection = "accuracy"):
+def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 30, selection = "best"):
     if model is None:
         model = setup_model(run_id = run_id, its = its, pops = pops, selection = selection)
     model.fit(X, y)
