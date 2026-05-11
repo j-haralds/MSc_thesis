@@ -50,7 +50,7 @@ SAVE_FIGS   = False
 SAVE_MODELS = False
 SAVE_DATA   = False
 
-MODEL_NAME= '0509_2355_b4_combo_full_combo_V-dynamic_F-dynamic_399.39min_16h_1500eps.pt'
+MODEL_NAME= '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 
 Q0          = 17921.57581
 
@@ -348,7 +348,7 @@ from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 
 
-# ========================================================================
+# %% ========================================================================
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
@@ -396,16 +396,17 @@ plt.show()
 # USE FOR REPORT. INPUT ERROR MAP 
 # 
  
-MODEL_NAME_LOW = '0509_0103_combo_low_c_d_combo_V-dynamic_F-dynamic_netR0_R0c_R1c_C1c_428.58min_16h_650eps_0stat_0dyneps.pt'
-MODEL_NAME_HIGH = '0509_0102_combo_full_combo_V-dynamic_F-dynamic_359.65min_16h_650eps.pt'
+MODEL_NAME_LOW = '0510_2034_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
+MODEL_NAME_HIGH = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 
 
 bat_model_low, ckpt_low = load_nn_model(MODEL_NAME_LOW, I_ref=I_MAX)   # U_MAX when loading lib_3
-history_low, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_low)
+history_low, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_low)
 
 bat_model_high, ckpt_high = load_nn_model(MODEL_NAME_HIGH, I_ref=I_MAX)   # U_MAX when loading lib_3
-history_high, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE = load_checkpoint(ckpt_high)
+history_high, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_high)
 
 fig,ax = input_map_comparison(bat_model_low, bat_model_high,combo_trajs  , rmse_scales=RMSE_scales)
+plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
  

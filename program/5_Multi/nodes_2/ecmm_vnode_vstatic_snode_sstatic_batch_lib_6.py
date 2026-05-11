@@ -123,7 +123,7 @@ class C1Net(nn.Module):
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         # C1 initialized around softplus(0) = ln(1 + e^0) = ln(2) = 0.693.  0.693 × 2000 = 1386 F
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 2000 * 4     # [F]
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 5000     # [F]
 
 class C1NetConstrained(nn.Module):
     """(SOC, I, u) → C1 > 0  [F].  One hidden layer, sigmoid+linear constraint."""
@@ -249,7 +249,7 @@ class kNet(nn.Module):
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)
         else:
-            return nn.functional.softplus(self.net(x)).squeeze(-1)
+            return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.03  # if softplus = 1, out = 30 [MN/mm]
     
 # ══════════════════════════════════════════════════════════
 #  s NETWORK (static)
@@ -300,7 +300,7 @@ class sdotNet(nn.Module):
             sd = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.sdot_min + sd * (self.sdot_max - self.sdot_min)
         else:
-            return nn.functional.softplus(self.net(x)).squeeze(-1)
+            return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.0001 # if softplus = 1, out = 1e-4 [1e-5 m / s]
 
 # ══════════════════════════════════════════════════════════
 #  s NETWORK (static, algebraic — lib_3 style)

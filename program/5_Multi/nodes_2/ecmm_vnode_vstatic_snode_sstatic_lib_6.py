@@ -2116,6 +2116,15 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
 
     cb0 = f.colorbar(sc0,ax=ax[0,:],label='NRMSE for $V_B$')
     cb1 = f.colorbar(sc2,ax=ax[1,:],label='NRMSE for $F$')
+
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),
+        Line2D([0], [0], marker='x', color='gray', linestyle='', label='Pulse'),
+    ]
+    f.legend(handles=legend_handles, loc='center', bbox_to_anchor=(0.43, 0.495),
+            ncol=2, frameon=True)
+
     #f.tight_layout()
     return f, ax
 
@@ -2166,15 +2175,25 @@ def load_nn_model(model_name, I_ref=None):
 
     return model, ckpt
 
+# def load_checkpoint(ckpt):
+#     history  = ckpt['history']
+#     CONFIG   = ckpt['config']
+#     # C1_final = ckpt['C1_final']
+#     N_HIDDEN = ckpt['N_HIDDEN']
+#     EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
+#     EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
+#     EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
+#     return history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
+
 def load_checkpoint(ckpt):
     history  = ckpt['history']
     CONFIG   = ckpt['config']
     # C1_final = ckpt['C1_final']
     N_HIDDEN = ckpt['N_HIDDEN']
-    EPOCHS_STATIC   = ckpt['EPOCHS_STATIC']
-    EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
-    EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
-    return history, CONFIG, N_HIDDEN, EPOCHS_STATIC, EPOCHS_DYNAMIC, EPOCHS_UNFREEZE
+    EPOCHS   = ckpt['EPOCHS']
+    # EPOCHS_DYNAMIC  = ckpt['EPOCHS_DYNAMIC']
+    # EPOCHS_UNFREEZE = ckpt['EPOCHS_UNFREEZE']
+    return history, CONFIG, N_HIDDEN, EPOCHS
 
 def rmse_scale(df,variables = ['V','F']):
     range_val = {}
