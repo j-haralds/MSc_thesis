@@ -246,11 +246,11 @@ def C1_nn(c_rate, u_per, soc):
 def k_nn(c_rate, u_per, soc):
     return element_predict(bat_model, c_rate, u_per, soc, element='k')
 
-for c_rate in [0.5, 1, 2]:
-    plt.plot(np.linspace(0, 1, 1000), R0_nn(c_rate, 0, np.linspace(0, 1, 1000)), label=f'R0 ({c_rate} C)')
+for c_rate in [0.5, 1, 2, 3, 4, 5]:
+    plt.plot(np.linspace(1, 0, 1000), C1_nn(c_rate, 10, np.linspace(1, 0, 1000)), label=f'R0 ({c_rate} C)')
+plt.gca().invert_xaxis()
 
-plot_param(bat_model, test_trajs, param='R0')
-plt.legend()
+plot_param(bat_model, test_trajs, param='C1')
 plt.show()
 
 
@@ -374,7 +374,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
 ECM_fix = True, metric_names = ['Force'])
-plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
 plt.show()
 # %%
 # USE FOR REPORT. STATIC TRAINED ON CC
@@ -383,11 +383,11 @@ plt.show()
 history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
 plot_report(bat_model_static_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_ccPred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_ccPred.pdf'), bbox_inches='tight')
 plt.show()
 plot_report(bat_model_static_DC, CONFIG, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_pulsePred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%
@@ -397,11 +397,11 @@ plt.show()
 history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
 plot_report(bat_model_dynamic_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_ccPred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_ccPred.pdf'), bbox_inches='tight')
 plt.show()
 plot_report(bat_model_dynamic_DC, CONFIG, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_pulsePred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%
@@ -419,7 +419,7 @@ bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 history_full, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
 fig,ax = input_map_comparison(bat_model_low, bat_model_full,combo_trajs  , rmse_scales=RMSE_scales)
-plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
 
 
