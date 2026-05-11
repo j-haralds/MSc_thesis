@@ -101,8 +101,8 @@ CONFIG = {
 }
 
 EPOCHS  = 2500  # Total training epochs
-
-NAME_START = f'b{BATCH_SIZE}_combo_full'
+split_percentage = 0.2 # Out of 100% of the training data, how much to use (for quick tests)
+NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
@@ -166,7 +166,7 @@ split_c = int(len(combo_trajs) * TRAIN_SPLIT)
 combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
 
 #### Split the training data ####
-split_percentage = 0.8 # 0.6, 0.4, 0.2  # Out of 100% of the training data
+#split_percentage = 0.2 # 0.6, 0.4, 0.2  # Out of 100% of the training data
 second_split = int(len(combo_train) * split_percentage)
 combo_train = combo_train[:second_split]
 ####
