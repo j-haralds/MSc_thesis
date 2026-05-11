@@ -101,7 +101,7 @@ CONFIG = {
 }
 
 EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.2 # Out of 100% of the training data, how much to use (for quick tests)
+split_percentage = 1.0 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
 
@@ -247,17 +247,17 @@ else:
 # Build save name from active flags — much cleaner than the prior 6-branch chain.
 # Includes both style_V (V branch) and style_F (F branch) so checkpoints for
 # the four combinations (static/dynamic × static/dynamic) don't collide.
-# constr_tags = []
-# if CONFIG.get('R0_constrained', 'false') == 'true': constr_tags.append('R0c')
-# if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
-# if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
-# constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
+constr_tags = []
+if CONFIG.get('R0_constrained', 'false') == 'true': constr_tags.append('R0c')
+if CONFIG.get('R1_constrained', 'false') == 'true': constr_tags.append('R1c')
+if CONFIG.get('C1_constrained', 'false') == 'true': constr_tags.append('C1c')
+constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 
 # Tag style as e.g. 'V-dynamic_F-static' to make the F branch visible in the filename.
 style_tag = f'V-{CONFIG["style_V"]}_F-{CONFIG["style_F"]}'
 
 SAVE_NAME = (f'{NAME_START}_{USE_PULSE}_{style_tag}'
-            #  f'_{constr}'
+             f'_{constr}'
              f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
              f'_{EPOCHS}eps')
 

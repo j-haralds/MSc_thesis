@@ -1734,6 +1734,47 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
     return out[element] if element is not None else (R1, C1, R0, k, s)
 
 
+# def data_param(model, trajs):
+#     """
+#     Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
+#     trajectories — one row per (trajectory, soc-sample).
+#     """
+#     model.eval()
+#     trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+#     frames = []
+
+#     with torch.no_grad():
+#         for i, tr in enumerate(trajs_sorted):
+#             soc    = tr['soc']
+#             I_val  = float(tr['I'])
+#             u_val  = float(tr['u'])
+#             u_per_val = float(tr['u_per'])
+#             C_val  = float(tr['C'])
+#             I_norm = torch.full_like(soc, I_val / model.I_ref)
+#             u_norm = torch.full_like(soc, u_val / model.u_ref)
+#             I_real = torch.full_like(soc, I_val)                     # raw I [A] for _R0's I_seq arg
+
+#             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
+#             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
+#             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
+#             k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
+#             s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+
+#             frames.append(pd.DataFrame({
+#                 'trajectory': i,
+#                 'C': C_val,
+#                 'u_per': u_per_val,
+#                 'I': I_val,
+#                 'u': u_val,
+#                 'soc': soc.numpy(),
+#                 'R1': R1,
+#                 'C1': C1,
+#                 'R0': R0,
+#                 'k': k,
+#                 's': s}))
+
+#     return pd.concat(frames, ignore_index=True)
+
 def data_param(model, trajs):
     """
     Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
@@ -1746,6 +1787,7 @@ def data_param(model, trajs):
     with torch.no_grad():
         for i, tr in enumerate(trajs_sorted):
             soc    = tr['soc']
+            T      = tr['T']
             I_val  = float(tr['I'])
             u_val  = float(tr['u'])
             u_per_val = float(tr['u_per'])
@@ -1758,7 +1800,24 @@ def data_param(model, trajs):
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
             R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm — pass raw I, not I_norm
             k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
-            s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+            
+            # s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+
+            # List for dynamic s rollout
+            s_ref = torch.zeros_like(soc)
+            s_steps = [torch.zeros((), dtype=soc.dtype, device=soc.device)]                     # (B,) initial step
+            ds_steps = []
+            dt = 1.0
+            for n in range(T - 1):
+                # print(s_steps[n], soc[n], I_norm[n], u_norm[n])
+                ds = model.ds_net(s_steps[n], soc[n], I_norm[n], u_norm[n])  # (B,)
+                ds_steps.append(ds)
+                s_next = s_steps[n] + ds.squeeze(-1) * dt
+                s_steps.append(s_next)
+            # ds at the final step, so len(ds_steps) == T
+            ds_steps.append(model.ds_net(s_steps[-1], soc[-1], I_norm[-1], u_norm[-1]))
+
+
 
             frames.append(pd.DataFrame({
                 'trajectory': i,
@@ -1771,7 +1830,8 @@ def data_param(model, trajs):
                 'C1': C1,
                 'R0': R0,
                 'k': k,
-                's': s}))
+                's': np.array(s_steps),
+                'sdot': np.array(ds_steps)}))
 
     return pd.concat(frames, ignore_index=True)
 
