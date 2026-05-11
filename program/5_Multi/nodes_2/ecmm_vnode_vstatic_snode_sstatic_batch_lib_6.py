@@ -2,8 +2,6 @@
 import os
 import sys
 
-from sympy import beta
-from ecmm_node_staged_clean_load import C1
 import torch
 import torch.nn as nn
 import numpy as np
@@ -629,7 +627,7 @@ class BatteryECMM(nn.Module):
         #     U1 = torch.stack(U1_steps, dim=1)
 
         #     V  = Ue - I_seq * R0 - U1
-        
+
         # –––––––––––––––––––––––––––––––––
 
         dsoc = -I_seq / self.Q0
@@ -672,11 +670,11 @@ class BatteryECMM(nn.Module):
                 soc_next = soc[n] + dsoc[:, n] * dt
                 soc.append(soc_next)
 
-                R1 = self._R1(soc[:, n], I_norm[:, n], u_norm_exp[:, n])
-                C1 = self._C1(soc[:, n], I_norm[:, n], u_norm_exp[:, n])
-                C1_n = C1[:, n] if C1.ndim == 2 else C1
+                R1 = self._R1(soc[n], I_norm[:, n], u_norm_exp[:, n])
+                C1 = self._C1(soc[n], I_norm[:, n], u_norm_exp[:, n])
+                # print(R1.shape, C1.shape, I_seq[:, n].shape, U1_steps[n].shape)
                 # Semi-implicit Euler — unconditionally stable
-                U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
+                U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1) / (1.0 + dt / (R1 * C1))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
             soc = torch.stack(soc, dim=1)
@@ -1476,7 +1474,7 @@ def plot_loss(history):
     ax["F_loss"].semilogy(history["train_rmse_Fr"], label=r"Train $F$ loss", color=COLORS[2])
 
     # Combined plot (all together)
-    ax["combined"].semilogy(history["train_rmse"], label="Loss", color=COLORS[0])
+    # ax["combined"].semilogy(history["train_rmse"], label="Loss", color=COLORS[0])
     ax["combined"].semilogy(history["train_rmse_V"], label=r"$V$ loss", color=COLORS[1])
     ax["combined"].semilogy(history["test_rmse_V"], label=r"$V$ test loss", color='black', alpha=0.5, ls='--')
     ax["combined"].semilogy(history["train_rmse_Fr"], label=r"$F$ loss", color=COLORS[2])
