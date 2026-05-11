@@ -164,6 +164,13 @@ print(combo_data.columns)
 combo_trajs = prepare_pulse_data(combo_data)
 split_c = int(len(combo_trajs) * TRAIN_SPLIT)
 combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
+
+#### Split the training data ####
+split_percentage = 0.8 # 0.6, 0.4, 0.2  # Out of 100% of the training data
+second_split = int(len(combo_train) * split_percentage)
+combo_train = combo_train[:second_split]
+####
+
 print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)} "
         f"(T per traj: {combo_trajs[0]['T']})")
 
