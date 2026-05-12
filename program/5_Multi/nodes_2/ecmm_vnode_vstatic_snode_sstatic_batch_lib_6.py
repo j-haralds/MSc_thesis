@@ -2506,60 +2506,88 @@ def plot_all_elements_contour(model, soc_fix=0.5,
     return fig
 
 
-def plot_element_soc_grid(model, param='R1',
-                          soc_values=(0.2, 0.5, 0.8),
-                          c_rate_range=(0.5, 5.0),
-                          u_per_range=(0.0, 25.0),
-                          n_grid=60, overlay_trajs=None,
-                          cmap='viridis', share_color=True):
+def plot_element_soc_3d(model, param='R1',
+                        soc_values=(0.1, 0.3, 0.5, 0.7, 0.9),
+                        c_rate_range=(0.5, 5.0),
+                        u_per_range=(0.0, 25.0),
+                        n_grid=60, overlay_trajs=None,
+                        cmap='viridis', alpha=0.75,
+                        elev=22, azim=-58):
     """
-    One parameter across multiple SOC slices, side-by-side.
-    share_color=True uses a common vmin/vmax across slices so absolute
-    magnitudes are directly comparable -- this is what makes SOC drift
-    visually obvious.
+    Stacked-slab 3D view of one ECM element across SOC.
+
+    Axes:  x = u_per [%]   (displacement d)
+           y = C-rate [a.u.]
+           z = SOC
+    color = element value (shared colorbar across slabs).
+
+    Each SOC slice is rendered as a filled contour at z = soc_fix; all
+    slabs share one (vmin, vmax) so absolute magnitudes are directly
+    comparable -- SOC dependence is visible as the colormap shifting
+    along z.
     """
-    ncols = len(soc_values)
-    fig, axes = plt.subplots(1, ncols, figsize=(4.6 * ncols, 4.4),
-                             constrained_layout=True, sharey=True)
-    axes = np.atleast_1d(axes)
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers '3d')
+
+    # Sort ascending so painter's algorithm renders back-to-front cleanly
+    # at the default view angle.
+    soc_values = sorted(float(s) for s in soc_values)
+
+    c_axis = np.linspace(*c_rate_range, n_grid)
+    u_axis = np.linspace(*u_per_range, n_grid)
+    U_grid, C_grid = np.meshgrid(u_axis, c_axis)              # (nC, nU)
 
     Zs = []
     for soc_fix in soc_values:
-        c_axis = np.linspace(*c_rate_range, n_grid)
-        u_axis = np.linspace(*u_per_range, n_grid)
-        U_grid, C_grid = np.meshgrid(u_axis, c_axis)
         soc_grid = np.full_like(U_grid, soc_fix, dtype=np.float32)
-        Z = element_predict(model, C_grid.astype(np.float32),
+        Z = element_predict(model,
+                            C_grid.astype(np.float32),
                             U_grid.astype(np.float32),
                             soc_grid, element=param)
         if   param in ('R0', 'R1'): Z = Z * 1e3
         elif param == 'k':          Z = Z * 1e2
         elif param == 's':          Z = Z / 100.0
-        Zs.append((Z, U_grid, C_grid))
+        Zs.append(Z)
 
-    vmin = min(z[0].min() for z in Zs) if share_color else None
-    vmax = max(z[0].max() for z in Zs) if share_color else None
-    levels = np.linspace(vmin, vmax, 21) if share_color else 20
+    vmin = float(min(Z.min() for Z in Zs))
+    vmax = float(max(Z.max() for Z in Zs))
+    levels = np.linspace(vmin, vmax, 21)
 
     clabel = {'R0': r'$R_0$ [m$\Omega$]', 'R1': r'$R_1$ [m$\Omega$]',
               'C1': r'$C_1$ [F]',         'k':  r'$k$ [GN/mm]',
               's':  r'$s$ [mm]'}[param]
 
+    fig = plt.figure(figsize=(8.2, 6.5), constrained_layout=True)
+    ax  = fig.add_subplot(projection='3d')
+
     cf = None
-    for ax, (Z, U_grid, C_grid), soc_fix in zip(axes, Zs, soc_values):
-        cf = ax.contourf(U_grid, C_grid, Z, levels=levels, cmap=cmap,
-                         vmin=vmin, vmax=vmax)
-        cs = ax.contour (U_grid, C_grid, Z, levels=10, colors='k',
-                         linewidths=0.4, alpha=0.5)
-        ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
-        if overlay_trajs is not None:
-            ups = np.array([tr['u_per'] for tr in overlay_trajs])
-            crs = np.array([tr['C']     for tr in overlay_trajs])
-            ax.scatter(ups, crs, facecolors='none', edgecolors='white',
-                       s=25, lw=1.0, zorder=5)
-        ax.set_xlabel(r'$u$ [%]')
-        ax.set_title(f'SOC = {soc_fix:.2f}')
-    axes[0].set_ylabel('C-rate [a.u.]')
-    fig.colorbar(cf, ax=list(axes), label=clabel, shrink=0.85)
-    fig.suptitle(f'{clabel} across SOC slices', fontsize=13)
+    for Z, soc_fix in zip(Zs, soc_values):
+        cf = ax.contourf(U_grid, C_grid, Z,
+                         levels=levels, cmap=cmap,
+                         vmin=vmin, vmax=vmax,
+                         zdir='z', offset=soc_fix,
+                         alpha=alpha)
+
+    # Data coverage: each CC trajectory holds (u_per, C) fixed and sweeps
+    # a SOC range -> draw a vertical line in 3D over that range.
+    if overlay_trajs is not None:
+        for tr in overlay_trajs:
+            u_p = float(tr['u_per']); c_v = float(tr['C'])
+            soc_lo = float(tr['soc'].min())
+            soc_hi = float(tr['soc'].max())
+            ax.plot([u_p, u_p], [c_v, c_v], [soc_lo, soc_hi],
+                    color='w', lw=1.0, alpha=0.85, zorder=10)
+            ax.scatter([u_p, u_p], [c_v, c_v], [soc_lo, soc_hi],
+                       facecolors='none', edgecolors='white',
+                       s=18, lw=0.9, zorder=11)
+
+    ax.set_xlabel(r'$u$ [%]')
+    ax.set_ylabel('C-rate [a.u.]')
+    ax.set_zlabel('SOC')
+    ax.set_xlim(u_per_range)
+    ax.set_ylim(c_rate_range)
+    ax.set_zlim(min(soc_values), max(soc_values))
+    ax.view_init(elev=elev, azim=azim)
+    ax.set_title(f'{clabel}  —  network response across (I, d, SOC)')
+
+    fig.colorbar(cf, ax=ax, label=clabel, shrink=0.7, pad=0.1)
     return fig

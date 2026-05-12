@@ -362,8 +362,8 @@ fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
                                 overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_all_soc05_{SAVE_NAME}.png'))
 
-fig = plot_element_soc_grid(bat_model_full, param='R1',
-                            soc_values=(0.2, 0.5, 0.8),
+fig = plot_element_soc_3d(bat_model_full, param='R1',
+                            soc_values=(0.1, 0.9, 5),
                             overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
 
