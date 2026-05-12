@@ -156,9 +156,9 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 plot_loss(history)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_loss_{TIMESTAMP}_{SAVE_NAME}.pdf'), bbox_inches='tight')
-    print('Saved figure')
+
+# plt.savefig(os.path.join(FIGS_DIR, f'loss_{MODEL_NAME}.pdf'), bbox_inches='tight')
+# print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -258,9 +258,9 @@ plt.show()
 # PLOT PREDICTIONS 
 # ══════════════════════════════════════════════════════════════
 
-# import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
-# importlib.reload(_lib)
-# from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 
 plot_report(bat_model, CONFIG, test_trajs, title='Pulse test: ',
@@ -293,9 +293,9 @@ plt.show()
 # DISCHARGE DIFFERENT C-RATES
 # ══════════════════════════════════════════════════════════════
 
-# import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
-# importlib.reload(_lib)
-# from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
@@ -333,15 +333,15 @@ def plot_data_scarcity_loss(names, trajs):
     plt.ylabel('RMSE')
     plt.legend()
     plt.grid(True)
-    fig = plt.gcf()
     return fig
 
-names = ['0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
+names = ['0512_1459_b4_combo_0.1__combo_V-dynamic_F-dynamic_R0c_C1c_94.18min_16h_2500eps.pt',
+         '0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
          '0511_1249_b4_combo_0.4__combo_V-dynamic_F-dynamic_280.31min_16h_2500eps.pt',
          '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
          '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
          ]
-plot_data_scarcity_loss(names, combo_test)
+plot_data_scarcity_loss(names, test_trajs)
 plt.show()
 ##
 
@@ -354,8 +354,18 @@ plt.show()
 
 
 
+# %% ELEMENT PLOTS CONTOUR?
 
+fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
+                                c_rate_range=(0.5, 5.0),
+                                u_per_range=(0.0, 25.0),
+                                overlay_trajs=test_trajs)
+# fig.savefig(os.path.join(FIGS_DIR, f'contour_all_soc05_{SAVE_NAME}.png'))
 
+fig = plot_element_soc_grid(bat_model_full, param='R1',
+                            soc_values=(0.2, 0.5, 0.8),
+                            overlay_trajs=test_trajs)
+# fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
 
 
 
@@ -403,7 +413,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
                         'Dynamic': bat_model_dynamic_DC},
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
-ECM_fix = True, metric_names = ['Voltage'])
+ECM_fix = True, metric_names = ['Force'])
 # plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
 plt.show()
 # %%
