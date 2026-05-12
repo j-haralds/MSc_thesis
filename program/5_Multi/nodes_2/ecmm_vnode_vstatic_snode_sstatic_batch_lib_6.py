@@ -24,7 +24,7 @@ COLORS = plot_settings.colors()
 # Tabulate the GP on a dense SOC grid once at startup, use np.interp for lookups. 
 # GP-quality values with interpolant speed.
 import Ue_GP
-
+import fix_ecm
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
 LIMON_CELL0 = 14.37325  # cell length [1e-5m]
@@ -2274,3 +2274,118 @@ def rmse_scale(df,variables = ['V','F']):
         max_val = df[var].max()
         range_val[var] = (max_val - min_val)
     return range_val
+
+
+def rmse_fix(trajs, rmse_scales):
+    rmse_V = np.zeros(len(trajs))
+    for i,tr in enumerate(trajs):
+        if 'I' in tr.keys():
+            I = tr['I'] * np.ones_like(tr['soc'])
+        else:        
+            I = tr['I_seq'].numpy()
+        V_true = tr['V'].numpy()
+        out = Ue_GP.soc_to_Ue(tr['soc']) -fix_ecm.parameter_estimation_curvefit(tr,I)
+        rmse_V[i]=(float(np.sqrt(np.mean((out -V_true)**2))))
+    return np.array(rmse_V) / rmse_scales['V']
+
+def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
+                    metric_names=('Voltage', 'Force'),
+                    metric_colors=None,
+                    figsize_per_metric=(8, 4),
+                    group_gap=0.5, bar_width=0.7, ECM_fix=False):
+    """
+    Bar plot of NRMSE per model, grouped by test set, one subplot per metric.
+
+    Parameters
+    ----------
+    models : dict[str, model]
+        Mapping from short model name (shown under each bar) to model object.
+    trajs_by_set : dict[str, list]
+        Mapping from test-set name (e.g. 'CC', 'Pulse') to a list of trajectories.
+    rmse_scales : dict
+        Must contain 'V' and 'F' keys used to normalize the RMSEs.
+    metric_colors : dict or None
+        {metric_name: color}. Defaults to mid-copper for V, mid-flare for F.
+    """
+    if metric_colors is None:
+        metric_colors = {
+            'Voltage': plt.cm.Blues(1-0.05),
+            'Force':   plt.cm.Reds(1-0.05),
+            #'Force':   sns.color_palette('flare', as_cmap=True)(0.75),
+        }
+
+    model_names = list(models.keys())
+    if ECM_fix and 'Voltage' in metric_names and 'Force' not in metric_names:
+         model_names.append('ECM-Fix')
+    test_sets   = list(trajs_by_set.keys())
+    n_models = len(model_names)
+
+
+    def _nrmse(model, trajs, voltage = True, force = True, ECM_fix = False):
+        r = rmse_pulse(model, trajs)
+        if voltage and force:
+             return (np.asarray(r[0]) / rmse_scales['V'],
+                    np.asarray(r[1]) / rmse_scales['F'])
+        elif voltage:
+            if ECM_fix:
+                return rmse_fix(trajs, rmse_scales)
+            else:
+                return np.asarray(r[0]) / rmse_scales['V']
+        elif force:
+            return np.asarray(r[1]) / rmse_scales['F']
+
+    results = {}
+    for ts in test_sets:
+        results[ts] = {}
+        for mn in model_names:
+      #      print(f"Calculating NRMSE for model '{mn}' on test set '{ts}'...")
+            if mn == 'ECM-Fix':
+                results[ts][mn] = rmse_fix(trajs_by_set[ts], rmse_scales)
+            else:
+                results[ts][mn] = _nrmse(models[mn], trajs_by_set[ts], voltage=('Voltage' in metric_names), force=('Force' in metric_names), ECM_fix=False)
+     #       print(f"NRMSE for model '{mn}' on test set '{ts}': {results[ts][mn]}")  
+    #print("\nAll NRMSE calculations complete. Preparing to plot...")
+    print(results.keys())
+
+    positions = np.array([g * (n_models + group_gap) + m
+                          for g in range(len(test_sets))
+                          for m in range(n_models)])
+    
+    print(f"Bar positions: {positions}")
+
+    fig, axes = plt.subplots(1, len(metric_names),
+                             figsize=(figsize_per_metric[0] * len(metric_names),
+                                      figsize_per_metric[1]),
+                             constrained_layout=True)
+    if len(metric_names) == 1:
+        axes = [axes]
+
+    for j, metric in enumerate(metric_names):
+        ax  = axes[j]
+        idx = 0 if metric == 'Voltage' else 1
+
+        means, ticks = [], []
+        for ts in test_sets:
+            for mn in model_names:
+                means.append(results[ts][mn][idx])
+                ticks.append(mn)
+        means = np.asarray(means)
+
+        ax.bar(positions, means, width=bar_width,
+               color=metric_colors[metric],
+               alpha=0.9, edgecolor='black', linewidth=0.5)
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(ticks)
+        ax.set_title(f'{metric} NRMSE')
+        if j == 0:
+            ax.set_ylabel('NRMSE')
+        ax.set_ylim(0, means.max() * 1.05)
+
+        trans = blended_transform_factory(ax.transData, ax.transAxes)
+        for g, ts in enumerate(test_sets):
+            center = g * (n_models + group_gap) + (n_models - 1) / 2
+            ax.text(center, -0.15, f'Predicted on {ts}',
+                    transform=trans, ha='center', va='top', fontweight='bold')
+        #ax.set_yscale('log')
+    return fig, axes

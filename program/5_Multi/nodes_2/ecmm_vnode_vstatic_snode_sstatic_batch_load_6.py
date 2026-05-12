@@ -258,9 +258,9 @@ plt.show()
 # PLOT PREDICTIONS 
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+# import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+# importlib.reload(_lib)
+# from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 
 plot_report(bat_model, CONFIG, test_trajs, title='Pulse test: ',
@@ -293,9 +293,9 @@ plt.show()
 # DISCHARGE DIFFERENT C-RATES
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+# import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+# importlib.reload(_lib)
+# from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
@@ -333,6 +333,7 @@ def plot_data_scarcity_loss(names, trajs):
     plt.ylabel('RMSE')
     plt.legend()
     plt.grid(True)
+    fig = plt.gcf()
     return fig
 
 names = ['0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
@@ -340,8 +341,8 @@ names = ['0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500ep
          '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
          '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
          ]
-plot_data_scarcity_loss(names, test_trajs)
-
+plot_data_scarcity_loss(names, combo_test)
+plt.show()
 ##
 
 
