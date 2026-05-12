@@ -96,12 +96,14 @@ def print_models(df_model):
         print(f"Model {i}: Complexity={df_model['complexity'][i]}, Loss={df_model['loss'][i]}")
         print(f"Equation: {df_model['equation'][i]}\n")
 
-def print_best_model(model, model_index = None):
+def print_best_model(model, model_index = None, s = False):
     best = model.get_best()
     display(Math(f'\\LARGE {model.latex(model_index)}'))
     display(Math(r'\LARGE $x_0 = \mathrm{{c}}$-rate$'))
     display(Math(r'\LARGE $x_1 = \Delta u / L_{{tot}}$'))
     display(Math(r'\LARGE $x_2 = \mathrm{SOC}$'))
+    if s:
+        display(Math(r'\LARGE $x_3= s$'))
     print(f'Best model in symbolic form: {model.sympy()}\nLoss: {best["loss"]}\nBest model complexity: {best["complexity"]}')
 
 
