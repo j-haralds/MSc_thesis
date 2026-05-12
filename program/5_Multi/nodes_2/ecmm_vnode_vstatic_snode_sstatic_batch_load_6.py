@@ -313,7 +313,36 @@ plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_ra
 plt.show()
 
 
+# %%
+def plot_data_scarcity_loss(names, trajs):
+    nrmsesV = []
+    nrmsesF = []
+    for name in names:
+        model, ckpt = load_nn_model(name, I_ref=I_MAX)
+        rmseV, rmseF, _, _ = rmse_pulse(model, trajs)
+        nrmseV = rmseV.mean() / RMSE_scales['V']
+        nrmseF = rmseF.mean() / RMSE_scales['F']
+        print(f"{name} | Pulse test nRMSE (V): {nrmseV:.4f} | nRMSE (F): {nrmseF:.4f}")
+        nrmsesV.append(nrmseV)
+        nrmsesF.append(nrmseF)
 
+    plt.figure(figsize=(6,4))
+    plt.plot([20, 40, 80, 100], nrmsesV, label='Voltage nRMSE', marker='o')
+
+    plt.xlabel('Percentage of training data [%]')
+    plt.ylabel('RMSE')
+    plt.legend()
+    plt.grid(True)
+    return fig
+
+names = ['0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
+         '0511_1249_b4_combo_0.4__combo_V-dynamic_F-dynamic_280.31min_16h_2500eps.pt',
+         '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
+         '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+         ]
+plot_data_scarcity_loss(names, test_trajs)
+
+##
 
 
 
@@ -336,9 +365,9 @@ plt.show()
 # %% ══════════════════════════════════════════════════════════
 # MODEL COMPARISON AVGNRMSE
 # ══════════════════════════════════════════════════════════════
-import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 # ========================================================================
 
 
@@ -413,15 +442,25 @@ MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_1
 
 
 bat_model_low, ckpt_low = load_nn_model(MODEL_NAME_LOW, I_ref=I_MAX)   # U_MAX when loading lib_3
-history_low, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_low)
+history_low, config_low, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_low)
 
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
-history_full, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
+history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
+# %%
 fig,ax = input_map_comparison(bat_model_low, bat_model_full,combo_trajs  , rmse_scales=RMSE_scales)
 # plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
 
+
+# %%
+
+plot_report(bat_model_full, config_full, test_trajs, title='CC test: ', n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'ccPred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plt.show()
+plot_report(bat_model_full, config_full, pulse_test, title='Pulse test: ', n_show=min(2, len(pulse_test)), time = True)
+plt.savefig(os.path.join(FIGS_DIR, f'pulsePred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plt.show()
 
 # %% USE FOR REPORT
 
@@ -433,13 +472,13 @@ plt.show()
 
 # bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 
-plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
-# plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=4, time=True, pulse=True)
-# plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_pulse_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_predicts_report(bat_model_full, config_full, test_trajs, predict='V', sort='C_rate', n_show=5, time=True)
+# # plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_predicts_report(bat_model_full, config_full, pulse_test, predict='F', sort='C_rate', n_show=4, time=True, pulse=False)
+# # plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_pulse_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
-plot_predicts_report(bat_model_full, CONFIG, test_trajs, predict='F', sort='C_rate', n_show=3, time=False)
-plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='F', sort='C_rate', n_show=10, time=True)
+# plot_predicts_report(bat_model_full, config_full, test_trajs, predict='F', sort='C_rate', n_show=3, time=False)
+# plot_predicts_report(bat_model_full, config_full, pulse_test, predict='F', sort='C_rate', n_show=10, time=True)
 
 # plot_param(bat_model_low, test_trajs, param='R0')
 # # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
@@ -459,4 +498,23 @@ plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='F', sort='C_ra
 # plot_param(bat_model_full, test_trajs, param='tau')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
  
-plot_force_report(bat_model_full, CONFIG, pulse_test, n_show=3)
+# plot_param_pulse(bat_model_full, pulse_test, param='R0', n_show=4)
+# # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param_pulse(bat_model_full, pulse_test, param='R1', n_show=4)
+# # plt.savefig(os.path.join(FIGS_DIR, f'R1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param_pulse(bat_model_full, pulse_test, param='C1', n_show=4)
+# # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param_pulse(bat_model_full, pulse_test, param='tau', n_show=4)
+# # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+
+
+plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
+# plt.savefig(os.path.join(FIGS_DIR, f'F_CC_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+
+plt.show()
+
+# %% USE FOR REPORT DATA SCARCITY
+
+
+
+

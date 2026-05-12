@@ -1323,7 +1323,7 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
             # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
         rows = ['I', 'V', 'Fr' ]
     elif pulse:
-        rows = ['V', 'Fr']
+        rows = ['I', 'V', 'Fr']
     elif V_mode in ('static', 'static_no_R0'):
         rows = ['I', 'V', 'Fr' ]
     elif V_mode == 'dynamic':
@@ -1418,8 +1418,6 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
                 ax.set_ylabel(r'$F$ [MN]'); ax.legend()
 
             elif name == 'k':
-                # Empirical stiffness directly from the data: k_true = -F/u
-                k_true = -tr['F'] / tr['u'] * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 k_pred = k_pred * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
                 # ax.plot(x, k_true, '--', color=COLORS[1], label=r'INVALID! True $k = -F/u$', lw=2, alpha=0.7)
                 ax.plot(x, k_pred, '-',  color=COLORS[0], label=r'Predicted $k$', lw=2)
@@ -1628,6 +1626,105 @@ def plot_param(model, trajs, param='R1'):
     return fig
 
 
+def plot_param_pulse(model, trajs, param='R1', sort='C_rate',
+                     n_show=5, time=True, pulse=True):
+    """
+    Plot R0/R1/C1/k/tau/s vs time (or SOC) for pulse trajectories.
+    One line per trajectory; color = C-rate (or u_per).
+
+    Parameters
+    ----------
+    param  : 'R0' | 'R1' | 'C1' | 'tau' | 'k' | 's'
+    sort   : 'C_rate' | 'u_per'
+    n_show : int or None
+        Number of trajectories to plot. Always includes endpoints;
+        rest evenly spaced. None or >= len(trajs) plots all.
+    time   : bool
+        If True (default), x-axis is time [s]; else SOC.
+    pulse  : bool
+        If True, skip the two lowest-sorted trajs when subsampling
+        (mirrors plot_predicts_report).
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    # ── sort + subsample (mirrors plot_predicts_report) ──
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: float(tr['C']))
+        vals_arr = np.array([float(tr['C']) for tr in trajs_sorted])
+        bar_name = 'C-rate [a.u.]'
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: float(tr['u_per']))
+        vals_arr = np.array([float(tr['u_per']) for tr in trajs_sorted])
+        bar_name = r'$u$ $[\%]$'
+    else:
+        raise ValueError(f"sort must be 'C_rate' or 'u_per', got {sort!r}")
+    norm = Normalize(vmin=vals_arr.min(), vmax=vals_arr.max())
+
+    if n_show is None or n_show >= len(trajs_sorted):
+        trajs_plot = trajs_sorted
+    else:
+        start = 2 if pulse else 0
+        idx = np.unique(
+            np.linspace(start, len(trajs_sorted) - 1, n_show).round().astype(int)
+        )
+        trajs_plot = [trajs_sorted[i] for i in idx]
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    with torch.no_grad():
+        for tr in trajs_plot:
+            soc = tr['soc']
+            I = tr['I_seq'] if torch.is_tensor(tr['I_seq']) \
+                else torch.full_like(soc, float(tr['I_seq']))
+            u = tr['u']     if torch.is_tensor(tr['u']) \
+                else torch.full_like(soc, float(tr['u']))
+            I_norm = I / model.I_ref
+            u_norm = u / model.u_ref
+
+            if param == 'R1':
+                y = model._R1(soc, I_norm, u_norm).numpy() * 1e3
+                ylabel = r'$R_1$ [m$\Omega$]'
+            elif param == 'C1':
+                y = model._C1(soc, I_norm, u_norm).numpy()
+                ylabel = r'$C_1$ [F]'
+            elif param == 'tau':
+                R1 = model._R1(soc, I_norm, u_norm).numpy()
+                C1 = model._C1(soc, I_norm, u_norm).numpy()
+                y = R1 * C1
+                ylabel = r'$\tau$ [s]'
+            elif param == 'R0':
+                y = model._R0(soc, I_norm, u_norm, I).numpy() * 1e3
+                ylabel = r'$R_0$ [m$\Omega$]'
+            elif param == 'k':
+                y = model.k_net(soc, I_norm, u_norm).numpy() * 1e2
+                ylabel = r'$k$ [GN/mm]'
+            elif param == 's':
+                y = model._s_diag(soc, I_norm, u_norm).numpy() / 100.0
+                ylabel = r'$s$ [mm]'
+            else:
+                raise ValueError(f"unknown param {param!r}")
+
+            x = np.arange(tr['T']) if time else soc.numpy()
+            bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
+            ax.plot(x, y, '-', color=cmap(norm(bar_val)), lw=1.5)
+
+    if time:
+        ax.set_xlabel('Time [s]')
+    else:
+        ax.set_xlabel('State of Charge')
+        ax.invert_xaxis()
+    ax.set_ylabel(ylabel)
+    ax.ticklabel_format(useOffset=False, style='plain')
+
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label=bar_name, pad=0.02)
+    fig.tight_layout()
+    return fig
+
+
 def plot_force(model, trajs):
     """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
 
@@ -1758,7 +1855,7 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
 
         I_real = c_rate * Q0 / 3600.0          # actual current [A]
         I_norm = I_real / model.I_ref          # what the networks were trained on
-        u_real = u_per * L0 / 100                   # cell displacement [1e-5 m]
+        u_real = u_per * L0 / 100                   # cell displacement %
         u_norm = u_real / model.u_ref          # what the networks were trained on
 
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
@@ -1907,6 +2004,99 @@ def plot_predicts(model, config, trajs, predict='V', sort='C_rate'):
     sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
     fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
     return fig
+
+def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate',
+                         n_show=5, time=False, pulse=False):
+    """
+    Plot V or F prediction vs true across SOC (or time) for selected CC trajectories.
+
+    Parameters
+    ----------
+    model : BatteryECMM
+    trajs : list of CC trajectory dicts (e.g. test_trajs)
+    predict : 'V' or 'F'
+    sort : 'C_rate' or 'u_per'
+    n_show : int or None
+        Number of trajectories to plot. Always includes the lowest and highest;
+        the rest are evenly spaced in between. None (or >= len(trajs)) plots all.
+    time : bool
+        If True, x-axis is time index [s] instead of SOC.
+    """
+    assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
+    fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    model.eval()
+
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+        vals_arr = np.array([tr['C'] for tr in trajs_sorted])
+        bar_name = 'C-rate [a.u.]'
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
+        vals_arr = np.array([tr['u_per'] for tr in trajs_sorted])
+        bar_name = r'$u$ $[\%]$'
+    norm = Normalize(vmin=vals_arr.min(), vmax=vals_arr.max())
+
+    # ── subsample evenly, always including the endpoints ──
+    if n_show is None or n_show >= len(trajs_sorted):
+        trajs_plot = trajs_sorted
+    else:
+        if not pulse:
+            idx = np.unique(np.linspace(0, len(trajs_sorted) - 1, n_show).round().astype(int))
+            trajs_plot = [trajs_sorted[i] for i in idx]
+        else:
+            idx = np.unique(np.linspace(2, len(trajs_sorted) - 1, n_show).round().astype(int))
+            trajs_plot = [trajs_sorted[i] for i in idx]
+
+    base = plt.cm.Blues_r
+    cmap_b = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    base = plt.cm.Reds_r
+    cmap_r = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    with torch.no_grad():
+        for tr in trajs_plot:
+            C_val     = float(tr['C'])
+            u_per_val = float(tr['u_per'])
+            out = predict_np(model, config, tr)
+            soc_np = out['soc']
+            x = np.arange(tr['T']) if time else soc_np
+
+            if predict == 'V':
+                y_true = tr['V'].numpy(); y_pred = out['V']
+                Ue = Ue_GP.soc_to_Ue(soc_np)
+                ylabel = r'$V$ [V]'
+                ax.plot(x, Ue, ':', color='black', lw=1.5)
+            elif predict == 'F':
+                y_true = tr['F'].numpy(); y_pred = out['Fr']
+                ylabel = r'$F$ [GN]'
+
+            bar_val = C_val if sort == 'C_rate' else u_per_val
+            ax.plot(x, y_true, '--', color=cmap_r(norm(bar_val)), lw=2)
+            ax.plot(x, y_pred, '-',  color=cmap_b(norm(bar_val)), lw=2)
+
+    if time:
+        ax.set_xlabel('Time [s]')
+    else:
+        ax.set_xlabel('State of Charge')
+        ax.invert_xaxis()
+    ax.set_ylabel(ylabel)
+
+    from matplotlib.lines import Line2D
+    handles = [
+        Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted'),
+    ]
+    if predict == 'V':
+        handles.append(Line2D([0], [0], color='black', lw=1.5, linestyle=':',
+                              label=r'$U_{eq}$'))
+    ax.legend(handles=handles)
+
+    fig.tight_layout()
+    sm_true = ScalarMappable(cmap=cmap_b, norm=norm)
+    fig.colorbar(sm_true, ax=ax, label=bar_name, pad=0.02)
+    return fig
+
 
 def input_map(model, pulse_trajs, rmse_scales):
 

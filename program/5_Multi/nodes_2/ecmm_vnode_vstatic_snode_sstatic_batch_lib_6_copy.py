@@ -1619,6 +1619,68 @@ def plot_param(model, trajs, param='R1'):
     fig.tight_layout()
     return fig
 
+def plot_param_pulse(model, trajs, param='R1'):
+    """
+    Plot R0/R1/C1/k/tau/s vs SOC for pulse trajectories.
+    Each timestep is a scatter point; color = per-trajectory C-rate.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+    trajs_sorted = sorted(trajs, key=lambda tr: float(tr['C']))
+    C_vals = np.array([float(tr['C']) for tr in trajs_sorted])
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
+
+    with torch.no_grad():
+        for tr in trajs_sorted:
+            soc = tr['soc']
+            # I, u may be tensors (pulses) or scalars (CC) – handle both
+            I = tr['I'] if torch.is_tensor(tr['I']) else torch.full_like(soc, float(tr['I']))
+            u = tr['u'] if torch.is_tensor(tr['u']) else torch.full_like(soc, float(tr['u']))
+            I_norm = I / model.I_ref
+            u_norm = u / model.u_ref
+
+            if param == 'R1':
+                y = model._R1(soc, I_norm, u_norm).numpy() * 1e3
+                ylabel = r'$R_1$ [m$\Omega$]'
+            elif param == 'C1':
+                y = model._C1(soc, I_norm, u_norm).numpy()
+                ylabel = r'$C_1$ [F]'
+            elif param == 'tau':
+                R1 = model._R1(soc, I_norm, u_norm).numpy()
+                C1 = model._C1(soc, I_norm, u_norm).numpy()
+                y = R1 * C1
+                ylabel = r'$\tau$ [s]'
+            elif param == 'R0':
+                y = model._R0(soc, I_norm, u_norm, I).numpy() * 1e3
+                ylabel = r'$R_0$ [m$\Omega$]'
+            elif param == 'k':
+                y = model.k_net(soc, I_norm, u_norm).numpy() * 1e2
+                ylabel = r'$k$ [GN/mm]'
+            elif param == 's':
+                y = model._s_diag(soc, I_norm, u_norm).numpy() / 100.0
+                ylabel = r'$s$ [mm]'
+            else:
+                raise ValueError(f"unknown param {param!r}")
+
+            # Optional: only plot during pulse-active phases
+            mask = I.abs().numpy() > 1e-6
+
+            ax.plot(soc.numpy()[mask], y[mask], '.',
+                    color=cmap(norm(float(tr['C']))),
+                    markersize=2, alpha=0.6)
+
+    ax.set_xlabel('State of Charge')
+    ax.set_ylabel(ylabel)
+    ax.invert_xaxis()
+    ax.ticklabel_format(useOffset=False, style='plain')
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
+    fig.tight_layout()
+    return fig
 
 def plot_force(model, trajs):
     """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
