@@ -581,7 +581,7 @@ class BatteryECMM(nn.Module):
         # soc[:, 0] = soc0_batch + dsoc[:,0] - dsoc[:,0] = soc0_batch
 
         dsoc = -I_seq / self.Q0
-        soc  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
+        soc_fix  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
 
         # Normalize to obtain latent inputs roughly in range [0,1]
         I_norm = I_seq / self.I_ref
@@ -590,23 +590,21 @@ class BatteryECMM(nn.Module):
         u_phys_exp = u_batch.unsqueeze(1).expand(B, T)
 
         # Parameters along the trajectory  (B, T)
-        R1 = self._R1(soc, I_norm, u_norm_exp)
-        R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
-
+                
         # ── F branch ──
         # k is always algebraic (no time integration).
         # s is algebraic (style_F='static', sNet) or integrated (style_F='dynamic', sdotNet).
         # The _s dispatcher returns a (B, T) tensor in both cases so the
         # F = -k·(u - s) computation below is shape-agnostic.
-        k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
-        s = self._s(soc, I_norm, u_norm_exp, B, T)           # (B, T)
+        k = self.k_net(soc_fix, I_norm, u_norm_exp)              # (B, T)
+        s = self._s(soc_fix, I_norm, u_norm_exp, B, T)           # (B, T)
 
         Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
 
 
         # ── V branch: static or dynamic U1 ──
-        with torch.no_grad():
-            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
+        # with torch.no_grad():
+        #     Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
 
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
@@ -616,19 +614,20 @@ class BatteryECMM(nn.Module):
             U1 = I_seq * R1
             V  = Ue - U1
         elif V_mode == 'dynamic':
-            C1 = self._C1(soc, I_norm, u_norm_exp)
             U1_steps = [torch.zeros(B)]
+            soc = [torch.ones(B)]
             dt = 1.0
             for n in range(T - 1):
-                soc_next = soc[:][n] + dsoc[:, n] * dt
+                soc_next = soc[n] + dsoc[:, n] * dt
                 soc.append(soc_next)
 
-                R1 = self._R1(soc[:][n], I_norm[:, n], u_norm_exp[:, n])
-                C1 = self._C1(soc[:][n], I_norm[:, n], u_norm_exp[:, n])
+                R1 = self._R1(soc[n], I_norm[:, n], u_norm_exp[:, n])
+                C1 = self._C1(soc[n], I_norm[:, n], u_norm_exp[:, n])
                 # Semi-implicit Euler — unconditionally stable
                 U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1) / (1.0 + dt / (R1 * C1))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
+            soc = torch.stack(soc, dim=1)
 
         # ── V branch: static or dynamic U1 ──
         with torch.no_grad():
@@ -1124,6 +1123,7 @@ def predict_np(model, config, traj, V_mode=None):
 
     k = model.k_net(soc_t, I_norm, u_norm).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np).numpy()            # (T,) — _R0 expects u_norm
+    R1 = model._R1(soc_t, I_norm, u_norm).numpy()            # (T,) — _R0 expects u_norm
 
     if V_mode in ('static', 'static_no_R0'):
         C1 = None       # C1 not used when V is algebraic — don't evaluate it
