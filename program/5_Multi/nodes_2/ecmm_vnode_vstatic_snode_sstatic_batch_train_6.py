@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_copy as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_copy import *
 
 from datetime import datetime
 
@@ -101,7 +101,7 @@ CONFIG = {
 }
 
 EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.8 # Out of 100% of the training data, how much to use (for quick tests)
+split_percentage = 0.1 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
 
@@ -333,7 +333,7 @@ plt.show()
 
 # plot_predictions auto-detects pulse trajectories (they carry 'I_seq');
 plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
-                 n_show=min(3, len(pulse_test)))
+                 n_show=min(3, len(pulse_test)), time =True)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),
                 bbox_inches='tight')

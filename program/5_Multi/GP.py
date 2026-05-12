@@ -6,7 +6,7 @@ import torch
 def get_data(file_name):
     df = pd.read_csv(
         f"../Multi_data/other/{file_name}.txt",
-        delim_whitespace=True,
+        sep=r"\s+",
         comment="%",
         header=None
     )
@@ -22,8 +22,10 @@ def GP_process():
     l = 0.1
     alpha = [l, sig]
     data = get_data('GP_run')
-    x_gp = data['soc'].values
-    y_gp = data['Ue'].values
+
+    x_gp = data['soc'].to_numpy().copy()
+    y_gp = data['Ue'].to_numpy().copy()
+
     x_gp[x_gp<0] = 0 
     kernel_GP = gp.kernels.RBF(length_scale=alpha[0]) * gp.kernels.ConstantKernel(constant_value=alpha[1])
     gp_model = gp.GaussianProcessRegressor(kernel=kernel_GP,optimizer=None,normalize_y=False)

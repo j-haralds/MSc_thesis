@@ -1922,10 +1922,31 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
         k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
-        s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+        # s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
 
-    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s}
-    return out[element] if element is not None else (R1, C1, R0, k, s)
+    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k} # , 's': s}
+    return out[element] if element is not None else (R1, C1, R0, k) # , s)
+
+
+def sdot_predict(model, c_rate, u_per, soc, s, L0=LIMON_CELL0, Q0=Q0):
+    '''
+    Predict ds/dt at any given (c_rate, u_per, soc, s) point using the ds_net.
+    '''
+    model.eval()
+    with torch.no_grad():
+        c_rate = torch.as_tensor(c_rate, dtype=torch.float32)
+        u_per  = torch.as_tensor(u_per,  dtype=torch.float32)
+        soc    = torch.as_tensor(soc,    dtype=torch.float32)
+        s      = torch.as_tensor(s,      dtype=torch.float32)
+
+        I_real = c_rate * Q0 / 3600.0          # actual current [A]
+        I_norm = I_real / model.I_ref          # what the networks were trained on
+        u_real = u_per * L0 / 100              # cell displacement %
+        u_norm = u_real / model.u_ref          # what the networks were trained on
+
+        sdot = model.ds_net(s, soc, I_norm, u_norm).numpy()  # [1e-5 m/s]
+
+    return sdot
 
 
 def data_param(model, trajs):
@@ -2392,3 +2413,153 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
             ax.text(center, -(0.1*np.max(means)), f'Predicted on {ts}', ha='center', va='top', fontweight='bold')
         #ax.set_yscale('log')
     return fig, axes
+
+
+
+# ══════════════════════════════════════════════════════════
+#  CONTOUR PLOTS OF NETWORK OUTPUTS  (I, d) at fixed SOC
+# ══════════════════════════════════════════════════════════
+
+def plot_element_contour(model, param='R1', soc_fix=0.5,
+                         c_rate_range=(0.5, 5.0), u_per_range=(0.0, 25.0),
+                         n_grid=60, overlay_trajs=None,
+                         cmap='viridis', ax=None,
+                         Q0=Q0, L0=LIMON_CELL0):
+    """
+    Filled-contour map of one ECM element as a function of the network's
+    two non-SOC inputs at a chosen SOC slice.
+
+        x-axis : u_per [%]          (displacement d, network input)
+        y-axis : C-rate [a.u.]      (current I, network input)
+        color  : element value      (R0, R1, C1, k, or s)
+
+    overlay_trajs : optional list of CC traj dicts; their (u_per, C) pairs
+                    are scattered on top to show data coverage vs the
+                    region where the surrogate is extrapolating.
+    """
+    c_axis = np.linspace(*c_rate_range, n_grid)
+    u_axis = np.linspace(*u_per_range, n_grid)
+    U_grid, C_grid = np.meshgrid(u_axis, c_axis)              # (nC, nU)
+    soc_grid = np.full_like(U_grid, soc_fix, dtype=np.float32)
+
+    Z = element_predict(model,
+                        C_grid.astype(np.float32),
+                        U_grid.astype(np.float32),
+                        soc_grid, element=param, Q0=Q0, L0=L0)
+
+    # Match the unit conventions used by plot_param so axis/legend labels
+    # are consistent across your figure set.
+    if   param == 'R0': Z = Z * 1e3;    clabel = r'$R_0$ [m$\Omega$]'
+    elif param == 'R1': Z = Z * 1e3;    clabel = r'$R_1$ [m$\Omega$]'
+    elif param == 'C1':                 clabel = r'$C_1$ [F]'
+    elif param == 'k':  Z = Z * 1e2;    clabel = r'$k$ [GN/mm]'
+    elif param == 's':  Z = Z / 100.0;  clabel = r'$s$ [mm]'
+    else:
+        raise ValueError(f"param must be 'R0','R1','C1','k','s', got {param!r}")
+
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=(6, 4.5), constrained_layout=True)
+    else:
+        fig = ax.figure
+
+    cf = ax.contourf(U_grid, C_grid, Z, levels=20, cmap=cmap)
+    cs = ax.contour (U_grid, C_grid, Z, levels=10, colors='k',
+                     linewidths=0.4, alpha=0.5)
+    ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
+
+    if overlay_trajs is not None:
+        ups = np.array([tr['u_per'] for tr in overlay_trajs])
+        crs = np.array([tr['C']     for tr in overlay_trajs])
+        ax.scatter(ups, crs, facecolors='none', edgecolors='white',
+                   s=30, lw=1.2, zorder=5)
+
+    ax.set_xlabel(r'$u$  [%]   (displacement $d$)')
+    ax.set_ylabel(r'C-rate [a.u.]   (current $I$)')
+    ax.set_title(f'{clabel}   |   SOC = {soc_fix:.2f}')
+    fig.colorbar(cf, ax=ax, label=clabel)
+    return fig, ax
+
+
+def plot_all_elements_contour(model, soc_fix=0.5,
+                              c_rate_range=(0.5, 5.0),
+                              u_per_range=(0.0, 25.0),
+                              n_grid=60, overlay_trajs=None,
+                              params=('R0','R1','C1','k','s'),
+                              cmap='viridis'):
+    """One contour panel per parameter at a single SOC slice."""
+    ncols = 3
+    nrows = int(np.ceil(len(params) / ncols))
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(5.2 * ncols, 4.2 * nrows),
+                             constrained_layout=True)
+    axes = np.atleast_1d(axes).ravel()
+    for ax, p in zip(axes, params):
+        plot_element_contour(model, param=p, soc_fix=soc_fix,
+                             c_rate_range=c_rate_range,
+                             u_per_range=u_per_range, n_grid=n_grid,
+                             overlay_trajs=overlay_trajs,
+                             cmap=cmap, ax=ax)
+    for ax in axes[len(params):]:
+        ax.set_visible(False)
+    fig.suptitle(f'ECM parameter contours @ SOC = {soc_fix:.2f}', fontsize=13)
+    return fig
+
+
+def plot_element_soc_grid(model, param='R1',
+                          soc_values=(0.2, 0.5, 0.8),
+                          c_rate_range=(0.5, 5.0),
+                          u_per_range=(0.0, 25.0),
+                          n_grid=60, overlay_trajs=None,
+                          cmap='viridis', share_color=True):
+    """
+    One parameter across multiple SOC slices, side-by-side.
+    share_color=True uses a common vmin/vmax across slices so absolute
+    magnitudes are directly comparable -- this is what makes SOC drift
+    visually obvious.
+    """
+    ncols = len(soc_values)
+    fig, axes = plt.subplots(1, ncols, figsize=(4.6 * ncols, 4.4),
+                             constrained_layout=True, sharey=True)
+    axes = np.atleast_1d(axes)
+
+    Zs = []
+    for soc_fix in soc_values:
+        c_axis = np.linspace(*c_rate_range, n_grid)
+        u_axis = np.linspace(*u_per_range, n_grid)
+        U_grid, C_grid = np.meshgrid(u_axis, c_axis)
+        soc_grid = np.full_like(U_grid, soc_fix, dtype=np.float32)
+        Z = element_predict(model, C_grid.astype(np.float32),
+                            U_grid.astype(np.float32),
+                            soc_grid, element=param)
+        if   param in ('R0', 'R1'): Z = Z * 1e3
+        elif param == 'k':          Z = Z * 1e2
+        elif param == 's':          Z = Z / 100.0
+        Zs.append((Z, U_grid, C_grid))
+
+    vmin = min(z[0].min() for z in Zs) if share_color else None
+    vmax = max(z[0].max() for z in Zs) if share_color else None
+    levels = np.linspace(vmin, vmax, 21) if share_color else 20
+
+    clabel = {'R0': r'$R_0$ [m$\Omega$]', 'R1': r'$R_1$ [m$\Omega$]',
+              'C1': r'$C_1$ [F]',         'k':  r'$k$ [GN/mm]',
+              's':  r'$s$ [mm]'}[param]
+
+    cf = None
+    for ax, (Z, U_grid, C_grid), soc_fix in zip(axes, Zs, soc_values):
+        cf = ax.contourf(U_grid, C_grid, Z, levels=levels, cmap=cmap,
+                         vmin=vmin, vmax=vmax)
+        cs = ax.contour (U_grid, C_grid, Z, levels=10, colors='k',
+                         linewidths=0.4, alpha=0.5)
+        ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
+        if overlay_trajs is not None:
+            ups = np.array([tr['u_per'] for tr in overlay_trajs])
+            crs = np.array([tr['C']     for tr in overlay_trajs])
+            ax.scatter(ups, crs, facecolors='none', edgecolors='white',
+                       s=25, lw=1.0, zorder=5)
+        ax.set_xlabel(r'$u$ [%]')
+        ax.set_title(f'SOC = {soc_fix:.2f}')
+    axes[0].set_ylabel('C-rate [a.u.]')
+    fig.colorbar(cf, ax=list(axes), label=clabel, shrink=0.85)
+    fig.suptitle(f'{clabel} across SOC slices', fontsize=13)
+    return fig
