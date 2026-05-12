@@ -836,6 +836,7 @@ def prepare_data(data):
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
             eta=torch.tensor(grp['eta'].values, dtype=torch.float32),
             t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
+            Ue = torch.tensor(grp['Ue'].values, dtype=torch.float32),
         ))
     return trajs
 
@@ -855,6 +856,7 @@ def prepare_pulse_data(pulse_raw):
             soc   = torch.tensor(grp['soc'].values, dtype=torch.float32),
             eta   = torch.tensor(grp['eta'].values, dtype=torch.float32),
             C  = float(grp['C'].iloc[0]),
+            Ue = torch.tensor(grp['Ue'].values, dtype=torch.float32),
         ))
     return pulse_trajs
 
@@ -1929,8 +1931,10 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
 
         I_real = c_rate * Q0 / 3600.0          # actual current [A]
         I_norm = I_real / model.I_ref          # what the networks were trained on
-        u_real = u_per * L0 / 100                   # cell displacement %
+        u_real = -u_per * L0 / 100                   # cell displacement %
         u_norm = u_real / model.u_ref          # what the networks were trained on
+        #print(f'HÄR {u_norm}, {u_real}')
+        #print(f'U-norm = {u_norm}, U-real = {u_real}')
 
         R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
@@ -1976,7 +1980,7 @@ def sdot_predict(model, c_rate, u_per, soc, s, L0=LIMON_CELL0, Q0=Q0):
 
         I_real = c_rate * Q0 / 3600.0          # actual current [A]
         I_norm = I_real / model.I_ref          # what the networks were trained on
-        u_real = u_per * L0 / 100              # cell displacement %
+        u_real = -u_per * L0 / 100              # cell displacement %
         u_norm = u_real / model.u_ref          # what the networks were trained on
 
         sdot = model.ds_net(s, soc, I_norm, u_norm).numpy()  # [1e-5 m/s]
