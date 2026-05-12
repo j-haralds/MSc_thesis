@@ -1615,6 +1615,7 @@ def plot_param(model, trajs, param='R1'):
     with torch.no_grad():
         for tr in trajs_sorted:
             soc    = tr['soc']
+            T      = tr['T']
             I_val  = float(tr['I'])
             u_val  = float(tr['u'])
             u_per_val = float(tr['u_per'])
@@ -1657,11 +1658,24 @@ def plot_param(model, trajs, param='R1'):
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
 
             
-            elif param == 's':
-                # _s_diag returns s [1e-5 m] in static mode and ds/dt at s=0 in
-                # dynamic mode (preserving prior lib_4 plotting convention).
-                y = model._s_diag(soc, I_norm, u_norm).numpy() / 100.0    # 1e-5 m – mm
-                ylabel = r'$s$ [mm]'
+            elif param == 's' or param == 'sdot':
+                s_steps = [torch.zeros((), dtype=soc.dtype, device=soc.device)]                     # (B,) initial step
+                ds_steps = []
+                dt = 1.0
+                for n in range(T - 1):
+                    ds = model.ds_net(s_steps[n], soc[n], I_norm[n], u_norm[n])  # (B,)
+                    ds_steps.append(ds)
+                    s_next = s_steps[n] + ds.squeeze(-1) * dt
+                    s_steps.append(s_next)
+                # ds at the final step, so len(ds_steps) == T
+                ds_steps.append(model.ds_net(s_steps[-1], soc[-1], I_norm[-1], u_norm[-1]))
+
+                if param == 's':
+                    y = torch.stack(s_steps).numpy() * 10    # 1e-5 m – micro m
+                    ylabel = r'$s$ [$\mu$m]'
+                elif param == 'sdot':
+                    y = torch.stack(ds_steps).numpy() * 10    # 1e-5 m/s – micro m/s
+                    ylabel = r'$\dot{s}$ [$\mu$m/s]'
 
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
@@ -1922,10 +1936,31 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
         k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
-        # s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+        
+        sF = _style_F(model.config)
+        if sF == 'static':
+            s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+        else:
+            # s rollout up to soc (no list format)
+            dsoc = - c_rate / 3600.0  # dt = 1. SOC change per second at this C-rate
+            soc_start = 1
+            T = (soc_start - soc) / dsoc  # how many seconds until we reach the target SOC at this C-rate
+            N_max = int(T.max().item()) # if T.numel() else 0
 
-    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k} # , 's': s}
-    return out[element] if element is not None else (R1, C1, R0, k) # , s)
+            s = torch.zeros_like(soc)                     # (B,) initial step
+            soc_n = torch.full_like(soc, soc_start)
+            dt = 1.0
+
+            for _ in range(N_max):
+                # print(s_steps[n], soc[n], I_norm[n], u_norm[n])
+                ds = model.ds_net(s, soc_n, I_norm, u_norm).unsqueeze(-1)  # (B, 1)
+                s = s + ds * dt
+                soc_n = (soc_n - dsoc).clamp(min=soc)  # don't step past the target SOC
+
+            sdot = model.ds_net(s, soc, I_norm, u_norm).squeeze(-1)
+
+    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s.numpy(), 'sdot': sdot.numpy()}
+    return out[element] if element is not None else (R1, C1, R0, k, s, sdot)
 
 
 def sdot_predict(model, c_rate, u_per, soc, s, L0=LIMON_CELL0, Q0=Q0):
@@ -1978,7 +2013,6 @@ def data_param(model, trajs):
             # s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
 
             # List for dynamic s rollout
-            s_ref = torch.zeros_like(soc)
             s_steps = [torch.zeros((), dtype=soc.dtype, device=soc.device)]                     # (B,) initial step
             ds_steps = []
             dt = 1.0
@@ -2507,34 +2541,47 @@ def plot_all_elements_contour(model, soc_fix=0.5,
 
 
 def plot_element_soc_3d(model, param='R1',
-                        soc_values=(0.1, 0.3, 0.5, 0.7, 0.9),
-                        c_rate_range=(0.5, 5.0),
-                        u_per_range=(0.0, 25.0),
-                        n_grid=60, overlay_trajs=None,
-                        cmap='viridis', alpha=0.75,
-                        elev=22, azim=-58):
+                               soc_values=(0.1, 0.3, 0.5, 0.7, 0.9),
+                               c_rate_range=(0.5, 5.0),
+                               u_per_range=(0.0, 25.0),
+                               n_grid=60,
+                               overlay_trajs=None,
+                               cmap='viridis',
+                               style='wireframe',
+                               stride=6,
+                               alpha=0.55,
+                               elev=22, azim=-58):
     """
-    Stacked-slab 3D view of one ECM element across SOC.
+    3D view where the element value is the z-axis (literal surface height)
+    and SOC is encoded by color.
 
-    Axes:  x = u_per [%]   (displacement d)
-           y = C-rate [a.u.]
-           z = SOC
-    color = element value (shared colorbar across slabs).
+    Axes:   x = u_per [%]      (displacement d)
+            y = C-rate [a.u.]  (current I)
+            z = element value
+    color = SOC (continuous viridis-style colormap)
 
-    Each SOC slice is rendered as a filled contour at z = soc_fix; all
-    slabs share one (vmin, vmax) so absolute magnitudes are directly
-    comparable -- SOC dependence is visible as the colormap shifting
-    along z.
+    style : 'wireframe' (default) -- one colored mesh per SOC; reads
+            cleanly with many slices.
+            'surface'              -- filled semitransparent surfaces;
+            nicer with 2-3 slices, but matplotlib's lack of cross-surface
+            depth sorting can produce z-order artifacts when surfaces
+            intersect.
     """
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers '3d')
 
-    # Sort ascending so painter's algorithm renders back-to-front cleanly
-    # at the default view angle.
     soc_values = sorted(float(s) for s in soc_values)
+    norm = Normalize(vmin=min(soc_values), vmax=max(soc_values))
+    cmap_obj = plt.get_cmap(cmap)
 
     c_axis = np.linspace(*c_rate_range, n_grid)
     u_axis = np.linspace(*u_per_range, n_grid)
-    U_grid, C_grid = np.meshgrid(u_axis, c_axis)              # (nC, nU)
+    U_grid, C_grid = np.meshgrid(u_axis, c_axis)
+
+    def _scale(Z):
+        if   param in ('R0', 'R1'): return Z * 1e3
+        elif param == 'k':          return Z * 1e2
+        elif param == 's':          return Z / 100.0
+        return Z
 
     Zs = []
     for soc_fix in soc_values:
@@ -2543,51 +2590,53 @@ def plot_element_soc_3d(model, param='R1',
                             C_grid.astype(np.float32),
                             U_grid.astype(np.float32),
                             soc_grid, element=param)
-        if   param in ('R0', 'R1'): Z = Z * 1e3
-        elif param == 'k':          Z = Z * 1e2
-        elif param == 's':          Z = Z / 100.0
-        Zs.append(Z)
+        Zs.append(_scale(Z))
 
-    vmin = float(min(Z.min() for Z in Zs))
-    vmax = float(max(Z.max() for Z in Zs))
-    levels = np.linspace(vmin, vmax, 21)
-
-    clabel = {'R0': r'$R_0$ [m$\Omega$]', 'R1': r'$R_1$ [m$\Omega$]',
+    zlabel = {'R0': r'$R_0$ [m$\Omega$]', 'R1': r'$R_1$ [m$\Omega$]',
               'C1': r'$C_1$ [F]',         'k':  r'$k$ [GN/mm]',
               's':  r'$s$ [mm]'}[param]
 
-    fig = plt.figure(figsize=(8.2, 6.5), constrained_layout=True)
+    fig = plt.figure(figsize=(8.4, 6.6), constrained_layout=True)
     ax  = fig.add_subplot(projection='3d')
 
-    cf = None
     for Z, soc_fix in zip(Zs, soc_values):
-        cf = ax.contourf(U_grid, C_grid, Z,
-                         levels=levels, cmap=cmap,
-                         vmin=vmin, vmax=vmax,
-                         zdir='z', offset=soc_fix,
-                         alpha=alpha)
+        c = cmap_obj(norm(soc_fix))
+        if style == 'wireframe':
+            ax.plot_wireframe(U_grid, C_grid, Z,
+                              color=c, lw=0.8,
+                              rstride=stride, cstride=stride)
+        elif style == 'surface':
+            ax.plot_surface(U_grid, C_grid, Z,
+                            color=c, shade=False,
+                            alpha=alpha, edgecolor='none',
+                            rstride=1, cstride=1)
+        else:
+            raise ValueError("style must be 'wireframe' or 'surface'")
 
-    # Data coverage: each CC trajectory holds (u_per, C) fixed and sweeps
-    # a SOC range -> draw a vertical line in 3D over that range.
+    # Overlay: each CC traj has fixed (u_per, C) and sweeps SOC; evaluate
+    # the element along that sweep and draw a 3D curve through the stack.
+    # The line itself is colored by SOC so it ties visually to the surfaces.
     if overlay_trajs is not None:
         for tr in overlay_trajs:
+            soc_tr = tr['soc'].numpy().astype(np.float32)
             u_p = float(tr['u_per']); c_v = float(tr['C'])
-            soc_lo = float(tr['soc'].min())
-            soc_hi = float(tr['soc'].max())
-            ax.plot([u_p, u_p], [c_v, c_v], [soc_lo, soc_hi],
-                    color='w', lw=1.0, alpha=0.85, zorder=10)
-            ax.scatter([u_p, u_p], [c_v, c_v], [soc_lo, soc_hi],
-                       facecolors='none', edgecolors='white',
-                       s=18, lw=0.9, zorder=11)
+            Z_tr = _scale(element_predict(
+                model,
+                np.full_like(soc_tr, c_v, dtype=np.float32),
+                np.full_like(soc_tr, u_p, dtype=np.float32),
+                soc_tr, element=param))
+            # per-segment coloring so the trajectory line itself shows SOC
+            for i in range(len(soc_tr) - 1):
+                ax.plot([u_p, u_p], [c_v, c_v], [Z_tr[i], Z_tr[i+1]],
+                        color=cmap_obj(norm(soc_tr[i])),
+                        lw=1.5, alpha=0.95)
 
     ax.set_xlabel(r'$u$ [%]')
     ax.set_ylabel('C-rate [a.u.]')
-    ax.set_zlabel('SOC')
-    ax.set_xlim(u_per_range)
-    ax.set_ylim(c_rate_range)
-    ax.set_zlim(min(soc_values), max(soc_values))
+    ax.set_zlabel(zlabel)
     ax.view_init(elev=elev, azim=azim)
-    ax.set_title(f'{clabel}  —  network response across (I, d, SOC)')
+    ax.set_title(f'{zlabel}  —  height = value, color = SOC')
 
-    fig.colorbar(cf, ax=ax, label=clabel, shrink=0.7, pad=0.1)
+    sm = ScalarMappable(cmap=cmap_obj, norm=norm); sm.set_array([])
+    fig.colorbar(sm, ax=ax, label='SOC', shrink=0.7, pad=0.1)
     return fig

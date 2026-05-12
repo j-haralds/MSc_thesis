@@ -101,7 +101,7 @@ CONFIG = {
 }
 
 EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.1 # Out of 100% of the training data, how much to use (for quick tests)
+split_percentage = 0.02 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
 

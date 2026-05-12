@@ -246,11 +246,17 @@ def C1_nn(c_rate, u_per, soc):
 def k_nn(c_rate, u_per, soc):
     return element_predict(bat_model, c_rate, u_per, soc, element='k')
 
+def s_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='s')
+
+def sdot_nn(c_rate, u_per, soc):
+    return element_predict(bat_model, c_rate, u_per, soc, element='sdot')
+
 for c_rate in [0.5, 1, 2, 3, 4, 5]:
-    plt.plot(np.linspace(1, 0, 1000), C1_nn(c_rate, 10, np.linspace(1, 0, 1000)), label=f'R0 ({c_rate} C)')
+    plt.plot(np.linspace(1, 0, 1000), sdot_nn(c_rate, 10, np.linspace(1, 0, 1000)), label=f'sdot ({c_rate} C)')
 plt.gca().invert_xaxis()
 
-plot_param(bat_model, test_trajs, param='C1')
+# plot_param(bat_model, test_trajs, param='C1')
 plt.show()
 
 
@@ -326,22 +332,25 @@ def plot_data_scarcity_loss(names, trajs):
         nrmsesV.append(nrmseV)
         nrmsesF.append(nrmseF)
 
-    plt.figure(figsize=(6,4))
-    plt.plot([20, 40, 80, 100], nrmsesV, label='Voltage nRMSE', marker='o')
+    fig = plt.figure(figsize=(6,4))
+    plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesV, label='Voltage NRMSE', marker='o', color = plt.cm.Blues(0.95))
+    plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesF, label='Force NRMSE', marker='s', color = plt.cm.Reds(0.9))
 
-    plt.xlabel('Percentage of training data [%]')
-    plt.ylabel('RMSE')
+    plt.xlabel(r'Percentage of training data [\%]')
+    plt.ylabel('NRMSE')
     plt.legend()
     plt.grid(True)
     return fig
 
-names = ['0512_1459_b4_combo_0.1__combo_V-dynamic_F-dynamic_R0c_C1c_94.18min_16h_2500eps.pt',
+names = ['0512_1640_b4_combo_0.02__combo_V-dynamic_F-dynamic_R0c_C1c_27.13min_16h_2500eps.pt',
+         '0512_1459_b4_combo_0.1__combo_V-dynamic_F-dynamic_R0c_C1c_94.18min_16h_2500eps.pt',
          '0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
          '0511_1249_b4_combo_0.4__combo_V-dynamic_F-dynamic_280.31min_16h_2500eps.pt',
          '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
          '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
          ]
 plot_data_scarcity_loss(names, test_trajs)
+plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop.pdf'), bbox_inches='tight')
 plt.show()
 ##
 
@@ -362,9 +371,7 @@ fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
                                 overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_all_soc05_{SAVE_NAME}.png'))
 
-fig = plot_element_soc_3d(bat_model_full, param='R1',
-                            soc_values=(0.1, 0.9, 5),
-                            overlay_trajs=test_trajs)
+# fig = plot_element_soc_3d(bat_model_full, param='R1', soc_values=(0.1, 0.5,  0.9), overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
 
 
@@ -379,6 +386,8 @@ fig = plot_element_soc_3d(bat_model_full, param='R1',
 import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
 from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+
+# dataparammasss = data_param(bat_model_full, test_trajs)
 # ========================================================================
 
 
@@ -413,8 +422,8 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
                         'Dynamic': bat_model_dynamic_DC},
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
-ECM_fix = True, metric_names = ['Force'])
-# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
+ECM_fix = True, metric_names = ['Voltage'])
+plt.savefig(os.path.join(FIGS_DIR, f'Vnrmse_0508_2228dyna_0508_1444stat_CCtrained.pdf'), bbox_inches='tight')
 plt.show()
 # %%
 # USE FOR REPORT. STATIC TRAINED ON CC
@@ -475,13 +484,13 @@ plt.show()
 
 # %% USE FOR REPORT
 
-# MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 # MODEL_NAME_LOW = '0510_2034_b4_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
 
 # bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 # bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
 
-# bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 
 # plot_predicts_report(bat_model_full, config_full, test_trajs, predict='V', sort='C_rate', n_show=5, time=True)
 # # plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
@@ -508,6 +517,10 @@ plt.show()
 # # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 # plot_param(bat_model_full, test_trajs, param='tau')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plot_param(bat_model_full, test_trajs, param='s')
+# plt.savefig(os.path.join(FIGS_DIR, f's_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plot_param(bat_model_full, test_trajs, param='sdot')
+# plt.savefig(os.path.join(FIGS_DIR, f'sdot_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
  
 # plot_param_pulse(bat_model_full, pulse_test, param='R0', n_show=4)
 # # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
@@ -519,7 +532,7 @@ plt.show()
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
 
-plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
+# plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
 # plt.savefig(os.path.join(FIGS_DIR, f'F_CC_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
 plt.show()
