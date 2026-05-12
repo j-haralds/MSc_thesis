@@ -264,9 +264,9 @@ plt.show()
 # PLOT PREDICTIONS 
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_lib_6 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_lib_6 import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 
 plot_report(bat_model, CONFIG, test_trajs, title='Pulse test: ',
@@ -320,6 +320,11 @@ plt.show()
 
 
 # %%
+
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+
 def plot_data_scarcity_loss(names, trajs):
     nrmsesV = []
     nrmsesF = []
@@ -328,18 +333,18 @@ def plot_data_scarcity_loss(names, trajs):
     for name in names:
         model, ckpt = load_nn_model(name, I_ref=I_MAX)
         rmseV, rmseF, _, _ = rmse_pulse(model, trajs)
-        rmseV_fix = rmse_fix(trajs, rmse_scale).mean()
+        #rmseV_fix = rmse_fix(trajs, rmse_scale).mean()
         nrmseV = rmseV.mean() / RMSE_scales['V']
         nrmseF = rmseF.mean() / RMSE_scales['F']
         print(f"{name} | Pulse test nRMSE (V): {nrmseV:.4f} | nRMSE (F): {nrmseF:.4f}")
         nrmsesV.append(nrmseV)
         nrmsesF.append(nrmseF)
-        nrmseV_fix.append(rmseV_fix)
+        #nrmseV_fix.append(rmseV_fix)
 
     fig = plt.figure(figsize=(6,4))
     plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesV, label='Voltage NRMSE', marker='o', color = plt.cm.Blues(0.95))
     plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesF, label='Force NRMSE', marker='s', color = plt.cm.Reds(0.9))
-    plt.semilogy(nrmseV_fix, label='Voltage nRMSE (resistance-only)', color = 'gray', linestyle='--')
+    plt.semilogy(nrmseV_fix, label='Voltage NRMSE (fixed ECM)', color = 'gray', linestyle='--')
 
     plt.xlabel(r'Percentage of training data [\%]')
     plt.ylabel('NRMSE')

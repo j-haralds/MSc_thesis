@@ -1941,30 +1941,30 @@ def element_predict(model, c_rate, u_per, soc, element=None, Q0=Q0, L0=LIMON_CEL
         R0 = model._R0(soc, I_norm, u_norm, I_real).numpy()      # Ohm   (I_seq = real I, not normalised)
         k  = model.k_net(soc, I_norm, u_norm).numpy()                         # GN/1e-5m
         
-        sF = _style_F(model.config)
-        if sF == 'static':
-            s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
-        else:
-            # s rollout up to soc (no list format)
-            dsoc = - c_rate / 3600.0  # dt = 1. SOC change per second at this C-rate
-            soc_start = 1
-            T = (soc_start - soc) / dsoc  # how many seconds until we reach the target SOC at this C-rate
-            N_max = int(T.max().item()) # if T.numel() else 0
+        # sF = _style_F(model.config)
+        # if sF == 'static':
+        #     s = model._s_diag(soc, I_norm, u_norm).numpy()           # [1e-5 m] (or ds/dt at s=0 in dynamic mode)
+        # else:
+        #     # s rollout up to soc (no list format)
+        #     dsoc = - c_rate / 3600.0  # dt = 1. SOC change per second at this C-rate
+        #     soc_start = 1
+        #     T = (soc_start - soc) / dsoc  # how many seconds until we reach the target SOC at this C-rate
+        #     N_max = int(T.max().item()) # if T.numel() else 0
 
-            s = torch.zeros_like(soc)                     # (B,) initial step
-            soc_n = torch.full_like(soc, soc_start)
-            dt = 1.0
+        #     s = torch.zeros_like(soc)                     # (B,) initial step
+        #     soc_n = torch.full_like(soc, soc_start)
+        #     dt = 1.0
 
-            for _ in range(N_max):
-                # print(s_steps[n], soc[n], I_norm[n], u_norm[n])
-                ds = model.ds_net(s, soc_n, I_norm, u_norm).unsqueeze(-1)  # (B, 1)
-                s = s + ds * dt
-                soc_n = (soc_n - dsoc).clamp(min=soc)  # don't step past the target SOC
+        #     for _ in range(N_max):
+        #         # print(s_steps[n], soc[n], I_norm[n], u_norm[n])
+        #         ds = model.ds_net(s, soc_n, I_norm, u_norm).unsqueeze(-1)  # (B, 1)
+        #         s = s + ds * dt
+        #         soc_n = (soc_n - dsoc).clamp(min=soc)  # don't step past the target SOC
 
-            sdot = model.ds_net(s, soc, I_norm, u_norm).squeeze(-1)
+        #     sdot = model.ds_net(s, soc, I_norm, u_norm).squeeze(-1)
 
-    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k, 's': s.numpy(), 'sdot': sdot.numpy()}
-    return out[element] if element is not None else (R1, C1, R0, k, s, sdot)
+    out = {'R1': R1, 'C1': C1, 'R0': R0, 'k': k}# , 's': s.numpy(), 'sdot': sdot.numpy()}
+    return out[element] if element is not None else (R1, C1, R0, k)#, s, sdot)
 
 
 def sdot_predict(model, c_rate, u_per, soc, s, L0=LIMON_CELL0, Q0=Q0):
