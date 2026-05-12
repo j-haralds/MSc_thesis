@@ -620,13 +620,22 @@ class BatteryECMM(nn.Module):
             U1_steps = [torch.zeros(B)]
             dt = 1.0
             for n in range(T - 1):
-                C1_n = C1[:, n] if C1.ndim == 2 else C1
+                soc_next = soc[:][n] + dsoc[:, n] * dt
+                soc.append(soc_next)
+
+                R1 = self._R1(soc[:][n], I_norm[:, n], u_norm_exp[:, n])
+                C1 = self._C1(soc[:][n], I_norm[:, n], u_norm_exp[:, n])
                 # Semi-implicit Euler — unconditionally stable
-                U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1_n) / (1.0 + dt / (R1[:, n] * C1_n))
+                U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1) / (1.0 + dt / (R1 * C1))
                 U1_steps.append(U1_next)
             U1 = torch.stack(U1_steps, dim=1)
 
-            V  = Ue - I_seq * R0 - U1
+        # ── V branch: static or dynamic U1 ──
+        with torch.no_grad():
+            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
+
+        R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
+        V  = Ue - I_seq * R0 - U1
 
         # –––––––––––––––––––––––––––––––––
 
