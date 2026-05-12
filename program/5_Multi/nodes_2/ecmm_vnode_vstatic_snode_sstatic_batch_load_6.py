@@ -403,7 +403,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
                         'Dynamic': bat_model_dynamic_DC},
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
-ECM_fix = True, metric_names = ['Force'])
+ECM_fix = True, metric_names = ['Voltage'])
 # plt.savefig(os.path.join(FIGS_DIR, f'0508_2228dyna_0508_1444stat_CCtrained_nrmse_comparison.pdf'), bbox_inches='tight')
 plt.show()
 # %%

@@ -144,42 +144,6 @@ def parity_plot(element,model,X_test,Y_test,X_train,Y_train, colors = COLORS,dat
     plt.show()
 
 
-
-def plot_trajs_SOC(data, models, varis, X_train, Y_train, X_test,Y_test, ind = 0, test = False, colors = COLORS):
-    f,ax = plt.subplots(1,3, figsize=(3 * len(varis),5 * len(varis)/5))
-    
-    if test:
-        tr = prepare_data(data, index = ind, test=test)
-    X = tr[['C', 'u_per', 'soc']].values
-    
-    for i, var in enumerate(varis):
-        Y_pred = models[var].predict(X)
-    
-    
-    
-    
-    
-    
-    Yk_pred =  model_0.predict(X) * REF_VALUES['k'] * 100
-    YR1_pred = modelR.predict(X) * REF_VALUES['R1'] * 1000
-    YC_pred =  modelC.predict(X) * REF_VALUES['C1'] / 1000
-    f,ax = plt.subplots(1,3, figsize=(15,5))
-    ax[0].plot(tr['soc'], tr['k'] * 100, label=r'NN $k$',  color=colors[1], linestyle='--')
-    ax[0].plot(tr['soc'], Yk_pred, label=r'$k = f(i,d,\mathrm{SOC})$',color=colors[0])
-    ax[1].plot(tr['soc'], tr['R1'] * 1000, label=r'NN $R_1$',  color=colors[1], linestyle='--')
-    ax[1].plot(tr['soc'], YR1_pred, label=r'$R_1 = f(i,d,\mathrm{SOC})$',color=colors[0])
-    ax[2].plot(tr['soc'], tr['C1'] / 1000, label=r'NN $C_1$', color=colors[1], linestyle='--')
-    ax[2].plot(tr['soc'], YC_pred, label=r'$C_1 = f(i,d,\mathrm{SOC})$', color=colors[0])
-    for a in ax:
-        a.set_xlabel('State of Charge [a.u.]')
-        a.legend()
-        a.invert_xaxis()
-    ax[0].set_ylabel(r'$k$ [GN/mm]');ax[2].set_ylabel(r'$C_1$ [kF]');ax[1].set_ylabel(r'$R_1$ [m$\Omega$]') 
-
-    plt.tight_layout()
-    plt.savefig('symbolic_traj_test.pdf')
-
-
 # =================================================
 # SAVE MODELS
 # =================================================

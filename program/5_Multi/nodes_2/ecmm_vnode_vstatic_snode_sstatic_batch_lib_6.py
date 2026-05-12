@@ -820,6 +820,7 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
 #  DATA FUNCTIONS
 # ══════════════════════════════════════════════════════════════
 
+
 def prepare_data(data):
     trajs = []
     for _, grp in data.groupby('trajectory', sort=False):
@@ -834,6 +835,7 @@ def prepare_data(data):
             F=torch.tensor(grp['F'].values, dtype=torch.float32),
             soc=torch.tensor(grp['soc'].values, dtype=torch.float32),
             eta=torch.tensor(grp['eta'].values, dtype=torch.float32),
+            t     = torch.tensor(grp['t'].values,   dtype=torch.float32),
         ))
     return trajs
 
@@ -855,6 +857,7 @@ def prepare_pulse_data(pulse_raw):
             C  = float(grp['C'].iloc[0]),
         ))
     return pulse_trajs
+
 
 
 # ══════════════════════════════════════════════════════════
@@ -2293,6 +2296,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
                     metric_colors=None,
                     figsize_per_metric=(8, 4),
                     group_gap=0.5, bar_width=0.7, ECM_fix=False):
+    from matplotlib.transforms import blended_transform_factory
     """
     Bar plot of NRMSE per model, grouped by test set, one subplot per metric.
 
@@ -2378,14 +2382,13 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
         ax.set_xticks(positions)
         ax.set_xticklabels(ticks)
         ax.set_title(f'{metric} NRMSE')
+        #ax.set_yscale('log')
+        ax.grid(True, which='both', axis='y', linestyle='--', alpha=0.7)
         if j == 0:
             ax.set_ylabel('NRMSE')
         ax.set_ylim(0, means.max() * 1.05)
-
-        trans = blended_transform_factory(ax.transData, ax.transAxes)
         for g, ts in enumerate(test_sets):
             center = g * (n_models + group_gap) + (n_models - 1) / 2
-            ax.text(center, -0.15, f'Predicted on {ts}',
-                    transform=trans, ha='center', va='top', fontweight='bold')
+            ax.text(center, -(0.1*np.max(means)), f'Predicted on {ts}', ha='center', va='top', fontweight='bold')
         #ax.set_yscale('log')
     return fig, axes
