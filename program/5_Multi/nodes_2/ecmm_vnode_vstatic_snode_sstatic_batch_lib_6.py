@@ -2391,6 +2391,188 @@ def input_map(model, pulse_trajs, rmse_scales):
     plt.tight_layout()
     plt.show()
 
+def merge_RMSE(model, trajs,rmse_scales):
+    rmse_V, rmse_F, C,d = rmse_pulse(model, trajs)
+    rmse_V = np.array(rmse_V) / rmse_scales['V']
+    rmse_F = np.array(rmse_F) /  rmse_scales['F']
+
+    rmse_NN = np.vstack((rmse_V, rmse_F)).T
+    obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    return obs_inpt, rmse_NN
+
+
+def custom_cmap():
+    # import color pallet form seaborn
+    import seaborn as sns
+    
+    base = plt.cm.Blues_r
+    bone_cut = LinearSegmentedColormap.from_list(
+        "bone_custom", base(np.linspace(0, 0.75, 256)))
+    cmap = bone_cut
+    cmap = 'copper'#sns.color_palette("copper", as_cmap=True)
+    cm = sns.color_palette("flare_r", as_cmap=True)
+    return cmap, cm
+
+def input_map_comparison(model_low,model_high, trajs, rmse_scales):
+    import matplotlib.colors as colors
+    pulse_trajs = []
+    CC_trajs = []
+    
+    for tr in trajs:
+        #print(tr['V'])
+        if tr['I_seq'][0] != tr['I_seq'][1]:
+            pulse_trajs.append(tr)
+        else:
+            CC_trajs.append(tr)
+    
+
+    f, ax = plt.subplots(2, 2, figsize=(10, 7), sharex='col', sharey='col')
+    high_domain = [[0.5,5], [0,30]]
+    low_domain =  [[0.5,3.5], [0,20]]
+
+    # plot lines to show the domain boundaries of the two models, and shaded area for the low-domain region
+    for a in ax[:,0]:
+        a.vlines(high_domain[0][0],high_domain[1][0],high_domain[1][1], color='gray', linestyle='--')
+        a.vlines(high_domain[0][1],high_domain[1][0],high_domain[1][1], color='gray', linestyle='--')
+        a.hlines(high_domain[1][0],high_domain[0][0],high_domain[0][1], color='gray', linestyle='--')
+        a.hlines(high_domain[1][1],high_domain[0][0],high_domain[0][1], color='gray', linestyle='--')
+        a.fill_between([high_domain[0][0], high_domain[0][1]], high_domain[1][0], high_domain[1][1], color='gray', alpha=0.1)
+
+    for a in ax[:,1]:
+        a.vlines(low_domain[0][0],low_domain[1][0],low_domain[1][1], color='gray', linestyle='--')
+        a.vlines(low_domain[0][1],low_domain[1][0],low_domain[1][1], color='gray', linestyle='--')
+        a.hlines(low_domain[1][0],low_domain[0][0],low_domain[0][1], color  ='gray', linestyle='--')
+        a.hlines(low_domain[1][1],low_domain[0][0],low_domain[0][1], color  ='gray', linestyle='--')
+        a.fill_between([low_domain[0][0], low_domain[0][1]], low_domain[1][0], low_domain[1][1], color='gray', alpha=0.1)
+
+    # for a in ax.flat:
+    #     a.vlines(0.5,0,30, color='gray', linestyle='--')
+    #     a.vlines(5,0,30, color='gray', linestyle='--')
+    #     a.hlines(0,0.5,5, color='gray', linestyle='--')
+    #     a.hlines(30,0.5,5, color='gray', linestyle='--')
+    #     a.fill_between([0.5, 5], 0, 30, color='gray', alpha=0.1)
+
+    ax[0,0].set_ylabel(r'$\widetilde{d}$ [a.u.]')
+    ax[1,0].set_ylabel(r'$\widetilde{d}$ [a.u.]')
+    ax[1,0].set_xlabel('C-rate [a.u.]')
+    ax[1,1].set_xlabel('C-rate [a.u.]')
+    for a in ax[0, :]:
+        a.tick_params(labelbottom=False)  # hide top row x labels
+
+    for a in ax[:, 1]:
+        a.tick_params(labelleft=False)    # hide right column y labels
+
+    cmap_V,cmap_F = custom_cmap()
+    obs_inpt, rmse_low = merge_RMSE(model_low,CC_trajs, rmse_scales)
+    _, rmse_high = merge_RMSE(model_high, CC_trajs, rmse_scales)
+
+    obs_inpt_p, rmse_high_p = merge_RMSE(model_high, pulse_trajs, rmse_scales)
+    _, rmse_low_p = merge_RMSE(model_low, pulse_trajs, rmse_scales)
+
+
+    norm_V = colors.Normalize(vmin=min(rmse_high[:,0].min(), rmse_low[:,0].min()),vmax=max(rmse_high[:,0].max(), rmse_low[:,0].max()))
+
+    norm_F = colors.Normalize(vmin=min(rmse_high[:,1].min(), rmse_low[:,1].min()),vmax=max(rmse_high[:,1].max(), rmse_low[:,1].max()))
+
+
+    sc0 = ax[0,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,0],cmap=cmap_V,norm=norm_V)
+    sc0 = ax[0,0].scatter(obs_inpt_p[:,0],obs_inpt_p[:,1],c=rmse_high_p[:,0],cmap=cmap_V,norm=norm_V, marker='x')
+
+    sc1 = ax[0,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,0],cmap=cmap_V,norm=norm_V)
+    sc1 = ax[0,1].scatter(obs_inpt_p[:,0],obs_inpt_p[:,1],c=rmse_low_p[:,0],cmap=cmap_V,norm=norm_V, marker='x')
+    sc2 = ax[1,0].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_high[:,1],cmap=cmap_F,norm=norm_F,)
+    sc2 = ax[1,0].scatter(obs_inpt_p[:,0],obs_inpt_p[:,1],c=rmse_high_p[:,1],cmap=cmap_F,norm=norm_F, marker='x')
+    sc3 = ax[1,1].scatter(obs_inpt[:,0],obs_inpt[:,1],c=rmse_low[:,1],cmap=cmap_F,norm=norm_F,)
+    sc3 = ax[1,1].scatter(obs_inpt_p[:,0],obs_inpt_p[:,1],c=rmse_low_p[:,1],cmap=cmap_F,norm=norm_F, marker='x')
+
+
+    # One shared colorbar for top row
+
+    cb0 = f.colorbar(sc0,ax=ax[0,:],label='NRMSE for $V_B$')
+    cb1 = f.colorbar(sc2,ax=ax[1,:],label='NRMSE for $F$')
+
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),
+        Line2D([0], [0], marker='x', color='gray', linestyle='', label='Pulse'),
+    ]
+    f.legend(handles=legend_handles, loc='center', bbox_to_anchor=(0.43, 0.495),
+            ncol=2, frameon=True)
+
+    #f.tight_layout()
+    return f, ax
+
+
+def input_map_single(model, trajs, rmse_scales, observable='V'):
+    """
+    Single-panel RMSE map for one model and one observable.
+
+    Parameters
+    ----------
+    model : trained BatteryECMM (assumed to cover the full input domain)
+    trajs : list of trajectory dicts (mixed CC + pulse)
+    rmse_scales : passed through to merge_RMSE
+    observable : 'V' or 'F'
+    """
+    import matplotlib.colors as colors
+    from matplotlib.lines import Line2D
+
+    # split CC vs pulse
+    pulse_trajs, CC_trajs = [], []
+    for tr in trajs:
+        if tr['I_seq'][0] != tr['I_seq'][1]:
+            pulse_trajs.append(tr)
+        else:
+            CC_trajs.append(tr)
+
+    fig, ax = plt.subplots(figsize=(5.5, 4), constrained_layout=True)
+
+    # full domain box
+    domain = [[0.5, 5], [0, 30]]
+    ax.vlines(domain[0][0], domain[1][0], domain[1][1], color='gray', linestyle='--')
+    ax.vlines(domain[0][1], domain[1][0], domain[1][1], color='gray', linestyle='--')
+    ax.hlines(domain[1][0], domain[0][0], domain[0][1], color='gray', linestyle='--')
+    ax.hlines(domain[1][1], domain[0][0], domain[0][1], color='gray', linestyle='--')
+    ax.fill_between([domain[0][0], domain[0][1]],
+                    domain[1][0], domain[1][1], color='gray', alpha=0.1)
+
+    ax.set_xlabel('C-rate [a.u.]')
+    ax.set_ylabel(r'$\widetilde{d}$ [a.u.]')
+
+    # pick the column index in the RMSE array for the requested observable
+    if observable == 'V':
+        col, label = 0, r'NRMSE for $V_B$'
+    elif observable == 'F':
+        col, label = 1, r'NRMSE for $F$'
+    else:
+        raise ValueError(f"observable must be 'V' or 'F', got {observable!r}")
+
+    cmap_V, cmap_F = custom_cmap()
+    cmap = cmap_V if observable == 'V' else cmap_F
+
+    obs_cc,    rmse_cc    = merge_RMSE(model, CC_trajs,    rmse_scales)
+    obs_pulse, rmse_pulse = merge_RMSE(model, pulse_trajs, rmse_scales)
+
+    vmin = min(rmse_cc[:, col].min(), rmse_pulse[:, col].min())
+    vmax = max(rmse_cc[:, col].max(), rmse_pulse[:, col].max())
+    norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+    ax.scatter(obs_cc[:, 0],    obs_cc[:, 1],
+               c=rmse_cc[:, col],    cmap=cmap, norm=norm, marker='o')
+    sc = ax.scatter(obs_pulse[:, 0], obs_pulse[:, 1],
+                    c=rmse_pulse[:, col], cmap=cmap, norm=norm, marker='x')
+
+    fig.colorbar(sc, ax=ax, label=label)
+
+    legend_handles = [
+        Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),
+        Line2D([0], [0], marker='x', color='gray', linestyle='', label='Pulse'),
+    ]
+    ax.legend(handles=legend_handles, loc='best', frameon=True, ncol=2, fontsize='small')
+
+    return fig, ax
+
 
 def load_nn_model(model_name, I_ref=None):
     """Load a saved BatteryECMM checkpoint.
@@ -2555,317 +2737,3 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
         #ax.set_yscale('log')
     return fig, axes
 
-
-
-# ══════════════════════════════════════════════════════════
-#  CONTOUR PLOTS OF NETWORK OUTPUTS  (I, d) at fixed SOC
-# ══════════════════════════════════════════════════════════
-
-def plot_element_contour(model, param='R1', soc_fix=0.5,
-                         c_rate_range=(0.5, 5.0), u_per_range=(0.0, 25.0),
-                         n_grid=60, overlay_trajs=None,
-                         cmap='viridis', ax=None,
-                         Q0=Q0, L0=LIMON_CELL0):
-    """
-    Filled-contour map of one ECM element as a function of the network's
-    two non-SOC inputs at a chosen SOC slice.
-
-        x-axis : u_per [%]          (displacement d, network input)
-        y-axis : C-rate [a.u.]      (current I, network input)
-        color  : element value      (R0, R1, C1, k, or s)
-
-    overlay_trajs : optional list of CC traj dicts; their (u_per, C) pairs
-                    are scattered on top to show data coverage vs the
-                    region where the surrogate is extrapolating.
-    """
-    c_axis = np.linspace(*c_rate_range, n_grid)
-    u_axis = np.linspace(*u_per_range, n_grid)
-    U_grid, C_grid = np.meshgrid(u_axis, c_axis)              # (nC, nU)
-    soc_grid = np.full_like(U_grid, soc_fix, dtype=np.float32)
-
-    Z = element_predict(model,
-                        C_grid.astype(np.float32),
-                        U_grid.astype(np.float32),
-                        soc_grid, element=param, Q0=Q0, L0=L0)
-
-    # Match the unit conventions used by plot_param so axis/legend labels
-    # are consistent across your figure set.
-    if   param == 'R0': Z = Z * 1e3;    clabel = r'$R_0$ [m$\Omega$]'
-    elif param == 'R1': Z = Z * 1e3;    clabel = r'$R_1$ [m$\Omega$]'
-    elif param == 'C1':                 clabel = r'$C_1$ [F]'
-    elif param == 'k':  Z = Z * 1e2;    clabel = r'$k$ [GN/mm]'
-    elif param == 's':  Z = Z / 100.0;  clabel = r'$s$ [mm]'
-    else:
-        raise ValueError(f"param must be 'R0','R1','C1','k','s', got {param!r}")
-
-    standalone = ax is None
-    if standalone:
-        fig, ax = plt.subplots(figsize=(6, 4.5), constrained_layout=True)
-    else:
-        fig = ax.figure
-
-    cf = ax.contourf(U_grid, C_grid, Z, levels=20, cmap=cmap)
-    cs = ax.contour (U_grid, C_grid, Z, levels=10, colors='k',
-                     linewidths=0.4, alpha=0.5)
-    ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
-
-    if overlay_trajs is not None:
-        ups = np.array([tr['u_per'] for tr in overlay_trajs])
-        crs = np.array([tr['C']     for tr in overlay_trajs])
-        ax.scatter(ups, crs, facecolors='none', edgecolors='white',
-                   s=30, lw=1.2, zorder=5)
-
-    ax.set_xlabel(r'$u$  [%]   (displacement $d$)')
-    ax.set_ylabel(r'C-rate [a.u.]   (current $I$)')
-    ax.set_title(f'{clabel}   |   SOC = {soc_fix:.2f}')
-    fig.colorbar(cf, ax=ax, label=clabel)
-    return fig, ax
-
-
-def plot_all_elements_contour(model, soc_fix=0.5,
-                              c_rate_range=(0.5, 5.0),
-                              u_per_range=(0.0, 25.0),
-                              n_grid=60, overlay_trajs=None,
-                              params=('R0','R1','C1','k','s'),
-                              cmap='viridis'):
-    """One contour panel per parameter at a single SOC slice."""
-    ncols = 3
-    nrows = int(np.ceil(len(params) / ncols))
-    fig, axes = plt.subplots(nrows, ncols,
-                             figsize=(5.2 * ncols, 4.2 * nrows),
-                             constrained_layout=True)
-    axes = np.atleast_1d(axes).ravel()
-    for ax, p in zip(axes, params):
-        plot_element_contour(model, param=p, soc_fix=soc_fix,
-                             c_rate_range=c_rate_range,
-                             u_per_range=u_per_range, n_grid=n_grid,
-                             overlay_trajs=overlay_trajs,
-                             cmap=cmap, ax=ax)
-    for ax in axes[len(params):]:
-        ax.set_visible(False)
-    fig.suptitle(f'ECM parameter contours @ SOC = {soc_fix:.2f}', fontsize=13)
-    return fig
-
-
-# def sample_element_grid(model, n_c=15, n_u=15, n_soc=15,
-#                         c_rate_range=(0.5, 5.0),
-#                         u_per_range=(0.0, 25.0),
-#                         soc_range=(0.1, 0.95),
-#                         soc_start=1.0, dt=1.0):
-#     """
-#     Long-form DataFrame of every element evaluated on a regular
-#     (c_rate, u_per, soc) grid. Compute once, reuse across all per-element
-#     plotters below. Returned columns are in display units (mΩ, F, GN/mm,
-#     mm, mm/s) so downstream plots don't need to re-scale.
-#     """
-#     c = np.linspace(*c_rate_range, n_c, dtype=np.float32)
-#     u = np.linspace(*u_per_range,  n_u, dtype=np.float32)
-#     s = np.linspace(*soc_range,    n_soc, dtype=np.float32)
-#     C, U, S = np.meshgrid(c, u, s, indexing='ij')
-
-#     R1, C1, R0, k = element_predict(
-#         model, C, U, S, element=None)
-
-#     return pd.DataFrame({
-#         'c_rate': C.ravel(), 'u_per': U.ravel(), 'soc': S.ravel(),
-#         'R0':   R0.ravel()    * 1e3,    # mΩ
-#         'R1':   R1.ravel()    * 1e3,    # mΩ
-#         'C1':   C1.ravel(),             # F
-#         'k':    k.ravel()     * 1e2,    # GN/mm
-#         # 's':    s_val.ravel() / 100.0,  # mm
-#         # 'sdot': sdot.ravel()  / 100.0,  # mm/s
-#     })
-
-
-# _PARAM_LABEL = {
-#     'R0':   r'$R_0$ [m$\Omega$]',
-#     'R1':   r'$R_1$ [m$\Omega$]',
-#     'C1':   r'$C_1$ [F]',
-#     'k':    r'$k$ [GN/mm]',
-#     # 's':    r'$s$ [mm]',
-#     # 'sdot': r'$\dot{s}$ [mm/s]',
-# }
-# _INPUT_LABEL = {
-#     'c_rate': 'C-rate [a.u.]',
-#     'u_per':  r'$u$ [%]',
-#     'soc':    'SOC',
-# }
-
-# def plot_element_sensitivity(model, param='R0', df=None,
-#                              inputs=('c_rate', 'u_per', 'soc'),
-#                              **sample_kwargs):
-#     """
-#     Range-normalized mean |d(param)/d(input)| over the input grid, one bar
-#     per input. The quantitative "what does this element care about?" view.
-#     Pass df=sample_element_grid(...) to avoid resampling.
-#     """
-#     if df is None:
-#         df = sample_element_grid(model, **sample_kwargs)
-
-#     rng = df[param].max() - df[param].min() + 1e-12
-#     sens = {}
-#     for x in inputs:
-#         grouped = df.groupby([c for c in inputs if c != x])[param].apply(
-#             lambda v: np.abs(np.gradient(v.values)).mean())
-#         sens[x] = grouped.mean() / rng
-
-#     fig, ax = plt.subplots(figsize=(5.4, 2.8), constrained_layout=True)
-#     xs = [_INPUT_LABEL[i] for i in inputs]
-#     ys = [sens[i]          for i in inputs]
-#     bars = ax.barh(xs, ys, color='steelblue', alpha=0.85)
-#     for bar, v in zip(bars, ys):
-#         ax.text(v, bar.get_y() + bar.get_height()/2,
-#                 f'  {v:.3f}', va='center', fontsize=10)
-#     ax.set_xlabel(r'normalized mean $|\partial$' + param + r'$/\partial x|$')
-#     ax.set_title(f'Input sensitivity of {_PARAM_LABEL[param]}')
-#     ax.set_xlim(0, max(ys) * 1.18)
-#     return fig
-
-# def plot_element_partial_dependence(model, param='R0', df=None,
-#                                     inputs=('c_rate', 'u_per', 'soc'),
-#                                     **sample_kwargs):
-#     """
-#     Element vs each input with the other two marginalized.
-#     Band = [min, max] over the marginalized inputs = the cross-coupling
-#     envelope. Thin band → nearly separable in that input (SR-friendly);
-#     fat band → strong interaction with the other two inputs.
-#     """
-#     if df is None:
-#         df = sample_element_grid(model, **sample_kwargs)
-
-#     fig, axes = plt.subplots(1, len(inputs),
-#                              figsize=(4.0 * len(inputs), 3.2),
-#                              constrained_layout=True, sharey=True)
-#     axes = np.atleast_1d(axes)
-#     for ax, x in zip(axes, inputs):
-#         g = df.groupby(x)[param].agg(['mean', 'min', 'max']).reset_index()
-#         ax.fill_between(g[x], g['min'], g['max'],
-#                         alpha=0.25, color='C0', label='[min, max]')
-#         ax.plot(g[x], g['mean'], color='C0', lw=2.2, label='mean')
-#         ax.set_xlabel(_INPUT_LABEL[x])
-#         ax.grid(True, ls=':', alpha=0.5)
-#     axes[0].set_ylabel(_PARAM_LABEL[param])
-#     axes[-1].legend(loc='best', fontsize=9)
-#     fig.suptitle(f'{_PARAM_LABEL[param]}  —  partial-dependence marginals',
-#                  fontsize=13)
-#     return fig
-
-# def plot_element_rosette(model, param='R0',
-#                          soc_ref=0.5, c_ref=2.0, u_ref=10.0,
-#                          c_rate_range=(0.5, 5.0),
-#                          u_per_range=(0.0, 25.0),
-#                          soc_range=(0.1, 0.95),
-#                          n_grid=50, overlay_trajs=None,
-#                          cmap='viridis', share_color=True,
-#                          soc_start=1.0, dt=1.0):
-#     """
-#     Three orthogonal 2D contour cross-sections of a single element through
-#     the (I, d, SOC) input space:
-
-#         Panel 0 : (u_per, c_rate) at  soc = soc_ref
-#         Panel 1 : (soc,   c_rate) at  u_per = u_ref
-#         Panel 2 : (soc,   u_per ) at  c_rate = c_ref
-
-#     A flat panel here, textured panel there is the dependence story.
-#     share_color makes the three panels quantitatively comparable.
-#     """
-#     def _eval(C_grid, U_grid, S_grid):
-#         Z = element_predict(model, C_grid.astype(np.float32),
-#                             U_grid.astype(np.float32),
-#                             S_grid.astype(np.float32),
-#                             element=param)
-#         if   param in ('R0', 'R1'):  Z = Z * 1e3
-#         elif param == 'k':           Z = Z * 1e2
-#         elif param in ('s', 'sdot'): Z = Z / 100.0
-#         return Z
-
-#     c_lin = np.linspace(*c_rate_range, n_grid)
-#     u_lin = np.linspace(*u_per_range,  n_grid)
-#     s_lin = np.linspace(*soc_range,    n_grid)
-
-#     U0, C0 = np.meshgrid(u_lin, c_lin);  S0 = np.full_like(U0, soc_ref)
-#     S1, C1 = np.meshgrid(s_lin, c_lin);  U1 = np.full_like(S1, u_ref)
-#     S2, U2 = np.meshgrid(s_lin, u_lin);  C2 = np.full_like(S2, c_ref)
-
-#     Z0 = _eval(C0, U0, S0)
-#     Z1 = _eval(C1, U1, S1)
-#     Z2 = _eval(C2, U2, S2)
-
-#     if share_color:
-#         vmin = min(Z0.min(), Z1.min(), Z2.min())
-#         vmax = max(Z0.max(), Z1.max(), Z2.max())
-#         levels = np.linspace(vmin, vmax, 21)
-#     else:
-#         vmin = vmax = None; levels = 20
-
-#     fig, axes = plt.subplots(1, 3, figsize=(14, 4.2), constrained_layout=True)
-#     specs = [
-#         (axes[0], U0, C0, Z0, _INPUT_LABEL['u_per'], _INPUT_LABEL['c_rate'],
-#          f'SOC = {soc_ref:.2f}'),
-#         (axes[1], S1, C1, Z1, _INPUT_LABEL['soc'],   _INPUT_LABEL['c_rate'],
-#          f'$u$ = {u_ref:.1f}%'),
-#         (axes[2], S2, U2, Z2, _INPUT_LABEL['soc'],   _INPUT_LABEL['u_per'],
-#          f'C-rate = {c_ref:.2f}'),
-#     ]
-
-#     cf = None
-#     for ax, X, Y, Z, xlab, ylab, title in specs:
-#         cf = ax.contourf(X, Y, Z, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
-#         cs = ax.contour (X, Y, Z, levels=10, colors='k',
-#                          linewidths=0.4, alpha=0.5)
-#         ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
-#         ax.set_xlabel(xlab); ax.set_ylabel(ylab); ax.set_title(title)
-
-#     if overlay_trajs is not None:
-#         for tr in overlay_trajs:
-#             u_p, c_v = float(tr['u_per']), float(tr['C'])
-#             soc_lo, soc_hi = float(tr['soc'].min()), float(tr['soc'].max())
-#             # Panel 0: data is a single point in (u, c)
-#             axes[0].scatter(u_p, c_v, facecolors='none', edgecolors='white',
-#                             s=30, lw=1.2, zorder=5)
-#             # Panel 1: horizontal segment at y=C spanning the traj's SOC range
-#             axes[1].plot([soc_lo, soc_hi], [c_v, c_v],
-#                          color='white', lw=1.0, alpha=0.85, zorder=5)
-#             # Panel 2: horizontal segment at y=u_per spanning SOC range
-#             axes[2].plot([soc_lo, soc_hi], [u_p, u_p],
-#                          color='white', lw=1.0, alpha=0.85, zorder=5)
-
-#     clabel = _PARAM_LABEL[param]
-#     fig.colorbar(cf, ax=list(axes), label=clabel, shrink=0.85)
-#     fig.suptitle(f'{clabel}  —  orthogonal cross-sections', fontsize=13)
-#     return fig
-
-# def plot_element_pairs(model, param='R0', df=None, hue='soc',
-#                        other_params=('R0', 'R1', 'C1', 'k', 's'),
-#                        subsample=2000, cmap='viridis',
-#                        **sample_kwargs):
-#     """
-#     Scatter the chosen element against each of the others on a single row,
-#     colored by an input (default SOC). Used to spot identifiability
-#     degeneracies (e.g. k vs s) and to see which input drives joint
-#     variation in each pair.
-#     """
-#     if df is None:
-#         df = sample_element_grid(model, **sample_kwargs)
-#     if subsample is not None and subsample < len(df):
-#         df = df.sample(n=subsample, random_state=0)
-
-#     others = [p for p in other_params if p != param]
-#     fig, axes = plt.subplots(1, len(others),
-#                              figsize=(3.6 * len(others), 3.6),
-#                              constrained_layout=True)
-#     axes = np.atleast_1d(axes)
-#     sm = None
-#     for ax, q in zip(axes, others):
-#         sm = ax.scatter(df[param], df[q], c=df[hue], cmap=cmap,
-#                         s=8, alpha=0.6, edgecolor='none')
-#         r = df[[param, q]].corr().iloc[0, 1]
-#         ax.set_xlabel(_PARAM_LABEL[param])
-#         ax.set_ylabel(_PARAM_LABEL[q])
-#         ax.set_title(f'r = {r:+.2f}', fontsize=10)
-#         ax.grid(True, ls=':', alpha=0.4)
-
-#     fig.colorbar(sm, ax=list(axes), label=_INPUT_LABEL[hue], shrink=0.85)
-#     fig.suptitle(f'{_PARAM_LABEL[param]} vs other elements (color = {hue})',
-#                  fontsize=13)
-#     return fig

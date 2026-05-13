@@ -374,23 +374,6 @@ plt.show()
 
 
 
-# %% ELEMENT PLOTS CONTOUR?
-
-fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
-                                c_rate_range=(0.5, 5.0),
-                                u_per_range=(0.0, 25.0),
-                                overlay_trajs=test_trajs)
-# fig.savefig(os.path.join(FIGS_DIR, f'contour_all_soc05_{SAVE_NAME}.png'))
-
-# fig = plot_element_soc_3d(bat_model_full, param='R1', soc_values=(0.1, 0.5,  0.9), overlay_trajs=test_trajs)
-# fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
-
-
-
-
-
-
-
 
 
 
@@ -484,9 +467,10 @@ history_low, config_low, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_low)
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
-# %%
-fig,ax = input_map_comparison(bat_model_low, bat_model_full,combo_trajs  , rmse_scales=RMSE_scales)
-# plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_c_0510_2034_full_c_combo_input_error_comparison.pdf'), bbox_inches='tight')
+
+# %% –––––––– INPUT ERROR MAP COMPARISON ––––––––––––––––––––––––––––––––––––––––
+fig,ax = input_map_comparison(bat_model_low, bat_model_full, other_combo_trajs  , rmse_scales=RMSE_scales)
+plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_0510_2034_full_otherCombo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
 
 
@@ -564,8 +548,8 @@ plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
 
 plt.show()
 
-# %% USE FOR REPORT DATA SCARCITY
+# %% USE FOR REPORT INPUT ERROR MAPS
 
-
-
+input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='V')
+input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='F')
 
