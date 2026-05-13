@@ -412,7 +412,7 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 # %% ========================================================================
 
 MODEL_NAME_STAT = '0513_1037_b4_combo_1.0__DC_V-static_no_R0_F-static_R0c_C1c_3.04min_16h_500eps.pt'
-MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
+MODEL_NAME_DYNA = '0513_1037_b4_combo_1__DC_V-dynamic_F-dynamic_R0c_C1c_105.62min_16h_500eps.pt'
 
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
@@ -423,7 +423,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
 ECM_fix = True, metric_names = ['Voltage'])
-plt.savefig(os.path.join(FIGS_DIR, f'Vnrmse_0508_2228dyna_0508_1444stat_CCtrained.pdf'), bbox_inches='tight')
+plt.savefig(os.path.join(FIGS_DIR, f'Vnrmse_0513_1037dyna_0513_1037stat_CCtrained.pdf'), bbox_inches='tight')
 plt.show()
 # %%
 # USE FOR REPORT. STATIC TRAINED ON CC
@@ -432,11 +432,11 @@ plt.show()
 history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
 plot_report(bat_model_static_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-# plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_ccPred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_static_ccPred.pdf'), bbox_inches='tight')
 plt.show()
 plot_report(bat_model_static_DC, CONFIG, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-# plt.savefig(os.path.join(FIGS_DIR, f'0508_1444_static_pulsePred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_static_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%
@@ -446,11 +446,11 @@ plt.show()
 history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
 plot_report(bat_model_dynamic_DC, CONFIG, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_ccPred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_dynamic_ccPred.pdf'), bbox_inches='tight')
 plt.show()
 plot_report(bat_model_dynamic_DC, CONFIG, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
-# plt.savefig(os.path.join(FIGS_DIR, f'0508_2228_dynamic_pulsePred.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_dynamic_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
 
 # %%
