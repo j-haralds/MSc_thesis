@@ -119,7 +119,24 @@ def pareto_plot(model, colors = COLORS):
     plt.legend()
     plt.show()
 
-
+def post_pareto_plot(elem, run_id, colors = COLORS):
+    print(f'sr_models/model_{elem}_{run_id}.csv')
+    df_model = pd.read_csv(f'sr_models/model_{elem}_{run_id}.csv')
+    best = pd.read_csv(f'sr_models/model_{elem}_best_{run_id}.csv')
+    best_complexity = float(best.iloc[0, 0])
+    best_rows = df_model[np.isclose(df_model['complexity'], best_complexity)]
+    best_ind = int(best.iloc[0,0])
+    plt.figure(figsize=(9, 4))
+    plt.xticks(np.arange(0, df_model['complexity'].max() + 1, 2))
+    plt.grid(True, which="both", ls="-", linewidth=0.5)
+    plt.plot(df_model['complexity'], df_model['loss'], marker='o', linestyle='-', color=colors[0], label='Models')
+    plt.plot(best_rows['complexity'], best_rows['loss'], marker='o', linestyle='', color=colors[1], label='Best Model')
+    plt.xlabel('Complexity')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.title('Model Complexity vs Loss')
+    plt.legend()
+    plt.show()
 
 def post_pareto_plot(elem, run_id, colors = COLORS):
     print(f'sr_models/model_{elem}_{run_id}.csv')
