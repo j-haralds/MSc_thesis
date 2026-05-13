@@ -1682,21 +1682,24 @@ def plot_param(model, trajs, param='R1'):
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
 
-            if not param == 'ku':
-                ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
-            else:
+            if param == 'ku':
                 ax.plot(u_t.numpy(), y, 'o', color=cmap(norm(C_val)), lw=2)
+            elif param == 'k':
+                ax.plot(soc.numpy(), y, '-', color=cmap(norm_u(u_per_val)), lw=2)
+            else:
+                ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.invert_xaxis()
     ax.ticklabel_format(useOffset=False, style='plain')
 
-    sm = ScalarMappable(cmap=cmap, norm=norm)
-    fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
-    # if param == 'k':
-    #     sm = ScalarMappable(cmap=cmap_r, norm=norm_u)
-    #     fig.colorbar(sm, ax=ax, label='u [%]')
+    if param == 'k':
+        sm = ScalarMappable(cmap=cmap, norm=norm_u)
+        fig.colorbar(sm, ax=ax, label=r'$d$ [\%]')
+    else:
+        sm = ScalarMappable(cmap=cmap, norm=norm)
+        fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
 
     fig.tight_layout()
     return fig
@@ -2544,103 +2547,225 @@ def plot_all_elements_contour(model, soc_fix=0.5,
     return fig
 
 
-def plot_element_soc_3d(model, param='R1',
-                               soc_values=(0.1, 0.3, 0.5, 0.7, 0.9),
-                               c_rate_range=(0.5, 5.0),
-                               u_per_range=(0.0, 25.0),
-                               n_grid=60,
-                               overlay_trajs=None,
-                               cmap='viridis',
-                               style='wireframe',
-                               stride=6,
-                               alpha=0.55,
-                               elev=22, azim=-58):
-    """
-    3D view where the element value is the z-axis (literal surface height)
-    and SOC is encoded by color.
+# def sample_element_grid(model, n_c=15, n_u=15, n_soc=15,
+#                         c_rate_range=(0.5, 5.0),
+#                         u_per_range=(0.0, 25.0),
+#                         soc_range=(0.1, 0.95),
+#                         soc_start=1.0, dt=1.0):
+#     """
+#     Long-form DataFrame of every element evaluated on a regular
+#     (c_rate, u_per, soc) grid. Compute once, reuse across all per-element
+#     plotters below. Returned columns are in display units (mΩ, F, GN/mm,
+#     mm, mm/s) so downstream plots don't need to re-scale.
+#     """
+#     c = np.linspace(*c_rate_range, n_c, dtype=np.float32)
+#     u = np.linspace(*u_per_range,  n_u, dtype=np.float32)
+#     s = np.linspace(*soc_range,    n_soc, dtype=np.float32)
+#     C, U, S = np.meshgrid(c, u, s, indexing='ij')
 
-    Axes:   x = u_per [%]      (displacement d)
-            y = C-rate [a.u.]  (current I)
-            z = element value
-    color = SOC (continuous viridis-style colormap)
+#     R1, C1, R0, k = element_predict(
+#         model, C, U, S, element=None)
 
-    style : 'wireframe' (default) -- one colored mesh per SOC; reads
-            cleanly with many slices.
-            'surface'              -- filled semitransparent surfaces;
-            nicer with 2-3 slices, but matplotlib's lack of cross-surface
-            depth sorting can produce z-order artifacts when surfaces
-            intersect.
-    """
-    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers '3d')
+#     return pd.DataFrame({
+#         'c_rate': C.ravel(), 'u_per': U.ravel(), 'soc': S.ravel(),
+#         'R0':   R0.ravel()    * 1e3,    # mΩ
+#         'R1':   R1.ravel()    * 1e3,    # mΩ
+#         'C1':   C1.ravel(),             # F
+#         'k':    k.ravel()     * 1e2,    # GN/mm
+#         # 's':    s_val.ravel() / 100.0,  # mm
+#         # 'sdot': sdot.ravel()  / 100.0,  # mm/s
+#     })
 
-    soc_values = sorted(float(s) for s in soc_values)
-    norm = Normalize(vmin=min(soc_values), vmax=max(soc_values))
-    cmap_obj = plt.get_cmap(cmap)
 
-    c_axis = np.linspace(*c_rate_range, n_grid)
-    u_axis = np.linspace(*u_per_range, n_grid)
-    U_grid, C_grid = np.meshgrid(u_axis, c_axis)
+# _PARAM_LABEL = {
+#     'R0':   r'$R_0$ [m$\Omega$]',
+#     'R1':   r'$R_1$ [m$\Omega$]',
+#     'C1':   r'$C_1$ [F]',
+#     'k':    r'$k$ [GN/mm]',
+#     # 's':    r'$s$ [mm]',
+#     # 'sdot': r'$\dot{s}$ [mm/s]',
+# }
+# _INPUT_LABEL = {
+#     'c_rate': 'C-rate [a.u.]',
+#     'u_per':  r'$u$ [%]',
+#     'soc':    'SOC',
+# }
 
-    def _scale(Z):
-        if   param in ('R0', 'R1'): return Z * 1e3
-        elif param == 'k':          return Z * 1e2
-        elif param == 's':          return Z / 100.0
-        return Z
+# def plot_element_sensitivity(model, param='R0', df=None,
+#                              inputs=('c_rate', 'u_per', 'soc'),
+#                              **sample_kwargs):
+#     """
+#     Range-normalized mean |d(param)/d(input)| over the input grid, one bar
+#     per input. The quantitative "what does this element care about?" view.
+#     Pass df=sample_element_grid(...) to avoid resampling.
+#     """
+#     if df is None:
+#         df = sample_element_grid(model, **sample_kwargs)
 
-    Zs = []
-    for soc_fix in soc_values:
-        soc_grid = np.full_like(U_grid, soc_fix, dtype=np.float32)
-        Z = element_predict(model,
-                            C_grid.astype(np.float32),
-                            U_grid.astype(np.float32),
-                            soc_grid, element=param)
-        Zs.append(_scale(Z))
+#     rng = df[param].max() - df[param].min() + 1e-12
+#     sens = {}
+#     for x in inputs:
+#         grouped = df.groupby([c for c in inputs if c != x])[param].apply(
+#             lambda v: np.abs(np.gradient(v.values)).mean())
+#         sens[x] = grouped.mean() / rng
 
-    zlabel = {'R0': r'$R_0$ [m$\Omega$]', 'R1': r'$R_1$ [m$\Omega$]',
-              'C1': r'$C_1$ [F]',         'k':  r'$k$ [GN/mm]',
-              's':  r'$s$ [mm]'}[param]
+#     fig, ax = plt.subplots(figsize=(5.4, 2.8), constrained_layout=True)
+#     xs = [_INPUT_LABEL[i] for i in inputs]
+#     ys = [sens[i]          for i in inputs]
+#     bars = ax.barh(xs, ys, color='steelblue', alpha=0.85)
+#     for bar, v in zip(bars, ys):
+#         ax.text(v, bar.get_y() + bar.get_height()/2,
+#                 f'  {v:.3f}', va='center', fontsize=10)
+#     ax.set_xlabel(r'normalized mean $|\partial$' + param + r'$/\partial x|$')
+#     ax.set_title(f'Input sensitivity of {_PARAM_LABEL[param]}')
+#     ax.set_xlim(0, max(ys) * 1.18)
+#     return fig
 
-    fig = plt.figure(figsize=(8.4, 6.6), constrained_layout=True)
-    ax  = fig.add_subplot(projection='3d')
+# def plot_element_partial_dependence(model, param='R0', df=None,
+#                                     inputs=('c_rate', 'u_per', 'soc'),
+#                                     **sample_kwargs):
+#     """
+#     Element vs each input with the other two marginalized.
+#     Band = [min, max] over the marginalized inputs = the cross-coupling
+#     envelope. Thin band → nearly separable in that input (SR-friendly);
+#     fat band → strong interaction with the other two inputs.
+#     """
+#     if df is None:
+#         df = sample_element_grid(model, **sample_kwargs)
 
-    for Z, soc_fix in zip(Zs, soc_values):
-        c = cmap_obj(norm(soc_fix))
-        if style == 'wireframe':
-            ax.plot_wireframe(U_grid, C_grid, Z,
-                              color=c, lw=0.8,
-                              rstride=stride, cstride=stride)
-        elif style == 'surface':
-            ax.plot_surface(U_grid, C_grid, Z,
-                            color=c, shade=False,
-                            alpha=alpha, edgecolor='none',
-                            rstride=1, cstride=1)
-        else:
-            raise ValueError("style must be 'wireframe' or 'surface'")
+#     fig, axes = plt.subplots(1, len(inputs),
+#                              figsize=(4.0 * len(inputs), 3.2),
+#                              constrained_layout=True, sharey=True)
+#     axes = np.atleast_1d(axes)
+#     for ax, x in zip(axes, inputs):
+#         g = df.groupby(x)[param].agg(['mean', 'min', 'max']).reset_index()
+#         ax.fill_between(g[x], g['min'], g['max'],
+#                         alpha=0.25, color='C0', label='[min, max]')
+#         ax.plot(g[x], g['mean'], color='C0', lw=2.2, label='mean')
+#         ax.set_xlabel(_INPUT_LABEL[x])
+#         ax.grid(True, ls=':', alpha=0.5)
+#     axes[0].set_ylabel(_PARAM_LABEL[param])
+#     axes[-1].legend(loc='best', fontsize=9)
+#     fig.suptitle(f'{_PARAM_LABEL[param]}  —  partial-dependence marginals',
+#                  fontsize=13)
+#     return fig
 
-    # Overlay: each CC traj has fixed (u_per, C) and sweeps SOC; evaluate
-    # the element along that sweep and draw a 3D curve through the stack.
-    # The line itself is colored by SOC so it ties visually to the surfaces.
-    if overlay_trajs is not None:
-        for tr in overlay_trajs:
-            soc_tr = tr['soc'].numpy().astype(np.float32)
-            u_p = float(tr['u_per']); c_v = float(tr['C'])
-            Z_tr = _scale(element_predict(
-                model,
-                np.full_like(soc_tr, c_v, dtype=np.float32),
-                np.full_like(soc_tr, u_p, dtype=np.float32),
-                soc_tr, element=param))
-            # per-segment coloring so the trajectory line itself shows SOC
-            for i in range(len(soc_tr) - 1):
-                ax.plot([u_p, u_p], [c_v, c_v], [Z_tr[i], Z_tr[i+1]],
-                        color=cmap_obj(norm(soc_tr[i])),
-                        lw=1.5, alpha=0.95)
+# def plot_element_rosette(model, param='R0',
+#                          soc_ref=0.5, c_ref=2.0, u_ref=10.0,
+#                          c_rate_range=(0.5, 5.0),
+#                          u_per_range=(0.0, 25.0),
+#                          soc_range=(0.1, 0.95),
+#                          n_grid=50, overlay_trajs=None,
+#                          cmap='viridis', share_color=True,
+#                          soc_start=1.0, dt=1.0):
+#     """
+#     Three orthogonal 2D contour cross-sections of a single element through
+#     the (I, d, SOC) input space:
 
-    ax.set_xlabel(r'$u$ [%]')
-    ax.set_ylabel('C-rate [a.u.]')
-    ax.set_zlabel(zlabel)
-    ax.view_init(elev=elev, azim=azim)
-    ax.set_title(f'{zlabel}  —  height = value, color = SOC')
+#         Panel 0 : (u_per, c_rate) at  soc = soc_ref
+#         Panel 1 : (soc,   c_rate) at  u_per = u_ref
+#         Panel 2 : (soc,   u_per ) at  c_rate = c_ref
 
-    sm = ScalarMappable(cmap=cmap_obj, norm=norm); sm.set_array([])
-    fig.colorbar(sm, ax=ax, label='SOC', shrink=0.7, pad=0.1)
-    return fig
+#     A flat panel here, textured panel there is the dependence story.
+#     share_color makes the three panels quantitatively comparable.
+#     """
+#     def _eval(C_grid, U_grid, S_grid):
+#         Z = element_predict(model, C_grid.astype(np.float32),
+#                             U_grid.astype(np.float32),
+#                             S_grid.astype(np.float32),
+#                             element=param)
+#         if   param in ('R0', 'R1'):  Z = Z * 1e3
+#         elif param == 'k':           Z = Z * 1e2
+#         elif param in ('s', 'sdot'): Z = Z / 100.0
+#         return Z
+
+#     c_lin = np.linspace(*c_rate_range, n_grid)
+#     u_lin = np.linspace(*u_per_range,  n_grid)
+#     s_lin = np.linspace(*soc_range,    n_grid)
+
+#     U0, C0 = np.meshgrid(u_lin, c_lin);  S0 = np.full_like(U0, soc_ref)
+#     S1, C1 = np.meshgrid(s_lin, c_lin);  U1 = np.full_like(S1, u_ref)
+#     S2, U2 = np.meshgrid(s_lin, u_lin);  C2 = np.full_like(S2, c_ref)
+
+#     Z0 = _eval(C0, U0, S0)
+#     Z1 = _eval(C1, U1, S1)
+#     Z2 = _eval(C2, U2, S2)
+
+#     if share_color:
+#         vmin = min(Z0.min(), Z1.min(), Z2.min())
+#         vmax = max(Z0.max(), Z1.max(), Z2.max())
+#         levels = np.linspace(vmin, vmax, 21)
+#     else:
+#         vmin = vmax = None; levels = 20
+
+#     fig, axes = plt.subplots(1, 3, figsize=(14, 4.2), constrained_layout=True)
+#     specs = [
+#         (axes[0], U0, C0, Z0, _INPUT_LABEL['u_per'], _INPUT_LABEL['c_rate'],
+#          f'SOC = {soc_ref:.2f}'),
+#         (axes[1], S1, C1, Z1, _INPUT_LABEL['soc'],   _INPUT_LABEL['c_rate'],
+#          f'$u$ = {u_ref:.1f}%'),
+#         (axes[2], S2, U2, Z2, _INPUT_LABEL['soc'],   _INPUT_LABEL['u_per'],
+#          f'C-rate = {c_ref:.2f}'),
+#     ]
+
+#     cf = None
+#     for ax, X, Y, Z, xlab, ylab, title in specs:
+#         cf = ax.contourf(X, Y, Z, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
+#         cs = ax.contour (X, Y, Z, levels=10, colors='k',
+#                          linewidths=0.4, alpha=0.5)
+#         ax.clabel(cs, inline=True, fontsize=7, fmt='%.3g')
+#         ax.set_xlabel(xlab); ax.set_ylabel(ylab); ax.set_title(title)
+
+#     if overlay_trajs is not None:
+#         for tr in overlay_trajs:
+#             u_p, c_v = float(tr['u_per']), float(tr['C'])
+#             soc_lo, soc_hi = float(tr['soc'].min()), float(tr['soc'].max())
+#             # Panel 0: data is a single point in (u, c)
+#             axes[0].scatter(u_p, c_v, facecolors='none', edgecolors='white',
+#                             s=30, lw=1.2, zorder=5)
+#             # Panel 1: horizontal segment at y=C spanning the traj's SOC range
+#             axes[1].plot([soc_lo, soc_hi], [c_v, c_v],
+#                          color='white', lw=1.0, alpha=0.85, zorder=5)
+#             # Panel 2: horizontal segment at y=u_per spanning SOC range
+#             axes[2].plot([soc_lo, soc_hi], [u_p, u_p],
+#                          color='white', lw=1.0, alpha=0.85, zorder=5)
+
+#     clabel = _PARAM_LABEL[param]
+#     fig.colorbar(cf, ax=list(axes), label=clabel, shrink=0.85)
+#     fig.suptitle(f'{clabel}  —  orthogonal cross-sections', fontsize=13)
+#     return fig
+
+# def plot_element_pairs(model, param='R0', df=None, hue='soc',
+#                        other_params=('R0', 'R1', 'C1', 'k', 's'),
+#                        subsample=2000, cmap='viridis',
+#                        **sample_kwargs):
+#     """
+#     Scatter the chosen element against each of the others on a single row,
+#     colored by an input (default SOC). Used to spot identifiability
+#     degeneracies (e.g. k vs s) and to see which input drives joint
+#     variation in each pair.
+#     """
+#     if df is None:
+#         df = sample_element_grid(model, **sample_kwargs)
+#     if subsample is not None and subsample < len(df):
+#         df = df.sample(n=subsample, random_state=0)
+
+#     others = [p for p in other_params if p != param]
+#     fig, axes = plt.subplots(1, len(others),
+#                              figsize=(3.6 * len(others), 3.6),
+#                              constrained_layout=True)
+#     axes = np.atleast_1d(axes)
+#     sm = None
+#     for ax, q in zip(axes, others):
+#         sm = ax.scatter(df[param], df[q], c=df[hue], cmap=cmap,
+#                         s=8, alpha=0.6, edgecolor='none')
+#         r = df[[param, q]].corr().iloc[0, 1]
+#         ax.set_xlabel(_PARAM_LABEL[param])
+#         ax.set_ylabel(_PARAM_LABEL[q])
+#         ax.set_title(f'r = {r:+.2f}', fontsize=10)
+#         ax.grid(True, ls=':', alpha=0.4)
+
+#     fig.colorbar(sm, ax=list(axes), label=_INPUT_LABEL[hue], shrink=0.85)
+#     fig.suptitle(f'{_PARAM_LABEL[param]} vs other elements (color = {hue})',
+#                  fontsize=13)
+#     return fig

@@ -384,6 +384,46 @@ fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
 # fig = plot_element_soc_3d(bat_model_full, param='R1', soc_values=(0.1, 0.5,  0.9), overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
 
+# %% ─── Per-element diagnostic sweep ────────────────────────────────
+
+# Sample once; all per-element plots below feed from this DataFrame.
+df = sample_element_grid(bat_model_full, n_c=15, n_u=15, n_soc=15,
+                         c_rate_range=(0.5, 5.0),
+                         u_per_range=(0.0, 25.0),
+                         soc_range=(0.1, 0.95))
+
+# ── Pick which element you want to interrogate ──
+PARAM = 'R0'   # one of: 'R0', 'R1', 'C1', 'k', 's', 'sdot'
+
+# (1) What does it care about?  -- one-figure quantitative summary
+fig = plot_element_sensitivity(bat_model_full, param=PARAM, df=df)
+# fig.savefig(os.path.join(FIGS_DIR, f'sens_{PARAM}_{SAVE_NAME}.png'), dpi=160)
+
+# (2) Shape of dependence on each input  -- "is it nearly separable?"
+fig = plot_element_partial_dependence(bat_model_full, param=PARAM, df=df)
+# fig.savefig(os.path.join(FIGS_DIR, f'pdp_{PARAM}_{SAVE_NAME}.png'), dpi=160)
+
+# (3) Three orthogonal contour slices  -- the visual full-3D-field view
+fig = plot_element_rosette(bat_model_full, param=PARAM,
+                           soc_ref=0.5, c_ref=2.0, u_ref=10.0,
+                           overlay_trajs=test_trajs)
+# fig.savefig(os.path.join(FIGS_DIR, f'rosette_{PARAM}_{SAVE_NAME}.png'), dpi=160)
+
+# (4) Pairs with the other four  -- identifiability / coupling story
+fig = plot_element_pairs(bat_model_full, param=PARAM, df=df, hue='soc')
+# fig.savefig(os.path.join(FIGS_DIR, f'pairs_{PARAM}_{SAVE_NAME}.png'), dpi=160)
+
+# (5) The 3D height plot you already have, for completeness
+fig = plot_element_soc_3d_height(bat_model_full, param=PARAM,
+                                 soc_values=np.linspace(0.1, 0.9, 5),
+                                 overlay_trajs=test_trajs)
+# fig.savefig(os.path.join(FIGS_DIR, f'r3d_{PARAM}_{SAVE_NAME}.png'), dpi=160)
+
+
+
+
+
+
 
 
 
