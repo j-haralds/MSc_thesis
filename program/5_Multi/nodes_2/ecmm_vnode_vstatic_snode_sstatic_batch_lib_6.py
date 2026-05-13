@@ -350,44 +350,30 @@ class sNet(nn.Module):
         else:
             return nn.functional.softplus(self.net(x)).squeeze(-1)
 
+
+
 # ══════════════════════════════════════════════════════════
-#  ECMM MODEL
+#  BLACK BOX V NETWORK (for V_mode='back_in_black')
 # ══════════════════════════════════════════════════════
-# @torch.jit.script
-# def _u1_integrate(I_seq: torch.Tensor,
-#                   R1: torch.Tensor,
-#                   C1: torch.Tensor,
-#                   dt: float = 1.0) -> torch.Tensor:
-#     """Semi-implicit Euler U1 integration, T iterations, B trajectories.
 
-#     Shapes: I_seq, R1, C1 are (B, T).  Returns U1 of shape (B, T) with
-#     U1[:, 0] = 0 and U1[:, n+1] computed from U1[:, n] by one
-#     semi-implicit Euler step.
-#     """
-#     B, T = I_seq.shape
-#     out = torch.zeros(B, T, dtype=I_seq.dtype, device=I_seq.device)
-#     U1_n = torch.zeros(B, dtype=I_seq.dtype, device=I_seq.device)
-#     for n in range(T - 1):
-#         U1_n = (U1_n + dt * I_seq[:, n] / C1[:, n]) / (1.0 + dt / (R1[:, n] * C1[:, n]))
-#         out[:, n + 1] = U1_n
-#     return out
+class BlackNet(nn.Module):
+    """(soc, I_norm, u_norm) → V ≥ 0  [1e-5 m].  Algebraic — no integration.
+    """
+    def __init__(self, config, n_hidden=32):
+        super().__init__()
+        self.config = config
+        self.net = nn.Sequential(
+            nn.Linear(3, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, n_hidden),
+            nn.Tanh(),
+            nn.Linear(n_hidden, 1),
+        )
 
-# def _u1_integrate(I_seq: torch.Tensor,
-#                   R1: torch.Tensor,
-#                   C1: torch.Tensor,
-#                   dt: float = 1.0) -> torch.Tensor:
-#     B, T = I_seq.shape
-#     out  = torch.zeros(B, T, dtype=I_seq.dtype, device=I_seq.device)
-#     U1_n = torch.zeros(B, dtype=I_seq.dtype, device=I_seq.device)
-#     for n in range(T - 1):
-#         U1_n = (U1_n + dt * I_seq[:, n] / C1[:, n]) / (1.0 + dt / (R1[:, n] * C1[:, n]))
-#         out[:, n + 1] = U1_n
-#     return out
+    def forward(self, soc, I_norm, u_norm):
+        x = torch.stack([soc, I_norm, u_norm], dim=-1)   # (..., 3)
+        return nn.functional.softplus(self.net(x)).squeeze(-1) 
 
-# _u1_integrate = torch.compile(_u1_integrate,
-#                               mode='reduce-overhead',
-#                               fullgraph=True,
-#                               dynamic=True)
 
 class BatteryECMM(nn.Module):
     """
@@ -476,6 +462,11 @@ class BatteryECMM(nn.Module):
             self.R0_net = R0NetNoSOC(config, n_hidden=nh)
         else:
             raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
+
+
+        # ––––– Black box Neural Net for V prediction
+        self.black_net = BlackNet(config, n_hidden=nh)
+        # –––––
 
     # ── Dispatchers ──
     def _R1(self, soc, I_norm, u):
@@ -616,6 +607,9 @@ class BatteryECMM(nn.Module):
         elif V_mode == 'static_no_R0':
             U1 = I_seq * R1
             V  = Ue - U1
+        elif V_mode == 'back_in_black':
+            U1 = I_seq * R1 # dummy to keep the shape, not used in the computation
+            V = self.black_net(soc, I_norm, u_norm_exp) # full black box model. Modelling VB with R1 for consistency with 'static_no_R0'
         elif V_mode == 'dynamic':
             C1 = self._C1(soc, I_norm, u_norm_exp)
             U1_steps = [torch.zeros(B)]
@@ -790,6 +784,8 @@ def vmode_from_style(style):
         return 'static_no_R0'
     elif style == 'static':
         return 'static'
+    elif style == 'back_in_black':
+        return 'back_in_black'
     elif style in ('dynamic', 'staged'):
         return 'dynamic'
     else:
@@ -1000,7 +996,7 @@ def train_model(model, train_trajs, test_trajs,
     print_every : int
         Epochs between progress prints.  The first and last epochs always
         print, regardless of this value.
-    V_mode : 'dynamic' | 'static' | 'static_no_R0'
+    V_mode : 'dynamic' | 'static' | 'static_no_R0' | 'back_in_black'
         Forwarded to BatteryECMM.forward().  'static' / 'static_no_R0' use
         the algebraic V equation (no U1 dynamics), 'dynamic' integrates U1
         with semi-implicit Euler.
@@ -1226,18 +1222,18 @@ def plot_predictions(model, config, trajs, time=False, title='', n_show=3,
     pulse = 'I_seq' in trajs[0]
 
     # Determine kind from first trajectory; assume the rest are the same.
-    if pulse and V_mode in ('static', 'static_no_R0'):
+    if pulse and V_mode in ('static', 'static_no_R0', 'back_in_black'):
             # Pulse evaluated under an algebraic V — C1 is unused, omit its panel.
         rows = ['I', 'V', 'soc', 'eta', 'R', 'Fr', 'k', 's']
     elif pulse:
         rows = ['I', 'V', 'soc', 'eta', 'R', 'C1', 'Fr', 'k', 's']
-    elif V_mode in ('static', 'static_no_R0'):
+    elif V_mode in ('static', 'static_no_R0', 'back_in_black'):
         rows = ['V', 'eta', 'R', 'Fr', 'k', 's']
     elif V_mode == 'dynamic':
         rows = ['V', 'eta', 'R', 'C1', 'Fr', 'k', 's']
     else:
         raise ValueError(
-            f"V_mode must be 'static', 'static_no_R0' or 'dynamic', got {V_mode!r}")
+            f"V_mode must be 'static', 'static_no_R0', 'back_in_black' or 'dynamic', got {V_mode!r}")
 
     n_rows = len(rows)
     fig, axes = plt.subplots(n_rows, n, figsize=(5 * n, 3.3 * n_rows), squeeze=False)

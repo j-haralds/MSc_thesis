@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_copy as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_copy import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 from datetime import datetime
 
@@ -49,7 +49,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = True 
+SAVE_MODELS = False 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -66,7 +66,7 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
+USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -90,7 +90,7 @@ CONFIG = {
     # 'static_no_R0' : V = Ue − I·R1                 (algebraic, no R0)
     # 'static'       : V = Ue − I·R0 − I·R1          (algebraic, no U1 dynamics)
     # 'dynamic'      : V = Ue − I·R0 − U1, with U1 integrated by semi-implicit Euler
-    'style_V': 'dynamic',  # 'static_no_R0', 'static', 'dynamic'
+    'style_V': 'dynamic',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
 
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
@@ -100,7 +100,7 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 500  # Total training epochs
+EPOCHS  = 3  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
@@ -207,7 +207,7 @@ if CONFIG['style_V'] == 'dynamic':
           f"  (style_F={CONFIG['style_F']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
                 n_epochs=EPOCHS, lr=LR_DYNAMIC, print_every=1,
-                V_mode='dynamic', freeze=None,
+                V_mode='dynamic', freeze=('black_net',),
                 batch_size=BATCH_SIZE, eval_every=EVAL_EVERY)
 
     TOTAL_TIME = history['time']
@@ -218,7 +218,7 @@ elif CONFIG['style_V'] == 'static_no_R0':
           f"  (style_F={CONFIG['style_F']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
                 n_epochs=EPOCHS, lr=LR_STATIC, print_every=1,
-                V_mode='static_no_R0', freeze=('R0_net', 'C1_net'),
+                V_mode='static_no_R0', freeze=('black_net', 'R0_net', 'C1_net'),
                 batch_size=BATCH_SIZE, eval_every=EVAL_EVERY)
 
     TOTAL_TIME = history['time']
@@ -229,7 +229,18 @@ elif CONFIG['style_V'] == 'static':
           f"  (style_F={CONFIG['style_F']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
                 n_epochs=EPOCHS, lr=LR_STATIC, print_every=1,
-                V_mode='static', freeze=('C1_net',),
+                V_mode='static', freeze=('C1_net', 'black_net'),
+                batch_size=BATCH_SIZE, eval_every=EVAL_EVERY)
+
+    TOTAL_TIME = history['time']
+    print(f"\nTraining completed in {TOTAL_TIME:.1f} minutes.")
+
+elif CONFIG['style_V'] == 'back_in_black':
+    print(f"\nTraining: {EPOCHS} epochs with back-in-black V: V = R1"
+          f"  (style_V={CONFIG['style_V']!r})")
+    history = train_model(bat_model, _train_trajs, _test_trajs,
+                n_epochs=EPOCHS, lr=LR_STATIC, print_every=1,
+                V_mode='back_in_black', freeze=('R0_net', 'C1_net'),
                 batch_size=BATCH_SIZE, eval_every=EVAL_EVERY)
 
     TOTAL_TIME = history['time']
@@ -270,6 +281,24 @@ if SAVE_FIGS:
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
+#  PREDICTIONS — PULSE TEST
+# ══════════════════════════════════════════════════════════════
+
+# plot_predictions auto-detects pulse trajectories (they carry 'I_seq');
+plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
+                 n_show=min(3, len(pulse_test)), time =True)
+if SAVE_FIGS:
+    plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),
+                bbox_inches='tight')
+plt.show()
+
+# Numeric RMSE summary across the pulse test set
+rmses = rmse_pulse(bat_model, pulse_test)
+print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
+        f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
+        f"({len(rmses)} trajs)")
+
+# %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
 # ══════════════════════════════════════════════════════════════
 
@@ -278,6 +307,24 @@ if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'loss_{TIMESTAMP}_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
 plt.show()
+
+# %% ══════════════════════════════════════════════════════════
+#  SAVE
+# ═════════════════════════════════════════════════════════════
+
+if SAVE_MODELS:
+    torch.save({
+        'model': bat_model.state_dict(),
+        'config': CONFIG,
+        'history': history,
+        'I_ref': float(I_MAX),
+        'u_ref': float(U_MIN),
+        'N_HIDDEN': N_HIDDEN,
+        'EPOCHS': EPOCHS,
+        'USE_PULSE': USE_PULSE,
+    }, os.path.join(MODEL_DIR, f'{TIMESTAMP}_{SAVE_NAME}.pt'))
+
+    print(f"Saved: {TIMESTAMP}_{SAVE_NAME}.pt")
 
 # %% ══════════════════════════════════════════════════════════
 # PLOT PARAMS
@@ -327,41 +374,8 @@ if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plt.show()
 
-# %% ══════════════════════════════════════════════════════════
-#  PREDICTIONS — PULSE TEST
-# ══════════════════════════════════════════════════════════════
 
-# plot_predictions auto-detects pulse trajectories (they carry 'I_seq');
-plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
-                 n_show=min(3, len(pulse_test)), time =True)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),
-                bbox_inches='tight')
-plt.show()
 
-# Numeric RMSE summary across the pulse test set
-rmses = rmse_pulse(bat_model, pulse_test)
-print(f"\nPulse test RMSE (V):  mean {np.mean(rmses):.4f} V | "
-        f"median {np.median(rmses):.4f} V | max {np.max(rmses):.4f} V "
-        f"({len(rmses)} trajs)")
-
-# %% ══════════════════════════════════════════════════════════
-#  SAVE
-# ═════════════════════════════════════════════════════════════
-
-if SAVE_MODELS:
-    torch.save({
-        'model': bat_model.state_dict(),
-        'config': CONFIG,
-        'history': history,
-        'I_ref': float(I_MAX),
-        'u_ref': float(U_MIN),
-        'N_HIDDEN': N_HIDDEN,
-        'EPOCHS': EPOCHS,
-        'USE_PULSE': USE_PULSE,
-    }, os.path.join(MODEL_DIR, f'{TIMESTAMP}_{SAVE_NAME}.pt'))
-
-    print(f"Saved: {TIMESTAMP}_{SAVE_NAME}.pt")
 
 # %% ══════════════════════════════════════════════════════════
 # ELEMENT SAVER
