@@ -1722,6 +1722,8 @@ def plot_param(model, trajs, param='R1'):
             #     ax.plot(u_t.numpy(), y, 'o', color=cmap(norm(C_val)), lw=2)
             if param == 'k':
                 ax.plot(soc.numpy(), y, '-', color=cmap(norm_u(u_per_val)), lw=2)
+            # if param == 'C1':
+            #     ax.plot(soc.numpy(), y, '-', color=cmap(norm_u(u_per_val)), lw=2)
             else:
                 ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
 
