@@ -64,11 +64,12 @@ def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None)
                           'tan':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
                           'log':  {'sin': 0, 'cos': 0, 'tan': 0},
                           'exp':  {'sin': 0, 'cos': 0, 'tan': 0},
+                          'exp':  {'exp': 0}
                           },
         verbosity=0,         
         constraints={"^": (-1, 1)},
         batching = True,
-        complexity_of_operators = {"+": 1, "*": 1, '-': 1, '/': 1,'^':3, 'sqrt': 2, 'square': 2, 'cube': 2,'exp': 3,'log': 3, 'sin': 4, 'cos': 4, 'tan': 4},
+        complexity_of_operators = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 1, 'sin': 3, 'cos': 3, 'tan': 3},
         complexity_of_constants = 1,
         maxsize = 30,
         batch_size = 1024,
@@ -108,6 +109,22 @@ def print_best_model(model, model_index = None, s = False):
 def pareto_plot(model, colors = COLORS):
     df_model = model.equations_
     best = model.get_best()
+    plt.grid(True, which="both", ls="-", linewidth=0.5)
+    plt.plot(df_model['complexity'], df_model['loss'], marker='o', linestyle='-', color=colors[0], label='Models')
+    plt.plot(best['complexity'], best['loss'],'o', color=colors[1], label='Best Model')
+    plt.xlabel('Complexity')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.title('Model Complexity vs Loss')
+    plt.legend()
+    plt.show()
+
+
+
+def post_pareto_plot(elem, run_id, colors = COLORS):
+    print(f'sr_models/model_{elem}_{run_id}.csv')
+    df_model = pd.read_csv(f'sr_models/model_{elem}_{run_id}.csv')
+    best = pd.read_csv(f'sr_models/model_{elem}_best_{run_id}.csv')
     plt.grid(True, which="both", ls="-", linewidth=0.5)
     plt.plot(df_model['complexity'], df_model['loss'], marker='o', linestyle='-', color=colors[0], label='Models')
     plt.plot(best['complexity'], best['loss'],'o', color=colors[1], label='Best Model')
