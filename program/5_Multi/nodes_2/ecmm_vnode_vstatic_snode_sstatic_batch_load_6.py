@@ -374,11 +374,6 @@ plt.show()
 
 
 
-
-
-
-
-
 # %% ELEMENT PLOTS CONTOUR?
 
 fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
