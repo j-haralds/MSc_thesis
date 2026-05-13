@@ -453,6 +453,9 @@ plot_report(bat_model_dynamic_DC, CONFIG, pulse_test, title='Pulse test: ',
 # plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_dynamic_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
 
+
+
+
 # %%
 # USE FOR REPORT. INPUT ERROR MAP 
 # 
@@ -468,19 +471,20 @@ bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
 
+
 # %% –––––––– INPUT ERROR MAP COMPARISON ––––––––––––––––––––––––––––––––––––––––
 fig,ax = input_map_comparison(bat_model_low, bat_model_full, other_combo_trajs  , rmse_scales=RMSE_scales)
-plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_0510_2034_full_otherCombo_input_error_comparison.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'0510_2034_low_0510_2034_full_otherCombo_input_error_comparison.pdf'), bbox_inches='tight')
 plt.show()
 
 
 # %%
 
 plot_report(bat_model_full, config_full, test_trajs, title='CC test: ', n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'ccPred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'ccPred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 plt.show()
 plot_report(bat_model_full, config_full, pulse_test, title='Pulse test: ', n_show=min(2, len(pulse_test)), time = True)
-plt.savefig(os.path.join(FIGS_DIR, f'pulsePred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'pulsePred_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 plt.show()
 
 # %% USE FOR REPORT
@@ -531,7 +535,7 @@ config_full, _, _, _ = load_checkpoint(ckpt_full)
 # plot_param(bat_model_full, test_trajs, param='k')
 # # plt.savefig(os.path.join(FIGS_DIR, f'k_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 plot_param(bat_model_full, test_trajs, param='ku')
-plt.savefig(os.path.join(FIGS_DIR, f'ku_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'ku_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
  
 # plot_param_pulse(bat_model_full, pulse_test, param='R0', n_show=4)
 # # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
