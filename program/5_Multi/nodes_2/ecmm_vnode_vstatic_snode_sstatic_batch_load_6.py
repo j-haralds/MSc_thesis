@@ -385,40 +385,6 @@ fig = plot_all_elements_contour(bat_model_full, soc_fix=0.5,
 # fig = plot_element_soc_3d(bat_model_full, param='R1', soc_values=(0.1, 0.5,  0.9), overlay_trajs=test_trajs)
 # fig.savefig(os.path.join(FIGS_DIR, f'contour_R1_socgrid_{SAVE_NAME}.pdf'))
 
-# %% ─── Per-element diagnostic sweep ────────────────────────────────
-
-# Sample once; all per-element plots below feed from this DataFrame.
-df = sample_element_grid(bat_model_full, n_c=15, n_u=15, n_soc=15,
-                         c_rate_range=(0.5, 5.0),
-                         u_per_range=(0.0, 25.0),
-                         soc_range=(0.1, 0.95))
-
-# ── Pick which element you want to interrogate ──
-PARAM = 'R0'   # one of: 'R0', 'R1', 'C1', 'k', 's', 'sdot'
-
-# (1) What does it care about?  -- one-figure quantitative summary
-fig = plot_element_sensitivity(bat_model_full, param=PARAM, df=df)
-# fig.savefig(os.path.join(FIGS_DIR, f'sens_{PARAM}_{SAVE_NAME}.png'), dpi=160)
-
-# (2) Shape of dependence on each input  -- "is it nearly separable?"
-fig = plot_element_partial_dependence(bat_model_full, param=PARAM, df=df)
-# fig.savefig(os.path.join(FIGS_DIR, f'pdp_{PARAM}_{SAVE_NAME}.png'), dpi=160)
-
-# (3) Three orthogonal contour slices  -- the visual full-3D-field view
-fig = plot_element_rosette(bat_model_full, param=PARAM,
-                           soc_ref=0.5, c_ref=2.0, u_ref=10.0,
-                           overlay_trajs=test_trajs)
-# fig.savefig(os.path.join(FIGS_DIR, f'rosette_{PARAM}_{SAVE_NAME}.png'), dpi=160)
-
-# (4) Pairs with the other four  -- identifiability / coupling story
-fig = plot_element_pairs(bat_model_full, param=PARAM, df=df, hue='soc')
-# fig.savefig(os.path.join(FIGS_DIR, f'pairs_{PARAM}_{SAVE_NAME}.png'), dpi=160)
-
-# (5) The 3D height plot you already have, for completeness
-fig = plot_element_soc_3d_height(bat_model_full, param=PARAM,
-                                 soc_values=np.linspace(0.1, 0.9, 5),
-                                 overlay_trajs=test_trajs)
-# fig.savefig(os.path.join(FIGS_DIR, f'r3d_{PARAM}_{SAVE_NAME}.png'), dpi=160)
 
 
 
@@ -535,13 +501,17 @@ plt.show()
 
 # %% USE FOR REPORT
 
+
 MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 # MODEL_NAME_LOW = '0510_2034_b4_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
 
 # bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 # bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+# plot_param(bat_model_dynamic_DC, test_trajs, param='tau')
+# plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_DYNA}.pdf'), bbox_inches='tight')
 
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+config_full, _, _, _ = load_checkpoint(ckpt_full)
 
 # plot_predicts_report(bat_model_full, config_full, test_trajs, predict='V', sort='C_rate', n_show=5, time=True)
 # # plt.savefig(os.path.join(FIGS_DIR, f'V_Crates_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
@@ -568,10 +538,16 @@ bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 # # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 # plot_param(bat_model_full, test_trajs, param='tau')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-plot_param(bat_model_full, test_trajs, param='s')
-# plt.savefig(os.path.join(FIGS_DIR, f's_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-plot_param(bat_model_full, test_trajs, param='sdot')
-# plt.savefig(os.path.join(FIGS_DIR, f'sdot_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+
+### –––– Mechanical elements ––––
+# plot_param(bat_model_full, test_trajs, param='s')
+# # plt.savefig(os.path.join(FIGS_DIR, f's_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_full, test_trajs, param='sdot')
+# # plt.savefig(os.path.join(FIGS_DIR, f'sdot_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+# plot_param(bat_model_full, test_trajs, param='k')
+# # plt.savefig(os.path.join(FIGS_DIR, f'k_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
+plot_param(bat_model_full, test_trajs, param='ku')
+plt.savefig(os.path.join(FIGS_DIR, f'ku_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
  
 # plot_param_pulse(bat_model_full, pulse_test, param='R0', n_show=4)
 # # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
@@ -583,7 +559,7 @@ plot_param(bat_model_full, test_trajs, param='sdot')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
 
-# plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
+plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
 # plt.savefig(os.path.join(FIGS_DIR, f'F_CC_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
 plt.show()
