@@ -25,10 +25,6 @@ COLORS = plot_settings.colors()
 # GP-quality values with interpolant speed.
 import Ue_GP
 import fix_ecm
-import importlib
-
-# reload fix_ecm to pick up recent edits without restarting the kernel
-importlib.reload(fix_ecm)
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
 LIMON_CELL0 = 14.37325  # cell length [1e-5m]
@@ -1618,6 +1614,44 @@ def plot_param(model, trajs, param='R1'):
     norm = Normalize(vmin=C_vals.min(), vmax=C_vals.max())
     norm_u = Normalize(vmin=0, vmax=30)
 
+    # Special path: k vs u_per as lines across trajectories at fixed SOC slices
+    if param == 'ku':
+        n_show = 3
+        traj_data = []
+        with torch.no_grad():
+            for tr in trajs_sorted:
+                soc       = tr['soc']
+                I_val     = float(tr['I'])
+                u_val     = float(tr['u'])
+                u_per_val = float(tr['u_per'])
+                I_norm    = torch.full_like(soc, I_val / model.I_ref)
+                u_norm    = torch.full_like(soc, u_val / model.u_ref)
+                k_vals    = model.k_net(soc, I_norm, u_norm).numpy() * 1e2  # GN/mm
+                traj_data.append({'u_per': u_per_val,
+                                'soc':   soc.numpy(),
+                                'k':     k_vals})
+
+        traj_data.sort(key=lambda d: d['u_per'])
+        u_per_arr   = np.array([d['u_per'] for d in traj_data])
+        soc_lo      = max(d['soc'].min() for d in traj_data)
+        soc_hi      = min(d['soc'].max() for d in traj_data)
+        soc_targets = np.linspace(soc_lo, soc_hi, n_show)
+
+        norm_soc = Normalize(vmin=0, vmax=1)
+        for soc_target in soc_targets:
+            k_line = np.array([d['k'][np.argmin(np.abs(d['soc'] - soc_target))]
+                            for d in traj_data])
+            ax.plot(u_per_arr, k_line, '-',
+                    color=cmap(norm_soc(soc_target)), lw=2)
+
+        ax.set_xlabel(r'$u$ [\%]')
+        ax.set_ylabel(r'$k$ [GN/mm]')
+        ax.ticklabel_format(useOffset=False, style='plain')
+        sm = ScalarMappable(cmap=cmap, norm=norm_soc)
+        fig.colorbar(sm, ax=ax, label='State of Charge')
+        fig.tight_layout()
+        return fig
+
     with torch.no_grad():
         for tr in trajs_sorted:
             soc    = tr['soc']
@@ -1631,6 +1665,8 @@ def plot_param(model, trajs, param='R1'):
             u_norm = torch.full_like(soc, u_val / model.u_ref)  # what the networks see
             I_real = torch.full_like(soc, I_val)                # raw I [A] for _R0's I_seq arg
             xlabel = 'State of Charge'
+
+
 
             if param == 'R1':
                 y = model._R1(soc, I_norm, u_norm).numpy() * 1e3
@@ -1658,10 +1694,10 @@ def plot_param(model, trajs, param='R1'):
 
                 #ax.plot(soc.numpy(), k_true, '--', color=cmap_r(norm_u(u_per_val)), label='True $k$', lw=2)
             
-            elif param == 'ku':
-                y = model.k_net(soc, I_norm, u_norm).numpy()
-                ylabel = r'$k$ [GN/mm]'
-                y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
+            # elif param == 'ku':
+            #     y = model.k_net(soc, I_norm, u_norm).numpy()
+            #     ylabel = r'$k$ [GN/mm]'
+            #     y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2/1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm
 
             
             elif param == 's' or param == 'sdot':
@@ -1686,9 +1722,9 @@ def plot_param(model, trajs, param='R1'):
             else:
                 raise ValueError(f"param must be 'R0', 'R1', 'C1', or 'k', got {param!r}")
 
-            if param == 'ku':
-                ax.plot(u_t.numpy(), y, 'o', color=cmap(norm(C_val)), lw=2)
-            elif param == 'k':
+            # if param == 'ku':
+            #     ax.plot(u_t.numpy(), y, 'o', color=cmap(norm(C_val)), lw=2)
+            if param == 'k':
                 ax.plot(soc.numpy(), y, '-', color=cmap(norm_u(u_per_val)), lw=2)
             else:
                 ax.plot(soc.numpy(), y, '-', color=cmap(norm(C_val)), lw=2)
@@ -1855,6 +1891,66 @@ def plot_force(model, trajs):
     fig.colorbar(sm, ax=ax, label='State of Charge')
     fig.tight_layout()
     return fig
+
+def plot_force_report(model, config, trajs, n_show=3):
+    """Plot reaction force F vs u [%], colored by SOC.
+
+    Each trajectory contributes len(soc) scatter points (predicted F from the
+    model's full forward pass, true F from data). On top, n_show SOC slices
+    (lowest and highest of the common SOC range, evenly spaced in between)
+    are connected with lines across trajectories sorted by u_per.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    model.eval()
+
+    base = plt.cm.Blues_r
+    cmap = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    base = plt.cm.Reds_r
+    cmap_r = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+    norm = Normalize(vmin=0, vmax=1)
+
+    traj_data = []
+    with torch.no_grad():
+        for tr in trajs:
+            out       = predict_np(model, config, tr)
+            soc_np    = out['soc']
+            F_pred    = out['Fr']           # ← integrated through forward()
+            F_true    = tr['F'].numpy()
+            u_per_val = float(tr['u_per'])
+
+            traj_data.append({'u_per': u_per_val, 'soc': soc_np,
+                              'F_pred': F_pred, 'F_true': F_true})
+
+    # ── connect points at fixed SOC across trajectories ──
+    traj_data.sort(key=lambda d: d['u_per'])
+    u_per_arr   = np.array([d['u_per'] for d in traj_data])
+    soc_lo      = max(d['soc'].min() for d in traj_data)
+    soc_hi      = min(d['soc'].max() for d in traj_data)
+    soc_targets = np.linspace(soc_lo, soc_hi, n_show)
+
+    for soc_target in soc_targets:
+        F_pred_line = np.array([d['F_pred'][np.argmin(np.abs(d['soc'] - soc_target))]
+                                for d in traj_data])
+        F_true_line = np.array([d['F_true'][np.argmin(np.abs(d['soc'] - soc_target))]
+                                for d in traj_data])
+        ax.plot(u_per_arr, F_true_line, '--', color=cmap_r(norm(soc_target)), lw=2)
+        ax.plot(u_per_arr, F_pred_line, '-',  color=cmap(norm(soc_target)),   lw=2)
+
+    from matplotlib.lines import Line2D
+    ax.legend(handles=[
+        Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted'),
+    ])
+
+    ax.set_xlabel(r'$u$ $[\%]$')
+    ax.set_ylabel(r'$F$ [GN]')
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    fig.colorbar(sm, ax=ax, label='State of Charge')
+    fig.tight_layout()
+    return fig
+
 
 def plot_swelling(model, trajs):
     """Plot reaction force F = -k(soc, I, u)·u vs u [%], colored by SOC.
