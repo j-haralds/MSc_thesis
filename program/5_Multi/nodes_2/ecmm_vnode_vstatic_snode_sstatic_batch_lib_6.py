@@ -464,8 +464,9 @@ class BatteryECMM(nn.Module):
             raise ValueError(f"Unknown R0_mode: {m!r}. Use 'net', 'func', 'param', or 'net_no_soc'.")
 
 
-        # ––––– Black box Neural Net for V prediction
-        self.black_net = BlackNet(config, n_hidden=nh)
+        # ––––– Black box Neural Net for V prediction (only when V_mode='back_in_black')
+        if _style_V(config) == 'back_in_black':
+            self.black_net = BlackNet(config, n_hidden=nh)
         # –––––
 
     # ── Dispatchers ──
