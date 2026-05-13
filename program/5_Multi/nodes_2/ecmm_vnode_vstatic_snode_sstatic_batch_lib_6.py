@@ -25,6 +25,10 @@ COLORS = plot_settings.colors()
 # GP-quality values with interpolant speed.
 import Ue_GP
 import fix_ecm
+import importlib
+
+# reload fix_ecm to pick up recent edits without restarting the kernel
+importlib.reload(fix_ecm)
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
 LIMON_CELL0 = 14.37325  # cell length [1e-5m]
@@ -2349,7 +2353,7 @@ def rmse_fix(trajs, rmse_scales):
         else:        
             I = tr['I_seq'].numpy()
         V_true = tr['V'].numpy()
-        out = Ue_GP.soc_to_Ue(tr['soc']) -fix_ecm.parameter_estimation_curvefit(tr,I)
+        out = Ue_GP.soc_to_Ue(tr['soc']) -fix_ecm.parameter_estimation_curvefit(tr, DC=False, I=I).flatten()
         rmse_V[i]=(float(np.sqrt(np.mean((out -V_true)**2))))
     return np.array(rmse_V) / rmse_scales['V']
 

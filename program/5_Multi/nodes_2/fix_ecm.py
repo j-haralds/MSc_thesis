@@ -80,12 +80,15 @@ def ECM_solve_curvefit(x, R0, R1, C1):
     return eta_model
 
 
-def parameter_estimation_curvefit(tr, p0=[0.01, 0.01, 1500],lims = LIMS, U0 = 0, DC = True):
+def parameter_estimation_curvefit(tr, p0=[0.01, 0.01, 1500],lims = LIMS, U0 = 0, DC = True, I=None):
     bounds = ([lims['R0'][0], lims['R1'][0], lims['C1'][0]], [lims['R0'][1], lims['R1'][1], lims['C1'][1]])
-    if DC:
-        xdata = [tr['t'].numpy(), tr['I']*np.ones_like(tr['t'])]
+    if False:
+        if DC:
+            xdata = [tr['t'].numpy(), tr['I']*np.ones_like(tr['t'])]
+        else:
+            xdata = [tr['t'].numpy(), tr['I'].numpy()]
     else:
-        xdata = [tr['t'].numpy(), tr['I'].numpy()]
+        xdata = [tr['t'].numpy(), I]
     ydata = tr['eta'].numpy()
     popt, pcov = scipy.optimize.curve_fit(ECM_solve_curvefit, xdata, ydata, p0=p0, bounds=bounds)
     R0, R1 , C1 = popt

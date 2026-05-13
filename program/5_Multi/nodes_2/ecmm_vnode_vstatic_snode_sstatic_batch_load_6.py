@@ -112,6 +112,9 @@ combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
 print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)}")
 
 
+other_combo_data = pd.read_csv(OTHER_HALF_COMBO, sep=';', comment='%')
+other_combo_trajs = prepare_pulse_data(other_combo_data)
+
 
 # %% ══════════════════════════════════════════════════════════
 #  LOAD MODEL  (no Ue argument — GP loaded internally by lib)
@@ -246,18 +249,18 @@ def C1_nn(c_rate, u_per, soc):
 def k_nn(c_rate, u_per, soc):
     return element_predict(bat_model, c_rate, u_per, soc, element='k')
 
-def s_nn(c_rate, u_per, soc):
-    return element_predict(bat_model, c_rate, u_per, soc, element='s')
+# def s_nn(c_rate, u_per, soc):
+#     return element_predict(bat_model, c_rate, u_per, soc, element='s')
 
-def sdot_nn(c_rate, u_per, soc):
-    return element_predict(bat_model, c_rate, u_per, soc, element='sdot')
+# def sdot_nn(c_rate, u_per, soc):
+#     return element_predict(bat_model, c_rate, u_per, soc, element='sdot')
 
-for c_rate in [0.5, 1, 2, 3, 4, 5]:
-    plt.plot(np.linspace(1, 0, 1000), sdot_nn(c_rate, 10, np.linspace(1, 0, 1000)), label=f'sdot ({c_rate} C)')
-plt.gca().invert_xaxis()
+# for c_rate in [0.5, 1, 2, 3, 4, 5]:
+#     plt.plot(np.linspace(1, 0, 1000), sdot_nn(c_rate, 10, np.linspace(1, 0, 1000)), label=f'sdot ({c_rate} C)')
+# plt.gca().invert_xaxis()
 
 # plot_param(bat_model, test_trajs, param='C1')
-plt.show()
+# plt.show()
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -319,7 +322,7 @@ plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_ra
 plt.show()
 
 
-# %%
+# %% SCARCITY PLOT
 
 import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
@@ -330,6 +333,8 @@ def plot_data_scarcity_loss(names, trajs):
     nrmsesF = []
     nrmseV_fix = []
     rmse_scale = RMSE_scales['V']
+    fracs = [2, 10, 20, 40,60, 80, 100]
+    rmseV_fix = rmse_fix(trajs, RMSE_scales)
     for name in names:
         model, ckpt = load_nn_model(name, I_ref=I_MAX)
         rmseV, rmseF, _, _ = rmse_pulse(model, trajs)
@@ -339,12 +344,12 @@ def plot_data_scarcity_loss(names, trajs):
         print(f"{name} | Pulse test nRMSE (V): {nrmseV:.4f} | nRMSE (F): {nrmseF:.4f}")
         nrmsesV.append(nrmseV)
         nrmsesF.append(nrmseF)
-        #nrmseV_fix.append(rmseV_fix)
 
     fig = plt.figure(figsize=(6,4))
-    plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesV, label='Voltage NRMSE', marker='o', color = plt.cm.Blues(0.95))
-    plt.semilogy([2, 10, 20, 40, 80, 100], nrmsesF, label='Force NRMSE', marker='s', color = plt.cm.Reds(0.9))
-    plt.semilogy(nrmseV_fix, label='Voltage NRMSE (fixed ECM)', color = 'gray', linestyle='--')
+    plt.semilogy(fracs, nrmsesV, label='Voltage NRMSE', marker='o', color = plt.cm.Blues(0.95))
+    plt.plot(fracs, rmseV_fix.mean()*np.ones_like(fracs), label='Voltage NRMSE (fixed ECM)', color = plt.cm.Blues(0.95), linestyle='--')
+    plt.semilogy(fracs, nrmsesF, label='Force NRMSE', marker='s', color = plt.cm.Reds(0.9))
+    #plt.semilogy(nrmseV_fix, label='Voltage NRMSE (fixed ECM)', color = 'gray', linestyle='--')
 
     plt.xlabel(r'Percentage of training data [\%]')
     plt.ylabel('NRMSE')
@@ -356,10 +361,11 @@ names = ['0512_1640_b4_combo_0.02__combo_V-dynamic_F-dynamic_R0c_C1c_27.13min_16
          '0512_1459_b4_combo_0.1__combo_V-dynamic_F-dynamic_R0c_C1c_94.18min_16h_2500eps.pt',
          '0511_1252_b4_combo_0.2__combo_V-dynamic_F-dynamic_246.31min_16h_2500eps.pt',
          '0511_1249_b4_combo_0.4__combo_V-dynamic_F-dynamic_280.31min_16h_2500eps.pt',
+         '0512_2326_b4_combo_0.6__combo_V-dynamic_F-dynamic_R0c_C1c_379.07min_16h_2500eps.pt',
          '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
          '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
          ]
-plot_data_scarcity_loss(names, test_trajs)
+plot_data_scarcity_loss(names, other_combo_trajs)
 plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop.pdf'), bbox_inches='tight')
 plt.show()
 ##
@@ -461,7 +467,7 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 # %% ========================================================================
 
-MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
+MODEL_NAME_STAT = '0513_1037_b4_combo_1.0__DC_V-static_no_R0_F-static_R0c_C1c_3.04min_16h_500eps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
 
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
