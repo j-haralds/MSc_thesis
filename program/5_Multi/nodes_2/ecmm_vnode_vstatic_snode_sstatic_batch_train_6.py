@@ -66,7 +66,7 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
+USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -100,8 +100,8 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.6 # Out of 100% of the training data, how much to use (for quick tests)
+EPOCHS  = 500  # Total training epochs
+split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
 
 
@@ -376,3 +376,5 @@ if SAVE_ELEMENTS:
 
 # %% ══════════════════════════════════════════════════════════
 
+
+# %%
