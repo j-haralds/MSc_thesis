@@ -2090,7 +2090,7 @@ def sdot_predict(model, c_rate, u_per, soc, s, L0=LIMON_CELL0, Q0=Q0):
     return sdot
 
 
-def data_param(model, trajs):
+def data_param(model, trajs, pulse = False):
     """
     Return a long-form DataFrame of R0, R1, C1, and k across SOC for all given
     trajectories — one row per (trajectory, soc-sample).
@@ -2103,13 +2103,17 @@ def data_param(model, trajs):
         for i, tr in enumerate(trajs_sorted):
             soc    = tr['soc']
             T      = tr['T']
-            I_val  = float(tr['I'])
+            if pulse:
+                I_norm = tr['I_seq'] / model.I_ref
+                I_real = tr['I_seq']                     # raw I [A] for _R0's I_seq arg
+            else:
+                I_val  = float(tr['I'])
+                I_norm = torch.full_like(soc, I_val / model.I_ref)
+                I_real = torch.full_like(soc, I_val)                     # raw I [A] for _R0's I_seq arg
             u_val  = float(tr['u'])
             u_per_val = float(tr['u_per'])
             C_val  = float(tr['C'])
-            I_norm = torch.full_like(soc, I_val / model.I_ref)
             u_norm = torch.full_like(soc, u_val / model.u_ref)
-            I_real = torch.full_like(soc, I_val)                     # raw I [A] for _R0's I_seq arg
 
             R1 = model._R1(soc, I_norm, u_norm).numpy()              # Ohm
             C1 = model._C1(soc, I_norm, u_norm).numpy()              # F
@@ -2137,7 +2141,7 @@ def data_param(model, trajs):
                 'trajectory': i,
                 'C': C_val,
                 'u_per': u_per_val,
-                'I': I_val,
+                'I': I_val if not pulse else I_real.numpy(),
                 'u': u_val,
                 'soc': soc.numpy(),
                 'R1': R1,
