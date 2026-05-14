@@ -1,0 +1,9 @@
+complexity,loss,equation,score,sympy_format,lambda_format
+1,47.264046,4.201303,0.0,4.20130300000000,PySRFunction(X=>4.20130300000000)
+3,46.180405,square(exp(C)),0.011597152843443943,exp(2*C),PySRFunction(X=>exp(2*C))
+4,39.42922,exp(1.6600777 - soc),0.15804840811629775,exp(1.6600777 - soc),PySRFunction(X=>exp(1.6600777 - soc))
+5,19.057316,cube(exp(0.94621325 - soc)),0.7270560959597022,17.0924996443767*exp(-3*soc),PySRFunction(X=>17.0924996443767*exp(-3*soc))
+7,10.445284,cube(exp((C - soc) / C)),0.3006502425801198,exp(3*(C - soc)/C),PySRFunction(X=>exp(3*(C - soc)/C))
+13,10.036629,square(exp((sqrt(sqrt(C)) + (0.360482 - soc)) - soc) ^ 1.2853594),0.006651547294915007,2.52615366260076*exp(C**(1/4) - 2*soc)**2.5707188,PySRFunction(X=>2.52615366260076*exp(C**(1/4) - 2*soc)**2.5707188)
+19,9.87133,square(C + ((-0.110204384 - soc) + ((exp((1.5527458 - soc) - soc) + -0.26770392) - soc))) + 0.10498817,0.002767784128707326,(C - soc - soc + exp(-soc - soc + 1.5527458) - 0.26770392 - 0.110204384)**2 + 0.10498817,PySRFunction(X=>(C - soc - soc + exp(-soc - soc + 1.5527458) - 0.26770392 - 0.110204384)**2 + 0.10498817)
+21,8.735769,square(((exp(((0.95730025 - soc) - soc) + 0.37750253) - soc) + ((C - soc) - soc)) + C) - C,0.06110430989749122,-C + (C + C - soc - soc - soc + exp(-soc - soc + 0.37750253 + 0.95730025))**2,PySRFunction(X=>-C + (C + C - soc - soc - soc + exp(-soc - soc + 0.37750253 + 0.95730025))**2)

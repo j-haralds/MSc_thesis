@@ -1,0 +1,13 @@
+Complexity,Loss,Equation
+1,0.07120152,"0.8068778"
+3,0.047544956,"0.5885727 ^ soc"
+5,0.025638292,"(0.0034341183 ^ soc) + 0.6218573"
+12,0.024205707,"sqrt(square((square(soc ^ soc) + 0.8525123) - (soc ^ C)))"
+13,0.02392426,"square(square(sqrt(sqrt(exp(cube(0.1022558 ^ soc))))) - 0.22429237) ^ 0.7682287"
+18,0.02005767,"sqrt(square(((((0.45773304 ^ C) * 0.45713213) + square(soc ^ soc)) + 0.5461381) - (soc ^ C)))"
+19,0.020025387,"sqrt(square(((sqrt((0.13936761 ^ C) * 0.15971822) + square(soc ^ soc)) + 0.6095757) - (soc ^ C)))"
+20,0.018909171,"sqrt(square(((soc ^ soc) - ((soc ^ C) + soc)) - -0.76505524) + (soc * sqrt(0.20730956 ^ C)))"
+25,0.017120501,"sqrt(square(((square(soc ^ soc) + 0.41740575) - (soc ^ C)) + (0.41740575 - (soc ^ C))) + sqrt(C * (0.22850056 ^ C)))"
+27,0.01705313,"sqrt((sqrt(C * sqrt(cube(0.22850056 ^ C))) + square((C - soc) + square(soc - square(sqrt((0.13447432 ^ soc) * 0.91831636))))) / 0.9797239)"
+28,0.016122308,"sqrt(sqrt(C * sqrt(cube(0.22850056 ^ C))) + square((C - soc) + square(soc - sqrt(square(((0.13447432 ^ soc) * sqrt(0.8126361)) ^ 0.8214445)))))"
+29,0.014862057,"sqrt((sqrt(C * cube(sqrt(0.19587535 ^ C))) + square((C - soc) + square(soc - square(sqrt(((0.12315938 ^ soc) * 0.9303201) ^ 0.8222855))))) / 0.9254595)"

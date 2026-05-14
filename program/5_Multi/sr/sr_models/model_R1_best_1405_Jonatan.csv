@@ -1,0 +1,7 @@
+4
+7
+10.445284
+cube(exp((C - soc) / C))
+0.3006502425801198
+exp(3*(C - soc)/C)
+PySRFunction(X=>exp(3*(C - soc)/C))
