@@ -49,7 +49,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = False 
+SAVE_MODELS = True 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -100,9 +100,9 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 3  # Total training epochs
+EPOCHS  = 2500  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f'b{BATCH_SIZE}_combo_{split_percentage}_'  # Start of filename, before the style tags and time
+NAME_START = f'b{BATCH_SIZE}_combo' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
