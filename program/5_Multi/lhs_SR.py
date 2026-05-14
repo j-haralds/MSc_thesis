@@ -10,18 +10,18 @@ import numpy as np
 import pandas as pd
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-N = int(1e4)                       # number of sample points (simulations to run)
+N = int(10000)                       # number of sample points (simulations to run)
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
     # "C_rate": (1.0,  5.0,  1),    # Pulse
-    "u_par":  (0.0, 30, 3),
-    "C_rate": (0.5,  5.0,  3),     # CC
+    "u_par":  (0.0, 30.0, 3),
+    "C_rate": (0.0,  5.0,  3),     # CC
     'SOC': (0.0, 1.0, 3)
 }
 
 SAVE_CSV     = True
-CSV_PATH     = "lhs_samples.csv"
+CSV_PATH     = "lhs_samples_2.csv"
 RANDOM_SEED  = None             # set to None for a different draw each run
 # ──────────────────────────────────────────────────────────────────────────────
 
