@@ -498,8 +498,8 @@ class BatteryECMM(nn.Module):
     def _s(self, soc, I_norm, u_norm_exp, B, T):
         """Trajectory-shape s (B, T).
 
-        style_F='static'   →  s = sNet(soc, I_norm)            (one-shot algebraic)
-        style_F='dynamic'  →  ds/dt = sdotNet(s, soc, I_norm, u_norm), forward
+        style_F='static'   -  s = sNet(soc, I_norm)            (one-shot algebraic)
+        style_F='dynamic'  -  ds/dt = sdotNet(s, soc, I_norm, u_norm), forward
                               Euler integrated from s(0)=0 with dt=1 s.
 
         Same return shape (B, T) in both modes, so forward() and downstream
