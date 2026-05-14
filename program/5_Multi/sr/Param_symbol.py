@@ -63,10 +63,19 @@ def get_default_settings():
                           }
     consts = {"^": (-1, 1)}
     op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 1, 'sin': 3, 'cos': 3, 'tan': 3}
-    return bin_ops, un_ops, nest_const,consts, op_comps
+    var_names = ['i','d','soc']
+    return bin_ops, un_ops, nest_const,consts, op_comps, var_names
+
+def get_var_names(elem):
+    if elem in ['R0', 'R1', 'C1','k'] or elem == None:
+        return ['C','d','soc']
+    elif elem in ['s']:
+        return ['C','d','soc','s']
+    else:
+        raise ValueError(f"Unknown element: {elem}")
 
 def get_settings(elem):
-    bin_ops, un_ops, nest_const,consts, op_comps = get_default_settings()
+    bin_ops, un_ops, nest_const,consts, op_comps, var_names = get_default_settings()
     
     if elem == 'R0':
         un_ops = ['exp', 'log','sqrt','square', 'cube',]
@@ -94,13 +103,14 @@ def get_settings(elem):
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
         op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    var_names = get_var_names(elem)
     
-    return bin_ops, un_ops, nest_const,consts, op_comps
+    return bin_ops, un_ops, nest_const,consts, op_comps, var_names
 
 def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None, elem = None):
     
 
-    bin_ops, un_ops, nest_const, consts,op_comps = get_settings(elem)
+    bin_ops, un_ops, nest_const, consts,op_comps, var_names = get_settings(elem)
     
     
     model = PySRRegressor(
@@ -110,24 +120,27 @@ def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None,
         unary_operators=un_ops,
         populations=pops,
         nested_constraints = nest_const,
-        verbosity=0,         
+        verbosity=0,     
+        variable_names=var_names,    
         constraints = consts,
         batching = True,
         complexity_of_operators = op_comps,
         complexity_of_constants = 1,
-        maxsize = 20,
-        batch_size = 1024,
+        maxsize = 30,
+        batch_size = 512,
         run_id= run_id
     )
     return model
 
 
-def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 100, selection = "best", elem = None):
+def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 30, selection = "best", elem = None):
+    var_name = get_var_names(elem)
+    print(f"Variable names for element {elem}: {var_name}")
     if model is None:
         model = setup_model(run_id = run_id, its = its, pops = pops, selection = selection, elem = elem)
     print(f"Running symbolic regression for element {elem} with run_id {run_id}...")
     print(f"Settings: iterations={its}, populations={pops}, selection={selection}")
-    model.fit(X, y)
+    model.fit(X, y, variable_names = var_name)
     return model
 
 # =================================================
