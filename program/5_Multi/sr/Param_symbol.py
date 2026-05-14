@@ -51,36 +51,82 @@ def prepare_data(data, index = 0, test = False):
 # SYMBOLIC REGRESSION SETUP AND RUN
 # =================================================
 
-
-def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None):
-    model = PySRRegressor(
-        model_selection=selection,
-        niterations=its,
-        binary_operators=["+", "*", '-','/','^'],
-        unary_operators=['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan'],
-        populations=pops,
-        nested_constraints = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+def get_default_settings():
+    bin_ops = ["+", "*", '-','/','^']
+    un_ops = ['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan']
+    nest_const = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
                           'cos':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
                           'tan':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
                           'log':  {'sin': 0, 'cos': 0, 'tan': 0},
                           'exp':  {'sin': 0, 'cos': 0, 'tan': 0},
                           'exp':  {'exp': 0}
-                          },
+                          }
+    consts = {"^": (-1, 1)}
+    op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 1, 'sin': 3, 'cos': 3, 'tan': 3}
+    return bin_ops, un_ops, nest_const,consts, op_comps
+
+def get_settings(elem):
+    bin_ops, un_ops, nest_const,consts, op_comps = get_default_settings()
+    
+    if elem == 'R0':
+        un_ops = ['exp', 'log','sqrt','square', 'cube',]
+        nest_const = {'exp':  {'exp': 1, 'log': 1},
+                      'log':  {'exp': 1, 'log': 1}}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':1, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    if elem == 'R1':
+        un_ops = ['exp', 'log','sqrt','square', 'cube',]
+        nest_const = {'exp':  {'exp': 1, 'log': 1},
+                      'log':  {'exp': 1, 'log': 1}}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':1, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    if elem == 'C1':
+        un_ops = ['exp', 'log','sqrt','square', 'cube',]
+        nest_const = {'exp':  {'exp': 1, 'log': 1},
+                      'log':  {'exp': 1, 'log': 1}}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+
+    if elem == 'k':
+        un_ops = ['exp', 'log','sqrt','square', 'cube',]
+        nest_const = {'exp':  {'exp': 1, 'log': 1},
+                      'log':  {'exp': 1, 'log': 1}}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    if elem == 's':
+        un_ops = ['exp', 'log','sqrt','square', 'cube',]
+        nest_const = {'exp':  {'exp': 1, 'log': 1},
+                      'log':  {'exp': 1, 'log': 1}}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    
+    return bin_ops, un_ops, nest_const,consts, op_comps
+
+def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None, elem = None):
+    
+
+    bin_ops, un_ops, nest_const, consts,op_comps = get_settings(elem)
+    
+    
+    model = PySRRegressor(
+        model_selection=selection,
+        niterations=its,
+        binary_operators=bin_ops,
+        unary_operators=un_ops,
+        populations=pops,
+        nested_constraints = nest_const,
         verbosity=0,         
-        constraints={"^": (-1, 1)},
+        constraints = consts,
         batching = True,
-        complexity_of_operators = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 1, 'sin': 3, 'cos': 3, 'tan': 3},
+        complexity_of_operators = op_comps,
         complexity_of_constants = 1,
-        maxsize = 30,
+        maxsize = 20,
         batch_size = 1024,
         run_id= run_id
     )
     return model
 
 
-def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 30, selection = "best"):
+def run_symbolic_regression(X, y, model = None,run_id = None, its = int(1e3), pops = 100, selection = "best", elem = None):
     if model is None:
-        model = setup_model(run_id = run_id, its = its, pops = pops, selection = selection)
+        model = setup_model(run_id = run_id, its = its, pops = pops, selection = selection, elem = elem)
+    print(f"Running symbolic regression for element {elem} with run_id {run_id}...")
+    print(f"Settings: iterations={its}, populations={pops}, selection={selection}")
     model.fit(X, y)
     return model
 
