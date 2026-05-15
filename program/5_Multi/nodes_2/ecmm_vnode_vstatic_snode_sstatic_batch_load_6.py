@@ -416,8 +416,10 @@ MODEL_NAME_DYNA = '0513_1037_b4_combo_1__DC_V-dynamic_F-dynamic_R0c_C1c_105.62mi
 
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+history_stat, config_stat, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
+history_dyna, config_dyna, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
 
-# USE FOR REPORT. COMPARISON BAR PLOT STATIC AND DYNAMIC TRAINED ON CC
+# %% USE FOR REPORT. COMPARISON BAR PLOT STATIC AND DYNAMIC TRAINED ON CC
 plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
                         'Dynamic': bat_model_dynamic_DC},
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
@@ -429,12 +431,11 @@ plt.show()
 # USE FOR REPORT. STATIC TRAINED ON CC
 #
 
-history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
-plot_report(bat_model_static_DC, CONFIG, test_trajs, title='CC test: ',
+plot_report(bat_model_static_DC, config_stat, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 # plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_static_ccPred.pdf'), bbox_inches='tight')
 plt.show()
-plot_report(bat_model_static_DC, CONFIG, pulse_test, title='Pulse test: ',
+plot_report(bat_model_static_DC, config_stat, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 # plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_static_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
@@ -443,12 +444,11 @@ plt.show()
 # USE FOR REPORT. DYNAMIC TRAINED ON CC
 #
 
-history, CONFIG, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
-plot_report(bat_model_dynamic_DC, CONFIG, test_trajs, title='CC test: ',
+plot_report(bat_model_dynamic_DC, config_dyna, test_trajs, title='CC test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 # plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_dynamic_ccPred.pdf'), bbox_inches='tight')
 plt.show()
-plot_report(bat_model_dynamic_DC, CONFIG, pulse_test, title='Pulse test: ',
+plot_report(bat_model_dynamic_DC, config_dyna, pulse_test, title='Pulse test: ',
                  n_show=min(2, len(pulse_test)), time = True)
 # plt.savefig(os.path.join(FIGS_DIR, f'0513_1037_dynamic_pulsePred.pdf'), bbox_inches='tight')
 plt.show()
@@ -560,7 +560,7 @@ plt.show()
 # %%
 
 def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, fixed=True, start=0, Q0=17921.57581):
+                                n_show=5, pulse=False, fixed=True, start=0, bar=True, Q0=17921.57581):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).
@@ -592,7 +592,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         idx = np.unique(np.linspace(start, len(trajs_sorted) - 1, n_show).round().astype(int))
         trajs_plot = [trajs_sorted[i] for i in idx]
 
-    # True → Reds, Predicted → Blues (regardless of `sort`)
+    # True – Reds, Predicted – Blues (regardless of `sort`)
     base = plt.cm.Blues_r
     cmap_b = LinearSegmentedColormap.from_list(
         "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
@@ -604,13 +604,13 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
-            figsize=(4.2, 3.4),
+            figsize=(4.3, 3.5),
             height_ratios=[0.4, 1.0],
             sharex=True, constrained_layout=True,
         )
         ax_i, ax_v = ax['current'], ax['voltage']
     else:
-        fig, ax_v = plt.subplots(figsize=(4.2, 3), constrained_layout=True)
+        fig, ax_v = plt.subplots(figsize=(4.3, 3.1), constrained_layout=True)
         ax_i = None
 
     I_to_C = 3600.0 / Q0
@@ -621,7 +621,10 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
             bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
             color_true = cmap_r(norm(bar_val))
             color_true = 'black'
-            color_pred = cmap_b(norm(bar_val))
+            if bar:
+                color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
+            else:
+                color_pred = 'tab:blue'
 
             out = predict_np(model, config, tr)
             t = np.arange(tr['T'])
@@ -656,46 +659,63 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         tag = fr'$\widetilde{{d}} = {float(first["u_per"]):g}\%$'
 
     handles = [
-        plt.Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
-        plt.Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted')]
+        plt.Line2D([0], [0], color='black', alpha=0.5, lw=2, linestyle='--', label='True'),
+        plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Predicted')]
     if fixed:
         handles.append(plt.Line2D([0], [0], color='none', label=tag))
-    ax_v.legend(handles=handles, loc='upper right', frameon=True,
-                handlelength=1.5, handletextpad=0.5)
+    ax_v.legend(handles=handles, loc='upper right' if not n_show==1 else 'lower left', frameon=True,
+                handlelength=1.5, handletextpad=0.5, fontsize=14)
 
     if pulse:
         ax_i.set_ylabel('Cr [a.u.]')
 
-    sm = ScalarMappable(cmap=cmap_b, norm=norm)   # colorbar shows the Predicted palette
+    sm = ScalarMappable(cmap=cmap_b if sort == 'C_rate' else cmap_r, norm=norm)   # colorbar shows the Predicted palette
     sm.set_array([])
     cbar_ax = [ax_i, ax_v] if pulse else ax_v
-    fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
+    if bar:
+        fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
     return fig
 
-# ––––––– Prepare data and plotting  –––––––––––––––––––––––––––––––––––––––––––––––––––––
+# ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
 
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=4, pulse=True, fixed=False, start=5)
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
+                             n_show=4, pulse=True, fixed=False, start=5)
+plt.savefig(os.path.join('pred_figs', f'0510_2034_full_otherCombo_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
 
-other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=8, pulse=False, fixed=False, start=2)
+other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
+                             n_show=8, pulse=False, fixed=False, start=2)
+plt.savefig(os.path.join('pred_figs', f'0510_2034_full_otherCombo_cc_V.pdf'), bbox_inches='tight')
 plt.show()
 
 
 other_combo_pulse_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == True)])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F', n_show=5, pulse=True)
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F',
+                             n_show=5, pulse=True)
+plt.savefig(os.path.join('pred_figs', f'0510_2034_full_otherCombo_pulse_F.pdf'), bbox_inches='tight')
 plt.show()
 
 # new generation data c_rate 2.5
 crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
 pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
-plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F', n_show=5, pulse=True)
+plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F',
+                             n_show=5, pulse=True)
+plt.savefig(os.path.join('pred_figs', f'0510_2034_full_c25usweep_pulse_F.pdf'), bbox_inches='tight')
 plt.show()
 
 
-# new generation data c_rate 5 
-other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=4, pulse=True, fixed=False, start=5)
+
+# ––––––––––––– pulse dynamic o static ––––––––––––––
+crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
+pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
+plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
+                            n_show=1, start=39, pulse=True, fixed=False, bar=False)
+plt.sa
+plt.show()
+
+plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
+                            n_show=1, start=39, pulse=True, fixed=False, bar=False)
 plt.show()
