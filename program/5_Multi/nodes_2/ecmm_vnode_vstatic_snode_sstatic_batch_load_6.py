@@ -148,11 +148,11 @@ TOTAL_TIME = history.get('time', 0.0)
 SAVE_NAME = (f'_{MODEL_NAME}_')
 print(SAVE_NAME)
 
-plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
-    print('Saved figure')
-plt.show()
+# plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
+#     print('Saved figure')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
@@ -168,32 +168,32 @@ plt.show()
 # PLOT PARAMS
 # ═════════════════════════════════════════════════════════════
 
-plot_param(bat_model, test_trajs, param='R0')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='R1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='C1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='k')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='s')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_s_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plt.show()
+# plot_param(bat_model, test_trajs, param='R0')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='R1')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='C1')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='k')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='s')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_s_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plt.show()
 
 
 
-plot_force(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_swelling(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_su_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plt.show()
+# plot_force(bat_model, test_trajs)
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_F_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_swelling(bat_model, test_trajs)
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_su_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 # PLOT PREDICTS
@@ -365,8 +365,8 @@ names = ['0512_1640_b4_combo_0.02__combo_V-dynamic_F-dynamic_R0c_C1c_27.13min_16
          '0511_2138_b4_combo_0.8__combo_V-dynamic_F-dynamic_R0c_C1c_453.64min_16h_2500eps.pt',
          '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
          ]
-plot_data_scarcity_loss(names, other_combo_trajs)
-plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop.pdf'), bbox_inches='tight')
+# plot_data_scarcity_loss(names, other_combo_trajs)
+# plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop.pdf'), bbox_inches='tight')
 plt.show()
 ##
 
@@ -423,7 +423,7 @@ plot_nrmse_bars(models = {'Static':  bat_model_static_DC,
     trajs_by_set = {'CC': test_trajs, 'Pulse': pulse_test},
     rmse_scales  = RMSE_scales,
 ECM_fix = True, metric_names = ['Voltage'])
-plt.savefig(os.path.join(FIGS_DIR, f'Vnrmse_0513_1037dyna_0513_1037stat_CCtrained.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'Vnrmse_0513_1037dyna_0513_1037stat_CCtrained.pdf'), bbox_inches='tight')
 plt.show()
 # %%
 # USE FOR REPORT. STATIC TRAINED ON CC
@@ -552,8 +552,150 @@ plot_force_report(bat_model_full, config_full, test_trajs, n_show=3)
 
 plt.show()
 
-# %% USE FOR REPORT INPUT ERROR MAPS
+# # %% USE FOR REPORT INPUT ERROR MAPS
 
-input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='V')
-input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='F')
+# input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='V')
+# input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='F')
 
+# %%
+
+def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_rate',
+                                n_show=5, pulse=False, fixed=True, start=0, Q0=17921.57581):
+    """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
+
+    True trajectories are dashed (Reds); NN predictions are solid (Blues).
+    Each trajectory's shade encodes `sort` (C-rate or u_per) via `norm`.
+
+    pulse=True  → current panel (top, compact) + prediction panel (bottom),
+                  shared colorbar across both.
+    pulse=False → prediction panel only, with a fixed-value tag.
+    """
+    assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
+    model.eval()
+
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+        vals_arr = np.array([tr['C'] for tr in trajs_sorted])
+        bar_name = 'C-rate [a.u.]'
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
+        vals_arr = np.array([tr['u_per'] for tr in trajs_sorted])
+        bar_name = r'$\widetilde{d}$ [\%]'
+    else:
+        raise ValueError(f"sort must be 'C_rate' or 'u_per', got {sort!r}")
+    norm = Normalize(vmin=vals_arr.min(), vmax=vals_arr.max())
+
+    if n_show is None or n_show >= len(trajs_sorted):
+        trajs_plot = trajs_sorted
+    else:
+        # start = start if pulse else 0
+        idx = np.unique(np.linspace(start, len(trajs_sorted) - 1, n_show).round().astype(int))
+        trajs_plot = [trajs_sorted[i] for i in idx]
+
+    # True → Reds, Predicted → Blues (regardless of `sort`)
+    base = plt.cm.Blues_r
+    cmap_b = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    base = plt.cm.Reds_r
+    cmap_r = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    # ── layout ─────────────────────────────────────────────────────────
+    if pulse:
+        fig, ax = plt.subplot_mosaic(
+            [['current'], ['voltage']],
+            figsize=(4.2, 3.4),
+            height_ratios=[0.4, 1.0],
+            sharex=True, constrained_layout=True,
+        )
+        ax_i, ax_v = ax['current'], ax['voltage']
+    else:
+        fig, ax_v = plt.subplots(figsize=(4.2, 3), constrained_layout=True)
+        ax_i = None
+
+    I_to_C = 3600.0 / Q0
+
+    # ── plot ───────────────────────────────────────────────────────────
+    with torch.no_grad():
+        for tr in trajs_plot:
+            bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
+            color_true = cmap_r(norm(bar_val))
+            color_true = 'black'
+            color_pred = cmap_b(norm(bar_val))
+
+            out = predict_np(model, config, tr)
+            t = np.arange(tr['T'])
+
+            if predict == 'V':
+                y_true = tr['V'].numpy() if hasattr(tr['V'], 'numpy') else np.asarray(tr['V'])
+                y_pred = out['V']
+            else:  # 'F'
+                y_true = tr['F'].numpy() * 1000 if hasattr(tr['F'], 'numpy') else np.asarray(tr['F']) * 1000  # GN – MN
+                y_pred = out['Fr'] * 1000 # GN – MN
+
+            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=0.9)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
+
+            if pulse:
+                if 'I_seq' not in tr:
+                    raise ValueError(
+                        "pulse=True but trajectory has no 'I_seq' — did you use "
+                        "prepare_data instead of prepare_pulse_data?")
+                I = tr['I_seq'].numpy() if hasattr(tr['I_seq'], 'numpy') else np.asarray(tr['I_seq'])
+                # Current is the same for true & pred — single line, neutral shade
+                ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+
+    ax_v.set_ylabel(r'$V_B$ [V]' if predict == 'V' else r'$F$ [MN]')
+    ax_v.set_xlabel('Time [s]')
+
+    # Fixed-value tag — value of the variable not being swept
+    first = trajs_plot[0]
+    if sort == 'u_per':
+        tag = fr'${float(first["C"]):g}$C'
+    else:  # sort == 'C_rate'
+        tag = fr'$\widetilde{{d}} = {float(first["u_per"]):g}\%$'
+
+    handles = [
+        plt.Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        plt.Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted')]
+    if fixed:
+        handles.append(plt.Line2D([0], [0], color='none', label=tag))
+    ax_v.legend(handles=handles, loc='upper right', frameon=True,
+                handlelength=1.5, handletextpad=0.5)
+
+    if pulse:
+        ax_i.set_ylabel('Cr [a.u.]')
+
+    sm = ScalarMappable(cmap=cmap_b, norm=norm)   # colorbar shows the Predicted palette
+    sm.set_array([])
+    cbar_ax = [ax_i, ax_v] if pulse else ax_v
+    fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
+
+    return fig
+
+# ––––––– Prepare data and plotting  –––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=4, pulse=True, fixed=False, start=5)
+plt.show()
+
+other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=8, pulse=False, fixed=False, start=2)
+plt.show()
+
+
+other_combo_pulse_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == True)])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F', n_show=5, pulse=True)
+plt.show()
+
+# new generation data c_rate 2.5
+crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
+pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
+plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F', n_show=5, pulse=True)
+plt.show()
+
+
+# new generation data c_rate 5 
+other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=4, pulse=True, fixed=False, start=5)
+plt.show()
