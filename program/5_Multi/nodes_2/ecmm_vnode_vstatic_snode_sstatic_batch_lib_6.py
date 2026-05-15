@@ -2740,3 +2740,122 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
         #ax.set_yscale('log')
     return fig, axes
 
+
+
+def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_rate',
+                                n_show=5, pulse=False, fixed=True, start=0, bar=True, Q0=17921.57581):
+    """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
+
+    True trajectories are dashed (Reds); NN predictions are solid (Blues).
+    Each trajectory's shade encodes `sort` (C-rate or u_per) via `norm`.
+
+    pulse=True  → current panel (top, compact) + prediction panel (bottom),
+                  shared colorbar across both.
+    pulse=False → prediction panel only, with a fixed-value tag.
+    """
+    assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
+    model.eval()
+
+    if sort == 'C_rate':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
+        vals_arr = np.array([tr['C'] for tr in trajs_sorted])
+        bar_name = 'C-rate [a.u.]'
+    elif sort == 'u_per':
+        trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
+        vals_arr = np.array([tr['u_per'] for tr in trajs_sorted])
+        bar_name = r'$\widetilde{d}$ [\%]'
+    else:
+        raise ValueError(f"sort must be 'C_rate' or 'u_per', got {sort!r}")
+    norm = Normalize(vmin=vals_arr.min(), vmax=vals_arr.max())
+
+    if n_show is None or n_show >= len(trajs_sorted):
+        trajs_plot = trajs_sorted
+    else:
+        # start = start if pulse else 0
+        idx = np.unique(np.linspace(start, len(trajs_sorted) - 1, n_show).round().astype(int))
+        trajs_plot = [trajs_sorted[i] for i in idx]
+
+    # True – Reds, Predicted – Blues (regardless of `sort`)
+    base = plt.cm.Blues_r
+    cmap_b = LinearSegmentedColormap.from_list(
+        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+    base = plt.cm.Reds_r
+    cmap_r = LinearSegmentedColormap.from_list(
+        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+
+    # ── layout ─────────────────────────────────────────────────────────
+    if pulse:
+        fig, ax = plt.subplot_mosaic(
+            [['current'], ['voltage']],
+            figsize=(4.3, 3.5),
+            height_ratios=[0.4, 1.0],
+            sharex=True, constrained_layout=True,
+        )
+        ax_i, ax_v = ax['current'], ax['voltage']
+    else:
+        fig, ax_v = plt.subplots(figsize=(4.3, 3.1), constrained_layout=True)
+        ax_i = None
+
+    I_to_C = 3600.0 / Q0
+
+    # ── plot ───────────────────────────────────────────────────────────
+    with torch.no_grad():
+        for tr in trajs_plot:
+            bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
+            color_true = cmap_r(norm(bar_val))
+            color_true = 'black'
+            if bar:
+                color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
+            else:
+                color_pred = 'tab:blue'
+
+            out = predict_np(model, config, tr)
+            t = np.arange(tr['T'])
+
+            if predict == 'V':
+                y_true = tr['V'].numpy() if hasattr(tr['V'], 'numpy') else np.asarray(tr['V'])
+                y_pred = out['V']
+            else:  # 'F'
+                y_true = tr['F'].numpy() * 1000 if hasattr(tr['F'], 'numpy') else np.asarray(tr['F']) * 1000  # GN – MN
+                y_pred = out['Fr'] * 1000 # GN – MN
+
+            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=0.9)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
+
+            if pulse:
+                if 'I_seq' not in tr:
+                    raise ValueError(
+                        "pulse=True but trajectory has no 'I_seq' — did you use "
+                        "prepare_data instead of prepare_pulse_data?")
+                I = tr['I_seq'].numpy() if hasattr(tr['I_seq'], 'numpy') else np.asarray(tr['I_seq'])
+                # Current is the same for true & pred — single line, neutral shade
+                ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+
+    ax_v.set_ylabel(r'$V_B$ [V]' if predict == 'V' else r'$F$ [MN]')
+    ax_v.set_xlabel('Time [s]')
+
+    # Fixed-value tag — value of the variable not being swept
+    first = trajs_plot[0]
+    if sort == 'u_per':
+        tag = fr'${float(first["C"]):g}$C'
+    else:  # sort == 'C_rate'
+        tag = fr'$\widetilde{{d}} = {float(first["u_per"]):g}\%$'
+
+    handles = [
+        plt.Line2D([0], [0], color='black', alpha=0.5, lw=2, linestyle='--', label='True'),
+        plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Predicted')]
+    if fixed:
+        handles.append(plt.Line2D([0], [0], color='none', label=tag))
+    ax_v.legend(handles=handles, loc='upper right' if not n_show==1 else 'lower left', frameon=True,
+                handlelength=1.5, handletextpad=0.5, fontsize=14)
+
+    if pulse:
+        ax_i.set_ylabel('Cr [a.u.]')
+
+    sm = ScalarMappable(cmap=cmap_b if sort == 'C_rate' else cmap_r, norm=norm)   # colorbar shows the Predicted palette
+    sm.set_array([])
+    cbar_ax = [ax_i, ax_v] if pulse else ax_v
+    if bar:
+        fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
+
+    return fig
