@@ -161,7 +161,7 @@ print(SAVE_NAME)
 plot_loss(history)
 
 # plt.savefig(os.path.join(FIGS_DIR, f'loss_{MODEL_NAME}.pdf'), bbox_inches='tight')
-# print('Saved figure')
+print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════

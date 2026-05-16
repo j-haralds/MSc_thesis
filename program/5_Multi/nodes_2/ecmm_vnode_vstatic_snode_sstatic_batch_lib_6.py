@@ -1525,28 +1525,33 @@ def plot_loss(history):
                 ["V_loss", "combined"],
                 ["F_loss", "combined"]
             ],
-            figsize=(12, 5),
+            figsize=(10, 4),
             sharex=True
             )
+    
+    train_F_MN = np.array(history["train_rmse_Fr"]) * 1000
+    test_F_MN  = np.array(history["test_rmse_F"])  * 1000
 
     # Individual plots
     # ax["loss"].semilogy(history["train_rmse"], label="Train loss", color=COLORS[0])
     ax["V_loss"].semilogy(history["train_rmse_V"], label=r"Train $V$ loss", color=COLORS[1])
-    ax["F_loss"].semilogy(history["train_rmse_Fr"], label=r"Train $F$ loss", color=COLORS[2])
+    ax["F_loss"].semilogy(train_F_MN, label=r"Train $F$ loss", color=COLORS[2])
 
     # Combined plot (all together)
     # ax["combined"].semilogy(history["train_rmse"], label="Loss", color=COLORS[0])
     ax["combined"].semilogy(history["train_rmse_V"], label=r"$V$ loss", color=COLORS[1])
     ax["combined"].semilogy(history["test_rmse_V"], label=r"$V$ test loss", color='black', alpha=0.5, ls='--')
-    ax["combined"].semilogy(history["train_rmse_Fr"], label=r"$F$ loss", color=COLORS[2])
-    ax["combined"].semilogy(history["test_rmse_F"], label=r"$F$ test loss", color='black', alpha=0.5, ls='--')
+    ax["combined"].semilogy(train_F_MN, label=r"$F$ loss", color=COLORS[2])
+    ax["combined"].semilogy(test_F_MN, label=r"$F$ test loss", color='black', alpha=0.5, ls='--')
 
     # Labels and styling
     ax["F_loss"].set_xlabel("epoch")
     ax["combined"].set_xlabel("epoch")
+    ax["V_loss"].set_ylabel("RMSE [V]")
+    ax["F_loss"].set_ylabel("RMSE [MN]")
+    ax["combined"].set_ylabel("RMSE")
 
     for key in ["V_loss", "F_loss", "combined"]:
-        ax[key].set_ylabel("RMSE")
         ax[key].legend()
         ax[key].grid(True, which="both", ls="--", lw=0.5)
 
