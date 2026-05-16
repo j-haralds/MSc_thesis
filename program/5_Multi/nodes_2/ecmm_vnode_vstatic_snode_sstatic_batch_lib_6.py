@@ -567,7 +567,6 @@ class BatteryECMM(nn.Module):
 
 
         # ––––––––––––––––––––––––––––––––––––––––
-
         # ── SOC integration ──
         # We want soc[:, 0] = soc0, soc[:, n] = soc0 + sum_{k<n} dsoc[k]
         # cumsum gives sum_{k≤n}; subtract dsoc[:, :1] to shift the index.
@@ -623,37 +622,19 @@ class BatteryECMM(nn.Module):
             U1 = torch.stack(U1_steps, dim=1)
 
             V  = Ue - I_seq * R0 - U1
+        # ––––––––––––––––––––––––––––––––––––––––
 
 
-
-
-        # # ── SOC integration ──
-        # # We want soc[:, 0] = soc0, soc[:, n] = soc0 + sum_{k<n} dsoc[k]
-        # # cumsum gives sum_{k≤n}; subtract dsoc[:, :1] to shift the index.
-        # # soc[:, 0] = soc0_batch + dsoc[:,0] - dsoc[:,0] = soc0_batch
-
-        # dsoc = -I_seq / self.Q0
-        # soc_fix  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
-
+        # # ––––––––––––––––––––––––––––––––––––––––
         # # Normalize to obtain latent inputs roughly in range [0,1]
         # I_norm = I_seq / self.I_ref
-        # u_norm = u_batch / self.u_ref           # both negative for compression → u_norm > 0
+        # u_norm = u_batch / self.u_ref           # both negative for compression  u_norm > 0
         # u_norm_exp  = u_norm.unsqueeze(1).expand(B, T)
         # u_phys_exp = u_batch.unsqueeze(1).expand(B, T)
 
         # # Parameters along the trajectory  (B, T)
                 
         # # ── F branch ──
-        # # k is always algebraic (no time integration).
-        # # s is algebraic (style_F='static', sNet) or integrated (style_F='dynamic', sdotNet).
-        # # The _s dispatcher returns a (B, T) tensor in both cases so the
-        # # F = -k·(u - s) computation below is shape-agnostic.
-        # k = self.k_net(soc_fix, I_norm, u_norm_exp)              # (B, T)
-        # s = self._s(soc_fix, I_norm, u_norm_exp, B, T)           # (B, T)
-
-        # Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
-
-
         # # ── V branch: static or dynamic U1 ──
         # # with torch.no_grad():
         # #     Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
@@ -667,7 +648,11 @@ class BatteryECMM(nn.Module):
         #     V  = Ue - U1
         # elif V_mode == 'dynamic':
         #     U1_steps = [torch.zeros(B)]
+        #     s_steps = [torch.zeros(B)]                     # (B,) initial step
         #     soc = [torch.ones(B)]
+
+
+        #     dsoc = - I_seq / self.Q0
         #     dt = 1.0
         #     for n in range(T - 1):
         #         soc_next = soc[n] + dsoc[:, n] * dt
@@ -678,7 +663,14 @@ class BatteryECMM(nn.Module):
         #         # Semi-implicit Euler — unconditionally stable
         #         U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1) / (1.0 + dt / (R1 * C1))
         #         U1_steps.append(U1_next)
+
+        #         ds = self.ds_net(s_steps[n], soc[n], I_norm[:, n], u_norm_exp[:, n])  # (B,)
+        #         s_next = s_steps[n] + ds.squeeze(-1) * dt
+        #         s_steps.append(s_next)
+
+
         #     U1 = torch.stack(U1_steps, dim=1)
+        #     s = torch.stack(s_steps, dim=1)
         #     soc = torch.stack(soc, dim=1)
 
         # # ── V branch: static or dynamic U1 ──
@@ -688,7 +680,10 @@ class BatteryECMM(nn.Module):
         # R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
         # V  = Ue - I_seq * R0 - U1
 
-        # –––––––––––––––––––––––––––––––––
+        # k = self.k_net(soc, I_norm, u_norm_exp)              # (B, T)
+        # Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
+
+        # # –––––––––––––––––––––––––––––––––
 
         # dsoc = -I_seq / self.Q0
         # soc_dummy  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
@@ -1934,17 +1929,18 @@ def plot_force_report(model, config, trajs, n_show=3):
                                 for d in traj_data])
         F_true_line = np.array([d['F_true'][np.argmin(np.abs(d['soc'] - soc_target))]
                                 for d in traj_data])
-        ax.plot(u_per_arr, F_true_line, '--', color=cmap_r(norm(soc_target)), lw=2)
-        ax.plot(u_per_arr, F_pred_line, '-',  color=cmap(norm(soc_target)),   lw=2)
+        ax.plot(u_per_arr, F_pred_line*1000, '-',  color=cmap(norm(soc_target)),   lw=2)
+        ax.plot(u_per_arr, F_true_line*1000, '--', color='black', alpha=0.5, lw=2)
+        # ax.plot(u_per_arr, F_true_line*1000, '-', color=cmap(norm(soc_target)), lw=2)
 
     from matplotlib.lines import Line2D
     ax.legend(handles=[
-        Line2D([0], [0], color='tab:red',  lw=2, linestyle='--', label='True'),
+        Line2D([0], [0], color='black',  lw=2, linestyle='--', label='True', alpha=0.5),
         Line2D([0], [0], color='tab:blue', lw=2, linestyle='-',  label='Predicted'),
     ])
 
-    ax.set_xlabel(r'$u$ $[\%]$')
-    ax.set_ylabel(r'$F$ [GN]')
+    ax.set_xlabel(r'$\widetilde{{d}}$ $[\%]$')
+    ax.set_ylabel(r'$F$ [MN]')
     sm = ScalarMappable(cmap=cmap, norm=norm)
     fig.colorbar(sm, ax=ax, label='State of Charge')
     fig.tight_layout()
@@ -2819,8 +2815,8 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
                 y_true = tr['F'].numpy() * 1000 if hasattr(tr['F'], 'numpy') else np.asarray(tr['F']) * 1000  # GN – MN
                 y_pred = out['Fr'] * 1000 # GN – MN
 
-            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=0.9)
-            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
+            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=1, alpha=0.9)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=1, alpha=0.5)
 
             if pulse:
                 if 'I_seq' not in tr:

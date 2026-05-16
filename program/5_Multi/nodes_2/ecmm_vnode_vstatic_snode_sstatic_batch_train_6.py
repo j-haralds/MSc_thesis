@@ -74,17 +74,17 @@ CONFIG = {
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'true', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
-    'R0_constrained': 'true', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
+    'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
+    'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
-    'k_constrained': 'true', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
+    'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
     # ── F-branch swelling constraints — split per style_F mode ──
     # style_F='static'  uses  s_constrained / s_min / s_max     — bounds on s itself        [1e-5 m]
     # style_F='dynamic' uses  sdot_constrained / sdot_min / sdot_max — bounds on ds/dt  [1e-5 m / s]
     # Backward compat: if the sdot_* keys are absent, sdotNet falls back to the s_* keys
     # (so old checkpoints which only had s_* keys still load and behave identically).
-    's_constrained':    'true', 's_min':    0.0, 's_max':    0.005*100,   # static sNet  [1e-5 m]
-    'sdot_constrained': 'true', 'sdot_min': 0.0, 'sdot_max': 0.001,   # dynamic sdotNet [1e-5 m / s]
+    's_constrained':    'false', 's_min':    0.0, 's_max':    0.005*100,   # static sNet  [1e-5 m]
+    'sdot_constrained': 'false', 'sdot_min': 0.0, 'sdot_max': 0.001,   # dynamic sdotNet [1e-5 m / s]
 
     # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' ──
     # 'static_no_R0' : V = Ue − I·R1                 (algebraic, no R0)
@@ -100,9 +100,9 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 2500  # Total training epochs
+EPOCHS  = 250  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f'b{BATCH_SIZE}_combo' # {split_percentage}_'  # Start of filename, before the style tags and time
+NAME_START = f'b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
