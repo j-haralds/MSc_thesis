@@ -24,9 +24,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full import *
 
 from datetime import datetime
 TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
@@ -50,7 +50,7 @@ SAVE_FIGS   = False
 SAVE_MODELS = False
 SAVE_DATA   = False
 
-MODEL_NAME= '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME= '0516_1937_FULL_b4_integration_softplus_combo_V-dynamic_F-dynamic_unconstr_685.96min_16h_2500eps.pt'
 
 Q0          = 17921.57581
 
@@ -161,7 +161,7 @@ print(SAVE_NAME)
 plot_loss(history)
 
 # plt.savefig(os.path.join(FIGS_DIR, f'loss_{MODEL_NAME}.pdf'), bbox_inches='tight')
-print('Saved figure')
+# print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -227,9 +227,9 @@ plt.show()
 # ELEMENT SAVER
 # ═════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+#import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+#importlib.reload(_lib)
+#from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 # element_data = data_param(bat_model, trajs)
 # if SAVE_DATA:
@@ -267,9 +267,9 @@ def k_nn(c_rate, u_per, soc):
 # PLOT PREDICTIONS 
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+#import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+#importlib.reload(_lib)
+#from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 
 plot_report(bat_model, CONFIG, test_trajs, title='Pulse test: ',
@@ -302,9 +302,9 @@ plt.show()
 # DISCHARGE DIFFERENT C-RATES
 # ══════════════════════════════════════════════════════════════
 
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+#import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+#importlib.reload(_lib)
+#from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
@@ -325,9 +325,9 @@ plt.show()
 
 # %% SCARCITY PLOT
 
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+#import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+#importlib.reload(_lib)
+#from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 def plot_data_scarcity_loss(names, trajs):
     nrmsesV = []
@@ -426,9 +426,9 @@ plt.show()
 # %% ══════════════════════════════════════════════════════════
 # MODEL COMPARISON AVGNRMSE
 # ══════════════════════════════════════════════════════════════
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
-importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+# import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+# importlib.reload(_lib)
+# from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 # dataparammasss = data_param(bat_model_full, test_trajs)
 # ========================================================================
@@ -532,8 +532,12 @@ plt.show()
 
 # %% USE FOR REPORT
 
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full import *
 
-MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME_FULL = MODEL_NAME
+#MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
 # MODEL_NAME_LOW = '0510_2034_b4_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
 
 # bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
@@ -561,19 +565,19 @@ config_full, _, _, _ = load_checkpoint(ckpt_full)
 # plot_param(bat_model_low, test_trajs, param='tau')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_LOW}.pdf'), bbox_inches='tight')
 
-# plot_param(bat_model_full, test_trajs, param='R0')
+plot_param(bat_model_full, test_trajs, param='R0')
 # # plt.savefig(os.path.join(FIGS_DIR, f'R0_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-# plot_param(bat_model_full, test_trajs, param='R1')
+plot_param(bat_model_full, test_trajs, param='R1')
 # # plt.savefig(os.path.join(FIGS_DIR, f'R1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-# plot_param(bat_model_full, test_trajs, param='C1')
+plot_param(bat_model_full, test_trajs, param='C1')
 # # plt.savefig(os.path.join(FIGS_DIR, f'C1_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 # plot_param(bat_model_full, test_trajs, param='tau')
 # # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 
 ### –––– Mechanical elements ––––
-# plot_param(bat_model_full, test_trajs, param='s')
+plot_param(bat_model_full, test_trajs, param='s')
 # # plt.savefig(os.path.join(FIGS_DIR, f's_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
-# plot_param(bat_model_full, test_trajs, param='sdot')
+plot_param(bat_model_full, test_trajs, param='sdot')
 # # plt.savefig(os.path.join(FIGS_DIR, f'sdot_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')
 # plot_param(bat_model_full, test_trajs, param='k')
 # # plt.savefig(os.path.join(FIGS_DIR, f'k_{MODEL_NAME_FULL}.pdf'), bbox_inches='tight')

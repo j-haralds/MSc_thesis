@@ -42,8 +42,8 @@ DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
 
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 
-COMBO_FILE  = os.path.join(DATA_DIR, 'combo_half.txt')
-#COMBO_FILE  = os.path.join(DATA_DIR, 'combo_low_c_d.txt')
+COMBO_FILE  = os.path.join(DATA_DIR, 'combo_high.txt')
+COMBO_TEST_FILE  = os.path.join(DATA_DIR, 'combo_low_c_d.txt')
 
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
@@ -74,7 +74,7 @@ CONFIG = {
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
+    'C1_constrained': 'True', 'C1_min': 500.0, 'C1_max': 10000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
@@ -101,7 +101,7 @@ CONFIG = {
 }
 
 EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.3 # Out of 100% of the training data, how much to use (for quick tests)
+split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 NAME_START = f'{int(split_percentage * 100)}_percent_b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
@@ -162,13 +162,16 @@ print(f"  Pulse train: {len(pulse_train)} | Pulse test: {len(pulse_test)} "
 combo_data = pd.read_csv(COMBO_FILE, sep=';', comment='%')
 print(combo_data.columns)
 combo_trajs = prepare_pulse_data(combo_data)
-split_c = int(len(combo_trajs) * TRAIN_SPLIT)
-combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
+combo_test_trajs = pd.read_csv(COMBO_TEST_FILE, sep=';', comment='%')
+combo_test_trajs = prepare_pulse_data(combo_test_trajs)
+#split_c = int(len(combo_trajs) * TRAIN_SPLIT)
+#combo_train, combo_test = combo_trajs[:split_c], combo_trajs[split_c:]
+combo_train = combo_trajs; combo_test = combo_test_trajs[:int(len(combo_trajs) * 0.2)]  # Use the provided combo_test_trajs as the test set, and the entire combo_trajs as the training set (since combo_test_trajs is a separate file with different trajectories)
 
 #### Split the training data ####
 #split_percentage = 0.2 # 0.6, 0.4, 0.2  # Out of 100% of the training data
-second_split = int(len(combo_train) * split_percentage)
-combo_train = combo_train[:second_split]
+# second_split = int(len(combo_train) * split_percentage)
+# combo_train = combo_train[:second_split]
 ####
 
 print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)} "
