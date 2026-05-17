@@ -1178,7 +1178,7 @@ def predict_np(model, config, traj, V_mode=None):
     
     s_input = torch.from_numpy(s.astype(np.float32))                                 # normalized — what networks see
 
-    k = model.k_net(soc_t, I_norm, u_norm).numpy()
+    k = model.k_net(soc_t, I_norm, u_norm, s_input).numpy()
     R0 = model._R0(soc_t, I_norm, u_norm, I_np, s_input).numpy()            # (T,) — _R0 expects u_norm
     R1 = model._R1(soc_t, I_norm, u_norm,s_input).numpy()            # (T,) — _R0 expects u_norm
 
