@@ -71,6 +71,8 @@ def get_var_names(elem):
         return ['C','d','soc']
     elif elem in ['s']:
         return ['C','d','soc','s']
+    elif elem in ['Ue']:
+        return ['soc']
     else:
         raise ValueError(f"Unknown element: {elem}")
 
@@ -103,6 +105,18 @@ def get_settings(elem):
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
         op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+    
+    if elem == 'Ue':
+        bin_ops = ["+", "*", '-','/']
+        un_ops = ['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan']
+        nest_const = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                      'cos':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                      'tan':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
+                      'log':  {'sin': 0, 'cos': 0, 'tan': 0},
+                      'exp':  {'sin': 0, 'cos': 0, 'tan': 0},
+                      }
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 1, 'sin':3,'cos':3,'tan':3}
+    
     var_names = get_var_names(elem)
     
     return bin_ops, un_ops, nest_const,consts, op_comps, var_names
@@ -235,6 +249,10 @@ def parity_plot(element,model,X_test,Y_test,X_train,Y_train, colors = COLORS,dat
     plt.legend()
     plt.show()
 
+def parity_plot_Ue(model,Y,X,colors = COLORS,data_set = 'test'):
+    Y_pred = model.predict(X)
+    plt.scatter(Y, Y_pred, color=colors[0],alpha = 0.5)
+    plt.plot([Y.min(), Y.max()], [Y.min(), Y.max()], 'k--', lw=2)
 
 # =================================================
 # SAVE MODELS
