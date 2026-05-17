@@ -229,7 +229,7 @@ class kNet(nn.Module):
         self.k = float(k)                          # reference k0 from data
         self.config = config
         self.net = nn.Sequential(
-            nn.Linear(3, n_hidden),
+            nn.Linear(4, n_hidden),
             nn.Tanh(),
             nn.Linear(n_hidden, n_hidden),
             nn.Tanh(),
@@ -242,8 +242,8 @@ class kNet(nn.Module):
         else:
             print('k unconstrained')
 
-    def forward(self, soc, I_norm, u_norm):
-        x = torch.stack([soc, I_norm, u_norm], dim=-1)
+    def forward(self, soc, I_norm, u_norm,s):
+        x = torch.stack([soc, I_norm, u_norm,s], dim=-1)
         if self.config.get('k_constrained', 'false') == 'true':
             s = torch.sigmoid(self.net(x)).squeeze(-1)  # (0, 1)
             return self.k_min + s * (self.k_max - self.k_min)

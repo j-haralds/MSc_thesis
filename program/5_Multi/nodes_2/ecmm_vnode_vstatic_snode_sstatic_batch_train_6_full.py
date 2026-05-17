@@ -22,9 +22,9 @@ COLORS = plot_settings.colors()
 
 
 # --- Import library (reload-safe for repeated cell runs in Jupyter) ---
-import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full as _lib
 importlib.reload(_lib)
-from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6_full import *
 
 from datetime import datetime
 
@@ -74,7 +74,7 @@ CONFIG = {
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'True', 'C1_min': 500.0, 'C1_max': 10000.0,  # F
+    'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 10000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
