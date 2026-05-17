@@ -1691,7 +1691,7 @@ def plot_param(model, trajs, param='R1'):
                 ylabel = r'$R_0$ [m$\Omega$]'
 
             elif param == 'k':
-                y = model.k_net(soc, I_norm, u_norm).numpy()
+                y = model.k_net(soc, I_norm, u_norm, s_steps).numpy()
                 ylabel = r'$k$ [GN/mm]'
                 # k_true = (-tr['F'] / tr['u']).numpy() * 1e2 # Convert u from 1e-5m to 1e-5*1e2 = mm
                 y = y * 1e2   # convert back from GN/1e-5m to GN/mm for plotting. 1e2 GN / (1e-2*1e-3 m) = 1e2GN/mm

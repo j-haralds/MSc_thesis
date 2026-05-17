@@ -102,7 +102,8 @@ CONFIG = {
 
 EPOCHS  = 2500  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f'{int(split_percentage * 100)}_percent_b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
+#NAME_START = f'{int(split_percentage * 100)}_percent_b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
+NAME_START = f'b{BATCH_SIZE}_integration_softplus_s_dep' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
@@ -282,11 +283,30 @@ SAVE_NAME = (f'{NAME_START}_{USE_PULSE}_{style_tag}'
 
 print(SAVE_NAME)
 
+
+if SAVE_MODELS:
+    torch.save({
+        'model': bat_model.state_dict(),
+        'config': CONFIG,
+        'history': history,
+        'I_ref': float(I_MAX),
+        'u_ref': float(U_MIN),
+        'N_HIDDEN': N_HIDDEN,
+        'EPOCHS': EPOCHS,
+        'USE_PULSE': USE_PULSE,
+    }, os.path.join(MODEL_DIR, f'{TIMESTAMP}_{SAVE_NAME}.pt'))
+
+    print(f"Saved: {TIMESTAMP}_{SAVE_NAME}.pt")
+
+
+
+
 plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ', n_show=3)
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'test_{SAVE_NAME}.pdf'), bbox_inches='tight')
     print('Saved figure')
 plt.show()
+
 
 # %% ══════════════════════════════════════════════════════════
 #  PREDICTIONS — PULSE TEST
