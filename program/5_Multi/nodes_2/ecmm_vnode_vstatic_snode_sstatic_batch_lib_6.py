@@ -214,8 +214,6 @@ class R0NetNoSOC(nn.Module):
         else:
             return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01 + 1e-5
     
-def R0_func(u, I):
-    return u * (-0.0001887521) - 7.049519e-5 * I + 0.008446693
 
 # ══════════════════════════════════════════════════════════
 #  k NETWORK (static)
@@ -454,8 +452,8 @@ class BatteryECMM(nn.Module):
             else:
                 print('R0 unconstrained')
                 self.R0_net = R0Net(n_hidden=nh)
-        elif m == 'func':
-            self.R0_func = R0_func
+        # elif m == 'func':
+            # self.R0_func = R0_func
         elif m == 'param':
             self.log_R0 = nn.Parameter(torch.tensor(np.log(config.get('R0_param', 0.01)), dtype=torch.float32))
         elif m == 'net_no_soc':
