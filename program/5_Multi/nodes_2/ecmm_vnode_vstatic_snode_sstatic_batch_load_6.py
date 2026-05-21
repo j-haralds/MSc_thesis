@@ -408,7 +408,7 @@ BB_names = [
 name_batch = [names, BB_names]
 print(name_batch[1])
 plot_data_scarcity_loss_volt(name_batch, other_combo_trajs, batch_num = 2,batch_names=['NODE', 'Black-Box'])
-plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop_BB_comp.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(FIGS_DIR, f'data_scarcity_no_early_stop_BB_comp.pdf'), bbox_inches='tight')
 
 plt.show()
 ##
@@ -455,7 +455,7 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 # %% ========================================================================
 
 MODEL_NAME_STAT = '0513_1037_b4_combo_1.0__DC_V-static_no_R0_F-static_R0c_C1c_3.04min_16h_500eps.pt'
-MODEL_NAME_DYNA = '0513_1037_b4_combo_1__DC_V-dynamic_F-dynamic_R0c_C1c_105.62min_16h_500eps.pt'
+MODEL_NAME_DYNA = '0521_0721__b4_ccDynaSigmoid__DC_V-dynamic_F-static_R1c_C1c_38.11min_16h_500eps.pt'  # '0513_1037_b4_combo_1__DC_V-dynamic_F-dynamic_R0c_C1c_105.62min_16h_500eps.pt'
 
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
@@ -609,20 +609,20 @@ plt.show()
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
 plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
                              n_show=4, pulse=True, fixed=False, start=18)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_V.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
 
 other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
 plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
                              n_show=8, pulse=False, fixed=False, start=2)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
 plt.show()
 
 # ––––– Pulse force
 other_combo_pulse_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == True)])
 plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F',
                              n_show=5, pulse=True)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_F.pdf'), bbox_inches='tight')
 plt.show()
 
 # new generation data c_rate 2.5
@@ -630,7 +630,7 @@ crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.t
 pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
 plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F',
                              n_show=5, pulse=True)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_pulse_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_pulse_F.pdf'), bbox_inches='tight')
 plt.show()
 # –––––
 
@@ -638,14 +638,14 @@ plt.show()
 other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
 plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F',
                              n_show=5, pulse=False)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_F.pdf'), bbox_inches='tight')
 plt.show()
 
 crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep.txt'), sep=';', comment='%')
 cc_c25_usweep = prepare_pulse_data(crate_usweep_cc)
 plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F',
                              n_show=5, pulse=False)
-plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_cc_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_cc_F.pdf'), bbox_inches='tight')
 plt.show()
 # –––––
 

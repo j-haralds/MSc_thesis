@@ -2818,8 +2818,8 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
                 y_true = tr['F'].numpy() * 1000 if hasattr(tr['F'], 'numpy') else np.asarray(tr['F']) * 1000  # GN – MN
                 y_pred = out['Fr'] * 1000 # GN – MN
 
-            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=1, alpha=0.9)
-            ax_v.plot(t, y_true, '--', color=color_true, lw=1, alpha=0.5)
+            ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=1)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
 
             if pulse:
                 if 'I_seq' not in tr:

@@ -66,15 +66,15 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE         = 'combo'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
+USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net'
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'false', 'C1_min': 500.0, 'C1_max': 30000.0,  # F
+    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
+    'C1_constrained': 'true', 'C1_min': 5000.0, 'C1_max': 14000.0, # 30000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
@@ -95,14 +95,14 @@ CONFIG = {
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
     # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
-    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+    'style_F': 'static',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
 
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 2500  # Total training epochs
-split_percentage = 0.3 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f'{int(split_percentage * 100)}_percent_b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
+EPOCHS  = 500  # Total training epochs
+split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
+NAME_START = f'_b{BATCH_SIZE}_ccDynaSigmoid_' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
