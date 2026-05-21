@@ -115,6 +115,11 @@ print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)}")
 other_combo_data = pd.read_csv(OTHER_HALF_COMBO, sep=';', comment='%')
 other_combo_trajs = prepare_pulse_data(other_combo_data)
 
+# wombo_combo = []
+# wombo_combo.append(combo_test)
+# wombo_combo.append(other_combo_trajs)
+
+wombo_combo = combo_test + other_combo_trajs
 
 # %% ══════════════════════════════════════════════════════════
 #  LOAD MODEL  (no Ue argument — GP loaded internally by lib)
@@ -598,12 +603,23 @@ plt.show()
 
 #  %% USE FOR REPORT INPUT ERROR MAPS
 
-input_map_single(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='V')
-input_map_single(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
+
+input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='V')
+input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='F')
+input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='V')
+input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='F')
+
+input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='V')
+input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='F')
+input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='V')
+input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
 
 # %%
-
-
+input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='V')
+# plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_V.pdf'), bbox_inches='tight')
+plt.show()
+input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='F')
+# %%
 # ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
 
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])

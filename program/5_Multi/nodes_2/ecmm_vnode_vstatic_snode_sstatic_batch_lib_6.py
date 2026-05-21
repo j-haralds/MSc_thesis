@@ -2393,7 +2393,7 @@ def input_map(model, pulse_trajs, rmse_scales):
     plt.tight_layout()
     plt.show()
 
-def merge_RMSE(model, trajs,rmse_scales):
+def merge_RMSE(model, trajs, rmse_scales):
     rmse_V, rmse_F, C,d = rmse_pulse(model, trajs)
     rmse_V = np.array(rmse_V) / rmse_scales['V']
     rmse_F = np.array(rmse_F) /  rmse_scales['F']
@@ -2506,6 +2506,48 @@ def input_map_comparison(model_low,model_high, trajs, rmse_scales):
     return f, ax
 
 
+def rrmse(model, trajs):
+    """
+    Relative RMSE: RMSE divided by the range of the true values.
+    """
+    rrmse_V = []
+    rrmse_F = []
+    C = []
+    d = []
+    for tr in trajs:
+        out = predict_np(model, model.config, tr)
+        rrmse_V.append(float(np.sqrt(np.mean((out['V'] - tr['V'].numpy())**2)) / np.sqrt(np.mean(tr['V'].numpy()**2))))
+        rrmse_F.append(float(np.sqrt(np.mean((out['Fr'] - tr['F'].numpy())**2)) / np.sqrt(np.mean(tr['F'].numpy()**2))))
+        C.append(float(tr['C']))
+        d.append(float(tr['u_per']))
+
+    return np.array(rrmse_V), np.array(rrmse_F), np.array(C), np.array(d)
+
+def mare(model, trajs):
+    """
+    Mean Relative Absolute Error: MAE divided by the range of the true values.
+    """
+    rae_V = []
+    rae_F = []
+    C = []
+    d = []
+    for tr in trajs:
+        out = predict_np(model, model.config, tr)
+        rae_V.append(float(np.mean((np.abs(out['V'] - tr['V'].numpy())) / (tr['V'].numpy()))))
+        rae_F.append(float(np.mean((np.abs(out['Fr'] - tr['F'].numpy())) / (tr['F'].numpy()))))
+        C.append(float(tr['C']))
+        d.append(float(tr['u_per']))
+
+    return np.array(rae_V), np.array(rae_F), np.array(C), np.array(d)
+
+def merge_mare(model, trajs):
+    rae_V, rae_F, C,d = mare(model, trajs)
+
+    rae_NN = np.vstack((rae_V, rae_F)).T
+    obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    return obs_inpt, rae_NN
+
 def input_map_single(model, trajs, rmse_scales, observable='V'):
     """
     Single-panel RMSE map for one model and one observable.
@@ -2571,8 +2613,78 @@ def input_map_single(model, trajs, rmse_scales, observable='V'):
         Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),
         Line2D([0], [0], marker='x', color='gray', linestyle='', label='Pulse'),
     ]
-    ax.legend(handles=legend_handles, loc='best', frameon=True, ncol=2, fontsize='small')
+    ax.legend(handles=legend_handles, loc='right', frameon=True, ncol=1, fontsize='small')
 
+    return fig, ax
+
+def input_map_single_cc(model, trajs, rmse_scales, observable='V'):
+    """
+    Single-panel RAE map for one model and one observable, CC trajectories only.
+    """
+    import matplotlib.colors as colors
+    from matplotlib.lines import Line2D
+
+    # keep only CC trajectories (defensive — in case mixed list is passed in)
+    CC_trajs = [tr for tr in trajs if tr['I_seq'][0] == tr['I_seq'][1]]
+
+    fig, ax = plt.subplots(figsize=(5.5, 4), constrained_layout=True)
+
+    # full domain box
+    domain = [[0.5, 5], [0, 30]]
+    ax.vlines(domain[0][0], domain[1][0], domain[1][1], color='gray', linestyle='--')
+    ax.vlines(domain[0][1], domain[1][0], domain[1][1], color='gray', linestyle='--')
+    ax.hlines(domain[1][0], domain[0][0], domain[0][1], color='gray', linestyle='--')
+    ax.hlines(domain[1][1], domain[0][0], domain[0][1], color='gray', linestyle='--')
+    ax.fill_between([domain[0][0], domain[0][1]],
+                    domain[1][0], domain[1][1], color='gray', alpha=0.1)
+    ax.set_xlabel('C-rate [1/h]')
+    ax.set_ylabel(r'$\widetilde{d}$ [\%]')
+
+    # # pick column for requested observable
+    # if observable == 'V':
+    #     col, label = 0, r'NRMSE for $V_B$'
+    # elif observable == 'F':
+    #     col, label = 1, r'NRMSE for $F$'
+    # else:
+    #     raise ValueError(f"observable must be 'V' or 'F', got {observable!r}")
+
+    # cmap_V, cmap_F = custom_cmap()
+    # cmap = cmap_V if observable == 'V' else cmap_F
+
+    # obs_cc, rmse_cc = merge_RMSE(model, CC_trajs, rmse_scales)
+
+    # vmin = rmse_cc[:, col].min()
+    # vmax = rmse_cc[:, col].max()
+    # norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+    # sc = ax.scatter(obs_cc[:, 0], obs_cc[:, 1], c=rmse_cc[:, col], cmap=cmap, norm=norm, marker='o')
+
+    # fig.colorbar(sc, ax=ax, label=label)
+
+    # pick column for requested observable
+    if observable == 'V':
+        col, label = 0, r'MARE for $V_B$'
+    elif observable == 'F':
+        col, label = 1, r'MARE for $F$'
+    else:
+        raise ValueError(f"observable must be 'V' or 'F', got {observable!r}")
+
+    cmap_V, cmap_F = custom_cmap()
+    cmap = cmap_V if observable == 'V' else cmap_F
+
+    obs_cc, mare_cc = merge_mare(model, CC_trajs)
+
+    vmin = mare_cc[:, col].min()
+    vmax = mare_cc[:, col].max()
+    norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+    sc = ax.scatter(obs_cc[:, 0], obs_cc[:, 1], c=mare_cc[:, col], cmap=cmap, norm=norm, marker='o')
+
+    fig.colorbar(sc, ax=ax, label=label)
+
+    legend_handles = [Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),]
+    # ax.legend(handles=legend_handles, loc='right', frameon=True, ncol=1, fontsize='small')
+    
     return fig, ax
 
 
