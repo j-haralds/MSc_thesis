@@ -596,10 +596,10 @@ plt.savefig(os.path.join(FIGS_DIR, f'Fd_sp_1505_0840.pdf'), bbox_inches='tight')
 
 plt.show()
 
-# # %% USE FOR REPORT INPUT ERROR MAPS
+#  %% USE FOR REPORT INPUT ERROR MAPS
 
-# input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='V')
-# input_map_single(bat_model_full, other_combo_trajs, rmse_scales=RMSE_scales, observable='F')
+input_map_single(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='V')
+input_map_single(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
 
 # %%
 
