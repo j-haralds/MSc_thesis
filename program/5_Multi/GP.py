@@ -32,8 +32,6 @@ def GP_process():
     gp_model.fit(x_gp.reshape(-1,1), y_gp.reshape(-1,1))
     return gp_model
 
-
-
 def soc_to_Ue(soc, gp_model, return_torch = False):
     
     soc = np.asarray(soc)
