@@ -83,12 +83,12 @@ def get_settings(elem):
         un_ops = ['exp', 'log','sqrt','square', 'cube',]
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
-        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':1, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
     if elem == 'R1':
         un_ops = ['exp', 'log','sqrt','square', 'cube',]
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
-        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':1, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
+        op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
     if elem == 'C1':
         un_ops = ['exp', 'log','sqrt','square', 'cube',]
         nest_const = {'exp':  {'exp': 1, 'log': 1},
