@@ -628,47 +628,47 @@ input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observ
 # ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
 
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
-                             n_show=4, pulse=True, fixed=False, start=18)
-# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_V.pdf'), bbox_inches='tight')
-plt.show()
+# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
+#                              n_show=4, pulse=True, fixed=False, start=18)
+# # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_V.pdf'), bbox_inches='tight')
+# plt.show()
 
 other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
-                             n_show=8, pulse=False, fixed=False, start=2)
-# plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
-plt.show()
+# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
+#                              n_show=8, pulse=False, fixed=False, start=2)
+# # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
+# plt.show()
 
-# ––––– Pulse force
-other_combo_pulse_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == True)])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F',
-                             n_show=5, pulse=True)
+# # ––––– Pulse force
+# other_combo_pulse_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == True)])
+# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse_d0, sort='C_rate', predict='F',
+#                              n_show=5, pulse=True)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_F.pdf'), bbox_inches='tight')
-plt.show()
+# plt.show()
 
-# new generation data c_rate 2.5
-crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
-pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
-plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F',
-                             n_show=5, pulse=True)
+# # new generation data c_rate 2.5
+# crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
+# pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
+# plot_mosaic_predicts_report(bat_model_full, config_full, pulse_c25_usweep, sort='u_per', predict='F',
+#                              n_show=5, pulse=True)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_pulse_F.pdf'), bbox_inches='tight')
-plt.show()
-# –––––
+# plt.show()
+# # –––––
 
-# ––––– CC force
-other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F',
-                             n_show=5, pulse=False)
+# # ––––– CC force
+# other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
+# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F',
+#                              n_show=5, pulse=False)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_F.pdf'), bbox_inches='tight')
-plt.show()
+# plt.show()
 
-crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep.txt'), sep=';', comment='%')
-cc_c25_usweep = prepare_pulse_data(crate_usweep_cc)
-plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F',
-                             n_show=5, pulse=False)
+# crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep.txt'), sep=';', comment='%')
+# cc_c25_usweep = prepare_pulse_data(crate_usweep_cc)
+# plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F',
+#                              n_show=5, pulse=False)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_cc_F.pdf'), bbox_inches='tight')
-plt.show()
-# –––––
+# plt.show()
+# # –––––
 
 # ––––––––––––– pulse dynamic o static ––––––––––––––
 crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')

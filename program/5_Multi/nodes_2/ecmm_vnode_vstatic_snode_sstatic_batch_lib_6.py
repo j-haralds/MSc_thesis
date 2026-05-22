@@ -1737,7 +1737,7 @@ def plot_param(model, trajs, param='R1'):
         fig.colorbar(sm, ax=ax, label=r'$d$ [\%]')
     else:
         sm = ScalarMappable(cmap=cmap, norm=norm)
-        fig.colorbar(sm, ax=ax, label='C-rate [a.u.]')
+        fig.colorbar(sm, ax=ax, label='C-rate [1/h]')
 
     fig.tight_layout()
     return fig
@@ -2615,8 +2615,8 @@ def input_map_single(model, trajs, rmse_scales, observable='V'):
     ax.fill_between([domain[0][0], domain[0][1]],
                     domain[1][0], domain[1][1], color='gray', alpha=0.1)
 
-    ax.set_xlabel('C-rate [a.u.]')
-    ax.set_ylabel(r'$\widetilde{d}$ [a.u.]')
+    ax.set_xlabel('C-rate [1/h]')
+    ax.set_ylabel(r'$\widetilde{d}$ [\%]')
 
     # pick the column index in the RMSE array for the requested observable
     if observable == 'V':
@@ -2915,7 +2915,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
         vals_arr = np.array([tr['C'] for tr in trajs_sorted])
-        bar_name = 'C-rate [a.u.]'
+        bar_name = 'C-rate [1/h]'
     elif sort == 'u_per':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['u_per'])
         vals_arr = np.array([tr['u_per'] for tr in trajs_sorted])
@@ -3002,11 +3002,11 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Predicted')]
     if fixed:
         handles.append(plt.Line2D([0], [0], color='none', label=tag))
-    ax_v.legend(handles=handles, loc='upper right' if not n_show==1 else 'lower left', frameon=True,
+    ax_v.legend(handles=handles, loc='best' if not n_show==1 else 'lower left', frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14)
 
     if pulse:
-        ax_i.set_ylabel('Cr [a.u.]')
+        ax_i.set_ylabel('Cr [1/h]')
 
     sm = ScalarMappable(cmap=cmap_b if sort == 'C_rate' else cmap_r, norm=norm)   # colorbar shows the Predicted palette
     sm.set_array([])
