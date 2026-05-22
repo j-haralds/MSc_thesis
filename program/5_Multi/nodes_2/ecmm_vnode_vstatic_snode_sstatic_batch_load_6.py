@@ -313,7 +313,7 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
-MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt'
 
 # bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
 # bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
@@ -509,7 +509,8 @@ plt.show()
 # 
  
 MODEL_NAME_LOW = '0510_2034_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
-MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+# MODEL_NAME_FULL = '0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_642.62min_16h_2500eps.pt'
+MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt'
 
 
 bat_model_low, ckpt_low = load_nn_model(MODEL_NAME_LOW, I_ref=I_MAX)   # U_MAX when loading lib_3
@@ -615,10 +616,14 @@ input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observa
 input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
 
 # %%
+import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
+importlib.reload(_lib)
+from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='V')
-# plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_V.pdf'), bbox_inches='tight')
-plt.show()
+# plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_V_RMSE.pdf'), bbox_inches='tight')
+# plt.show()
 input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='F')
+# plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_F_RMSE.pdf'), bbox_inches='tight')
 # %%
 # ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
 

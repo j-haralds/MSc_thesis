@@ -27,3 +27,6 @@ Version 4 extension of 3 but with s node
 
 
 ecm_node_0507_1638_snode_lib4_combo_dynamic_netR0_R0c_R1c_C1c_89.52min_16h_0_100eps.pt
+
+
+FINAL MODEL: 0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt

@@ -2,6 +2,7 @@
 import os
 import sys
 
+from matplotlib.ticker import FormatStrFormatter, ScalarFormatter
 import torch
 import torch.nn as nn
 import numpy as np
@@ -2533,8 +2534,8 @@ def mare(model, trajs):
     d = []
     for tr in trajs:
         out = predict_np(model, model.config, tr)
-        rae_V.append(float(np.mean((np.abs(out['V'] - tr['V'].numpy())) / (tr['V'].numpy()))))
-        rae_F.append(float(np.mean((np.abs(out['Fr'] - tr['F'].numpy())) / (tr['F'].numpy()))))
+        rae_V.append(float(np.mean((np.abs(out['V'] - tr['V'].numpy())) / np.mean(tr['V'].numpy()))))
+        rae_F.append(float(np.mean((np.abs(out['Fr'] - tr['F'].numpy())) / np.mean(tr['F'].numpy()))))
         C.append(float(tr['C']))
         d.append(float(tr['u_per']))
 
@@ -2547,6 +2548,39 @@ def merge_mare(model, trajs):
     obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
 
     return obs_inpt, rae_NN
+
+def mae(model, trajs):
+    """
+    Mean Absolute Error: MAE divided by the range of the true values.
+    """
+    mae_V = []
+    mae_F = []
+    C = []
+    d = []
+    for tr in trajs:
+        out = predict_np(model, model.config, tr)
+        mae_V.append(float(np.mean((np.abs(out['V'] - tr['V'].numpy())))))
+        mae_F.append(float(np.mean((np.abs(out['Fr'] - tr['F'].numpy())))))
+        C.append(float(tr['C']))
+        d.append(float(tr['u_per']))
+
+    return np.array(mae_V), np.array(mae_F), np.array(C), np.array(d)
+
+def merge_mae(model, trajs):
+    mae_V, mae_F, C,d = mae(model, trajs)
+
+    mae_NN = np.vstack((mae_V, mae_F)).T
+    obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    return obs_inpt, mae_NN
+
+def merge_RMSE_non_relative(model, trajs):
+    rmse_V, rmse_F, C,d = rmse_pulse(model, trajs)
+
+    rmse_NN = np.vstack((rmse_V, rmse_F)).T
+    obs_inpt = np.vstack((C, d)).T  # Placeholder for symbolic regression RMSE values, to be filled in when available.
+
+    return obs_inpt, rmse_NN
 
 def input_map_single(model, trajs, rmse_scales, observable='V'):
     """
@@ -2586,17 +2620,19 @@ def input_map_single(model, trajs, rmse_scales, observable='V'):
 
     # pick the column index in the RMSE array for the requested observable
     if observable == 'V':
-        col, label = 0, r'NRMSE for $V_B$'
+        col, label = 0, r'MAE for $V_B$'
     elif observable == 'F':
-        col, label = 1, r'NRMSE for $F$'
+        col, label = 1, r'MAE for $F$'
     else:
         raise ValueError(f"observable must be 'V' or 'F', got {observable!r}")
 
     cmap_V, cmap_F = custom_cmap()
     cmap = cmap_V if observable == 'V' else cmap_F
 
-    obs_cc,    rmse_cc    = merge_RMSE(model, CC_trajs,    rmse_scales)
-    obs_pulse, rmse_pulse = merge_RMSE(model, pulse_trajs, rmse_scales)
+    # obs_cc,    rmse_cc    = merge_RMSE(model, CC_trajs,    rmse_scales)
+    # obs_pulse, rmse_pulse = merge_RMSE(model, pulse_trajs, rmse_scales)
+    obs_cc,    rmse_cc    = merge_mae(model, CC_trajs)
+    obs_pulse, rmse_pulse = merge_mae(model, pulse_trajs)
 
     vmin = min(rmse_cc[:, col].min(), rmse_pulse[:, col].min())
     vmax = max(rmse_cc[:, col].max(), rmse_pulse[:, col].max())
@@ -2627,7 +2663,7 @@ def input_map_single_cc(model, trajs, rmse_scales, observable='V'):
     # keep only CC trajectories (defensive — in case mixed list is passed in)
     CC_trajs = [tr for tr in trajs if tr['I_seq'][0] == tr['I_seq'][1]]
 
-    fig, ax = plt.subplots(figsize=(5.5, 4), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(5.0, 3.5), constrained_layout=True)
 
     # full domain box
     domain = [[0.5, 5], [0, 30]]
@@ -2639,6 +2675,7 @@ def input_map_single_cc(model, trajs, rmse_scales, observable='V'):
                     domain[1][0], domain[1][1], color='gray', alpha=0.1)
     ax.set_xlabel('C-rate [1/h]')
     ax.set_ylabel(r'$\widetilde{d}$ [\%]')
+    ax.set_xticks([1, 2, 3, 4, 5])
 
     # # pick column for requested observable
     # if observable == 'V':
@@ -2663,24 +2700,32 @@ def input_map_single_cc(model, trajs, rmse_scales, observable='V'):
 
     # pick column for requested observable
     if observable == 'V':
-        col, label = 0, r'MARE for $V_B$'
+        col, label = 0, r'RMSE for $V_B$'
     elif observable == 'F':
-        col, label = 1, r'MARE for $F$'
+        col, label = 1, r'RMSE for $F$'
     else:
         raise ValueError(f"observable must be 'V' or 'F', got {observable!r}")
 
     cmap_V, cmap_F = custom_cmap()
     cmap = cmap_V if observable == 'V' else cmap_F
 
-    obs_cc, mare_cc = merge_mare(model, CC_trajs)
+    # obs_cc, mae_cc = merge_mae(model, CC_trajs)
+    obs_cc, mae_cc = merge_RMSE_non_relative(model, CC_trajs)
 
-    vmin = mare_cc[:, col].min()
-    vmax = mare_cc[:, col].max()
+    vmin = mae_cc[:, col].min()
+    vmax = mae_cc[:, col].max()
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
 
-    sc = ax.scatter(obs_cc[:, 0], obs_cc[:, 1], c=mare_cc[:, col], cmap=cmap, norm=norm, marker='o')
+    sc = ax.scatter(obs_cc[:, 0], obs_cc[:, 1], c=mae_cc[:, col], cmap=cmap, norm=norm, marker='o')
 
-    fig.colorbar(sc, ax=ax, label=label)
+    cbar = fig.colorbar(sc, ax=ax, label=label, pad=-0.1)
+    fmt = ScalarFormatter(useMathText=True)
+    fmt.set_scientific(True)
+    fmt.set_powerlimits((-1, 3))   # force sci notation when |v|<1e-2 or >1e3
+
+    cbar.set_ticks(np.linspace(vmin, vmax, 5))
+    cbar.ax.yaxis.set_major_formatter(fmt)
+    # cbar.ax.yaxis.set_offset_position('right')
 
     legend_handles = [Line2D([0], [0], marker='o', color='gray', linestyle='', label='CC'),]
     # ax.legend(handles=legend_handles, loc='right', frameon=True, ncol=1, fontsize='small')
