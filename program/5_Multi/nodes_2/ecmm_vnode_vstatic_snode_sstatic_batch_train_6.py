@@ -49,7 +49,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = True 
+SAVE_MODELS = False 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -66,15 +66,15 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE         = 'DC'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
+USE_PULSE         = 'pulse'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net'
     'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
-    'R1_constrained': 'true', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'true', 'C1_min': 5000.0, 'C1_max': 14000.0, # 30000.0,  # F
+    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
+    'C1_constrained': 'false', 'C1_min': 5000.0, 'C1_max': 14000.0, # 30000.0,  # F
     'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
     # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
     'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
@@ -90,7 +90,7 @@ CONFIG = {
     # 'static_no_R0' : V = Ue − I·R1                 (algebraic, no R0)
     # 'static'       : V = Ue − I·R0 − I·R1          (algebraic, no U1 dynamics)
     # 'dynamic'      : V = Ue − I·R0 − U1, with U1 integrated by semi-implicit Euler
-    'style_V': 'dynamic',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
+    'style_V': 'static_no_R0',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
 
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
@@ -100,9 +100,9 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 500  # Total training epochs
+EPOCHS  = 2500  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f'_b{BATCH_SIZE}_ccDynaSigmoid_' # {split_percentage}_'  # Start of filename, before the style tags and time
+NAME_START = f'_b{BATCH_SIZE}_' # {split_percentage}_'  # Start of filename, before the style tags and time
 
 
 
@@ -245,7 +245,7 @@ elif CONFIG['style_V'] == 'back_in_black':
           f"  (style_V={CONFIG['style_V']!r})")
     history = train_model(bat_model, _train_trajs, _test_trajs,
                 n_epochs=EPOCHS, lr=LR_STATIC, print_every=1,
-                V_mode='back_in_black', freeze=('R0_net', 'C1_net'),
+                V_mode='back_in_black', freeze=('R1_net','R0_net', 'C1_net'),
                 batch_size=BATCH_SIZE, eval_every=EVAL_EVERY)
 
     TOTAL_TIME = history['time']

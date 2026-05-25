@@ -358,7 +358,7 @@ class sNet(nn.Module):
 class BlackNet(nn.Module):
     """(soc, I_norm, u_norm) → V ≥ 0  [1e-5 m].  Algebraic — no integration.
     """
-    def __init__(self, config, n_hidden=32):
+    def __init__(self, config, n_hidden=16):
         super().__init__()
         self.config = config
         self.net = nn.Sequential(

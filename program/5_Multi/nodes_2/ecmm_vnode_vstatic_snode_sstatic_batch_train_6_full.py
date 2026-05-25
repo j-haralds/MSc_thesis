@@ -42,7 +42,7 @@ DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt') # Full
 
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
 
-COMBO_FILE  = os.path.join(DATA_DIR, 'combo_high.txt')
+COMBO_FILE  = os.path.join(DATA_DIR, 'combo_half.txt')
 COMBO_TEST_FILE  = os.path.join(DATA_DIR, 'combo_low_c_d.txt')
 
 FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')

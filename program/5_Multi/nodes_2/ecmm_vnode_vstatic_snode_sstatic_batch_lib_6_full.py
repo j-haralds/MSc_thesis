@@ -678,7 +678,7 @@ class BatteryECMM(nn.Module):
         with torch.no_grad():
             Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
 
-        R0 = self._R0(soc, I_norm, u_norm_exp, I_seq,s)
+        R0 = self._R0(soc, I_norm, u_norm_exp, I_seq, s)
         V  = Ue - I_seq * R0 - U1
 
         k = self.k_net(soc, I_norm, u_norm_exp, s)              # (B, T)
