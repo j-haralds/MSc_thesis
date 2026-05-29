@@ -122,10 +122,7 @@ def get_settings(elem):
     return bin_ops, un_ops, nest_const,consts, op_comps, var_names
 
 def setup_model(its = int(1e3), pops = 30, selection = "accuracy",run_id = None, elem = None):
-    
-
     bin_ops, un_ops, nest_const, consts,op_comps, var_names = get_settings(elem)
-    
     
     model = PySRRegressor(
         model_selection=selection,
