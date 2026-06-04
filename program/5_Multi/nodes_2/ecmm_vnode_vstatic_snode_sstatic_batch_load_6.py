@@ -38,7 +38,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 #  CONFIGURATION
 # ════════════════════════════════════════════════════════════
 
-DATA_DIR    = os.path.join(FILE_PATH, '..', 'Multi_data')
+DATA_DIR    = os.path.join(FILE_PATH, '../Multi_data')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
 ALL_DATA =  os.path.join(DATA_DIR, 'merged_combo.txt')
 HALF_COMBO = os.path.join(DATA_DIR, 'combo_half.txt'); OTHER_HALF_COMBO = os.path.join(DATA_DIR, 'combo_other_half.txt')
@@ -61,6 +61,7 @@ Q0          = 17921.57581
 # ══════════════════════════════════════════════════════════════
 
 print("Loading data...")
+print(DATA_FILE)
 data = pd.read_csv(DATA_FILE, sep=';', comment='%')
 print(data.columns)
 
@@ -605,24 +606,24 @@ plt.show()
 #  %% USE FOR REPORT INPUT ERROR MAPS
 
 
-input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='V')
-input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='F')
-input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='V')
-input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='F')
+# input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='V')
+# input_map_single(bat_model_full, combo_train, rmse_scales=RMSE_scales, observable='F')
+# input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='V')
+# input_map_single(bat_model_full, combo_test, rmse_scales=RMSE_scales, observable='F')
 
-input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='V')
-input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='F')
-input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='V')
-input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
+# input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='V')
+# input_map_single_cc(bat_model_full, train_trajs, rmse_scales=RMSE_scales, observable='F')
+# input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='V')
+# input_map_single_cc(bat_model_full, test_trajs, rmse_scales=RMSE_scales, observable='F')
 
 # %%
 import ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 as _lib
 importlib.reload(_lib)
 from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
-input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='V')
+# input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='V')
 # plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_V_RMSE.pdf'), bbox_inches='tight')
 # plt.show()
-input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='F')
+# input_map_single_cc(bat_model_full, wombo_combo, rmse_scales=RMSE_scales, observable='F')
 # plt.savefig(os.path.join(FIGS_DIR, f'0515_0840_sp_womboCombo_cc_F_RMSE.pdf'), bbox_inches='tight')
 # %%
 # ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
@@ -656,29 +657,35 @@ other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] =
 # # –––––
 
 # # ––––– CC force
-# other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
-# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F',
-#                              n_show=5, pulse=False)
+other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F', n_show=7, pulse=False, fixed=False)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_F.pdf'), bbox_inches='tight')
-# plt.show()
+# plt.savefig(os.path.join(f'presentation_fix_d_cc_F.pdf'), bbox_inches='tight')
 
-# crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep.txt'), sep=';', comment='%')
-# cc_c25_usweep = prepare_pulse_data(crate_usweep_cc)
-# plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F',
-#                              n_show=5, pulse=False)
+plot_mosaic_predicts_report_data(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F', n_show=7, pulse=False, fixed=False)
+plt.savefig(os.path.join(f'presentation_HF_fix_d_cc_F.pdf'), bbox_inches='tight')
+plt.show()
+
+
+crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep.txt'), sep=';', comment='%')
+cc_c25_usweep = prepare_data(crate_usweep_cc)
+plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F', n_show=7, pulse=False, fixed=False)
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_cc_F.pdf'), bbox_inches='tight')
-# plt.show()
+# plt.savefig(os.path.join(f'presentation_fix_i_cc_F.pdf'), bbox_inches='tight')
+plot_mosaic_predicts_report_data(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F', n_show=7, pulse=False, fixed=False)
+plt.savefig(os.path.join(f'presentation_HF_fix_i_cc_F.pdf'), bbox_inches='tight')
+plt.show()
 # # –––––
 
 # ––––––––––––– pulse dynamic o static ––––––––––––––
 crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
 pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
-plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
-                            n_show=1, start=39, pulse=True, fixed=False, bar=False)
-plt.savefig(os.path.join('pred_figs', f'CC_dynamic_pulse_V.pdf'), bbox_inches='tight')
+# plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
+#                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
+# plt.savefig(os.path.join('pred_figs', f'CC_dynamic_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
 
-plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
-                            n_show=1, start=39, pulse=True, fixed=False, bar=False)
-plt.savefig(os.path.join('pred_figs', f'CC_static_pulse_V.pdf'), bbox_inches='tight')
+# plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
+#                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
+# plt.savefig(os.path.join('pred_figs', f'CC_static_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
