@@ -3014,11 +3014,13 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     if bar:
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
+    # ax_v.set_ylim(2.5, 4.3)
+
     return fig
 
 
 def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, fixed=True, start=0, bar=True, Q0=17921.57581):
+                                n_show=5, pulse=False, fixed=True, start=0, bar=True, color='gray', Q0=17921.57581):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).
@@ -3080,7 +3082,10 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
             if sort == 'u_per':
                 color_true = cmap_r(norm(bar_val))
             else:
-                color_true = cmap_b(norm(bar_val))
+                if color == 'gray':
+                    color_true = 'gray'
+                else:
+                    color_true = cmap_b(norm(bar_val))
             # color_true = 'black'
             if bar:
                 color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
@@ -3111,6 +3116,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
 
     ax_v.set_ylabel(r'$V_B$ [V]' if predict == 'V' else r'$F$ [MN]')
     ax_v.set_xlabel('Time [s]')
+    
 
     # Fixed-value tag — value of the variable not being swept
     first = trajs_plot[0]
@@ -3119,8 +3125,11 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
     else:  # sort == 'C_rate'
         tag = fr'$\widetilde{{d}} = {float(first["u_per"]):g}\%$'
 
+    handle_color = 'tab:blue' if sort == 'C_rate' else 'tab:red'
+    if color == 'gray':
+        handle_color = 'gray'
     handles = [
-        plt.Line2D([0], [0], color='tab:red' if sort == 'u_per' else 'tab:blue', alpha=1, lw=2, linestyle='--', label='High-fidelity'),
+        plt.Line2D([0], [0], color=handle_color, alpha=1, lw=2, linestyle='--', label='High-fidelity'),
         # plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Surrogate')
         ]
     if fixed:
@@ -3136,5 +3145,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
     cbar_ax = [ax_i, ax_v] if pulse else ax_v
     if bar:
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
+
+    # ax_v.set_ylim(2.5, 4.3)
 
     return fig

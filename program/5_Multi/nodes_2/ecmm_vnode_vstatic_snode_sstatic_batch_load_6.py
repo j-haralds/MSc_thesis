@@ -316,8 +316,8 @@ MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
 MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt'
 
-# bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
-# bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
 # plot_predicts_report(bat_model_dynamic_DC, CONFIG, test_trajs, predict='V', sort='C_rate', n_show=5, time=False)
 plot_predicts_report(bat_model_full, CONFIG, pulse_test, predict='V', sort='C_rate', n_show=4, time=True, pulse=True)
@@ -629,14 +629,14 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 # ––––––– Prepare data and plotting  ––––––––––––––––––––––––––––––––––––––––––––––––––
 
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
-# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
-#                              n_show=4, pulse=True, fixed=False, start=18)
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
+                              n_show=4, pulse=True, fixed=False, start=18)
 # # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_pulse_V.pdf'), bbox_inches='tight')
 # plt.show()
 
 other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
-# plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
-#                              n_show=8, pulse=False, fixed=False, start=2)
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
+                              n_show=8, pulse=False, fixed=False, start=2)
 # # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
 # plt.show()
 
@@ -663,7 +663,7 @@ plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort
 # plt.savefig(os.path.join(f'presentation_fix_d_cc_F.pdf'), bbox_inches='tight')
 
 plot_mosaic_predicts_report_data(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F', n_show=7, pulse=False, fixed=False)
-plt.savefig(os.path.join(f'presentation_HF_fix_d_cc_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(f'presentation_HF_fix_d_cc_F.pdf'), bbox_inches='tight')
 plt.show()
 
 
@@ -673,16 +673,20 @@ plot_mosaic_predicts_report(bat_model_full, config_full, cc_c25_usweep, sort='u_
 # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_c25usweep_cc_F.pdf'), bbox_inches='tight')
 # plt.savefig(os.path.join(f'presentation_fix_i_cc_F.pdf'), bbox_inches='tight')
 plot_mosaic_predicts_report_data(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='F', n_show=7, pulse=False, fixed=False)
-plt.savefig(os.path.join(f'presentation_HF_fix_i_cc_F.pdf'), bbox_inches='tight')
+# plt.savefig(os.path.join(f'presentation_HF_fix_i_cc_F.pdf'), bbox_inches='tight')
 plt.show()
 # # –––––
 
-# ––––––––––––– pulse dynamic o static ––––––––––––––
+# %% ––––––––––––– pulse dynamic o static ––––––––––––––
 crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
 pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
-# plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
-#                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
-# plt.savefig(os.path.join('pred_figs', f'CC_dynamic_pulse_V.pdf'), bbox_inches='tight')
+
+plot_mosaic_predicts_report_data(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', n_show=1, start=39, pulse=True, fixed=False, bar=False, color='gray')
+# plt.savefig(os.path.join(f'presentation_HF_pulse_V.pdf'), bbox_inches='tight')
+
+plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
+                            n_show=1, start=39, pulse=True, fixed=False, bar=False)
+# plt.savefig(os.path.join(f'presentation_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
 
 # plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
