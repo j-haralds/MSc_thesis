@@ -2899,7 +2899,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
 
 
 def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, fixed=True, start=0, bar=True, Q0=17921.57581):
+                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, Q0=17921.57581):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).
@@ -2911,6 +2911,8 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     """
     assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
     model.eval()
+
+    show_current = pulse if show_current is None else show_current
 
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
@@ -2940,7 +2942,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
 
     # ── layout ─────────────────────────────────────────────────────────
-    if pulse:
+    if show_current:                       # was: if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
             figsize=(4.3, 3.5),
@@ -2978,14 +2980,20 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
             ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=1)
             ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
 
-            if pulse:
-                if 'I_seq' not in tr:
-                    raise ValueError(
-                        "pulse=True but trajectory has no 'I_seq' — did you use "
-                        "prepare_data instead of prepare_pulse_data?")
-                I = tr['I_seq'].numpy() if hasattr(tr['I_seq'], 'numpy') else np.asarray(tr['I_seq'])
-                # Current is the same for true & pred — single line, neutral shade
-                ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+            if show_current:
+                I = out['I']               # length-T: constant in CC, sequence in pulse
+                # ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+                # When only one traj use color true
+                ax_i.plot(t, I * I_to_C, color=color_true, lw=2, alpha=0.5)
+
+            # if pulse:
+            #     if 'I_seq' not in tr:
+            #         raise ValueError(
+            #             "pulse=True but trajectory has no 'I_seq' — did you use "
+            #             "prepare_data instead of prepare_pulse_data?")
+            #     I = tr['I_seq'].numpy() if hasattr(tr['I_seq'], 'numpy') else np.asarray(tr['I_seq'])
+            #     # Current is the same for true & pred — single line, neutral shade
+            #     ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
 
     ax_v.set_ylabel(r'$V_B$ [V]' if predict == 'V' else r'$F$ [MN]')
     ax_v.set_xlabel('Time [s]')
@@ -3005,12 +3013,12 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     ax_v.legend(handles=handles, loc='best' if not n_show==1 else 'lower left', frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14)
 
-    if pulse:
+    if show_current:
         ax_i.set_ylabel('Cr [1/h]')
 
     sm = ScalarMappable(cmap=cmap_b if sort == 'C_rate' else cmap_r, norm=norm)   # colorbar shows the Predicted palette
     sm.set_array([])
-    cbar_ax = [ax_i, ax_v] if pulse else ax_v
+    cbar_ax = [ax_i, ax_v] if show_current else ax_v
     if bar:
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
@@ -3020,7 +3028,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
 
 
 def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, fixed=True, start=0, bar=True, color='gray', Q0=17921.57581):
+                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, color='gray', Q0=17921.57581):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).
@@ -3032,6 +3040,8 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
     """
     assert predict in ('V', 'F'), "predict must be 'V' or 'F'"
     model.eval()
+
+    show_current = pulse if show_current is None else show_current
 
     if sort == 'C_rate':
         trajs_sorted = sorted(trajs, key=lambda tr: tr['C'])
@@ -3061,7 +3071,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
         "Reds_custom", base(np.linspace(0.0, 0.7, 256)))
 
     # ── layout ─────────────────────────────────────────────────────────
-    if pulse:
+    if show_current:                       # was: if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
             figsize=(4.3, 3.5),
@@ -3083,7 +3093,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
                 color_true = cmap_r(norm(bar_val))
             else:
                 if color == 'gray':
-                    color_true = 'gray'
+                    color_true = 'black'
                 else:
                     color_true = cmap_b(norm(bar_val))
             # color_true = 'black'
@@ -3103,7 +3113,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
                 y_pred = out['Fr'] * 1000 # GN – MN
 
             # ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=1)
-            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=1)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
 
             if pulse:
                 if 'I_seq' not in tr:
@@ -3112,7 +3122,8 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
                         "prepare_data instead of prepare_pulse_data?")
                 I = tr['I_seq'].numpy() if hasattr(tr['I_seq'], 'numpy') else np.asarray(tr['I_seq'])
                 # Current is the same for true & pred — single line, neutral shade
-                ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+                # ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
+                ax_i.plot(t, I * I_to_C, color=color_true, lw=2, alpha=0.5)
 
     ax_v.set_ylabel(r'$V_B$ [V]' if predict == 'V' else r'$F$ [MN]')
     ax_v.set_xlabel('Time [s]')
@@ -3137,12 +3148,12 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
     ax_v.legend(handles=handles, loc='best' if not n_show==1 else 'lower left', frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14)
 
-    if pulse:
+    if show_current:
         ax_i.set_ylabel('Cr [1/h]')
 
     sm = ScalarMappable(cmap=cmap_b if sort == 'C_rate' else cmap_r, norm=norm)   # colorbar shows the Predicted palette
     sm.set_array([])
-    cbar_ax = [ax_i, ax_v] if pulse else ax_v
+    cbar_ax = [ax_i, ax_v] if show_current else ax_v
     if bar:
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 

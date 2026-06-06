@@ -636,7 +636,7 @@ plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort
 
 other_combo_cc = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == False])
 plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V',
-                              n_show=8, pulse=False, fixed=False, start=2)
+                              n_show=8, pulse=False, show_current=True, fixed=True, start=2)
 # # plt.savefig(os.path.join('pred_figs', f'0515_0840_sp_otherCombo_cc_V.pdf'), bbox_inches='tight')
 # plt.show()
 
@@ -678,11 +678,13 @@ plt.show()
 # # –––––
 
 # %% ––––––––––––– pulse dynamic o static ––––––––––––––
-crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
-pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
+# crate_usweep_pulse = pd.read_csv(os.path.join(DATA_DIR, 'crate2.5_usweep_pulse.txt'), sep=';', comment='%')
+# pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
 
 plot_mosaic_predicts_report_data(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', n_show=1, start=39, pulse=True, fixed=False, bar=False, color='gray')
 # plt.savefig(os.path.join(f'presentation_HF_pulse_V.pdf'), bbox_inches='tight')
+plot_mosaic_predicts_report_data(bat_model_dynamic_DC, config_dyna, other_combo_cc, sort='C_rate', predict='V', n_show=1, start=39, pulse=True, fixed=False, bar=False, color='gray')
+# plt.savefig(os.path.join(f'presentation_HF_cc_V.pdf'), bbox_inches='tight')
 
 plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
