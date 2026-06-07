@@ -2936,22 +2936,22 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     # True – Reds, Predicted – Blues (regardless of `sort`)
     base = plt.cm.Blues_r
     cmap_b = LinearSegmentedColormap.from_list(
-        "Blues_custom", base(np.linspace(0.0, 0.8, 256)))
+        "Blues_custom", base(np.linspace(0.25, 0.7, 256)))
     base = plt.cm.Reds_r
     cmap_r = LinearSegmentedColormap.from_list(
-        "Reds_custom", base(np.linspace(0.0, 0.8, 256)))
+        "Reds_custom", base(np.linspace(0.25, 0.7, 256)))
 
     # ── layout ─────────────────────────────────────────────────────────
     if show_current:                       # was: if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
-            figsize=(4.3, 3.5),
+            figsize=(5, 3),
             height_ratios=[0.4, 1.0],
-            sharex=True, constrained_layout=True,
+            sharex=True,
         )
         ax_i, ax_v = ax['current'], ax['voltage']
     else:
-        fig, ax_v = plt.subplots(figsize=(4.3, 3.1), constrained_layout=True)
+        fig, ax_v = plt.subplots(figsize=(5, 3),)
         ax_i = None
 
     I_to_C = 3600.0 / Q0
@@ -2962,10 +2962,11 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
             bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
             color_true = cmap_r(norm(bar_val))
             color_true = 'black'
-            if bar:
-                color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
-            else:
-                color_pred = 'tab:blue'
+            # if bar:
+                # color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
+            # else:
+            #     color_pred = 'tab:blue'
+            color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
 
             out = predict_np(model, config, tr)
             t = np.arange(tr['T'])
@@ -3010,7 +3011,8 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Surrogate')]
     if fixed:
         handles.append(plt.Line2D([0], [0], color='none', label=tag))
-    ax_v.legend(handles=handles, loc='best' if not n_show==1 else 'lower left', frameon=True,
+    ax_v.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left', bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
+                frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14)
 
     if show_current:
@@ -3023,12 +3025,13 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
     # ax_v.set_ylim(2.5, 4.3)
+    ax_v.set_xlim(-50, 1300)
 
     return fig
 
 
 def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, color='gray', Q0=17921.57581):
+                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, color=None, Q0=17921.57581):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).
@@ -3062,25 +3065,28 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
         idx = np.unique(np.linspace(start, len(trajs_sorted) - 1, n_show).round().astype(int))
         trajs_plot = [trajs_sorted[i] for i in idx]
 
+    for tr in trajs_plot:
+        print(f"C_rate = {float(tr['C']):g} 1/h,  d = {float(tr['u_per']):g} %")
+
     # True – Reds, Predicted – Blues (regardless of `sort`)
     base = plt.cm.Blues_r
     cmap_b = LinearSegmentedColormap.from_list(
-        "Blues_custom", base(np.linspace(0.0, 0.7, 256)))
+        "Blues_custom", base(np.linspace(0.25, 0.7, 256)))
     base = plt.cm.Reds_r
     cmap_r = LinearSegmentedColormap.from_list(
-        "Reds_custom", base(np.linspace(0.0, 0.7, 256)))
+        "Reds_custom", base(np.linspace(0.25, 0.7, 256)))
 
     # ── layout ─────────────────────────────────────────────────────────
     if show_current:                       # was: if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
-            figsize=(4.3, 3.5),
+            figsize=(5, 3),
             height_ratios=[0.4, 1.0],
-            sharex=True, constrained_layout=True,
+            sharex=True,
         )
         ax_i, ax_v = ax['current'], ax['voltage']
     else:
-        fig, ax_v = plt.subplots(figsize=(4.3, 3.1), constrained_layout=True)
+        fig, ax_v = plt.subplots(figsize=(5, 3),)
         ax_i = None
 
     I_to_C = 3600.0 / Q0
@@ -3113,7 +3119,7 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
                 y_pred = out['Fr'] * 1000 # GN – MN
 
             # ax_v.plot(t, y_pred, '-',  color=color_pred, lw=2, alpha=1)
-            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=0.5)
+            ax_v.plot(t, y_true, '--', color=color_true, lw=2, alpha=1)
 
             if pulse:
                 if 'I_seq' not in tr:
@@ -3145,7 +3151,8 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
         ]
     if fixed:
         handles.append(plt.Line2D([0], [0], color='none', label=tag))
-    ax_v.legend(handles=handles, loc='best' if not n_show==1 else 'lower left', frameon=True,
+    ax_v.legend(handles=handles, loc='upper right' if not n_show==1 else 'upper right',# bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
+                frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14)
 
     if show_current:
@@ -3158,5 +3165,6 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
     # ax_v.set_ylim(2.5, 4.3)
+    ax_v.set_xlim(-50, 1300)
 
     return fig
