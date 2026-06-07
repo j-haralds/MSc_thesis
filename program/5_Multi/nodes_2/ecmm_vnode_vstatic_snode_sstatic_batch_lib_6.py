@@ -3167,4 +3167,29 @@ def plot_mosaic_predicts_report_data(model, config, trajs, *, predict='V', sort=
     # ax_v.set_ylim(2.5, 4.3)
     ax_v.set_xlim(-50, 1300)
 
+    # add a mini plot inside the ax_v showing a zoomed-in view 
+    if sort == 'u_per' and predict == 'V':
+        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+        from mpl_toolkits.axes_grid1.inset_locator import mark_inset
+        ax_inset = inset_axes(ax_v, width="40%", height="35%", borderpad=2.2,loc='lower left')
+        for tr in trajs_plot:
+            bar_val = float(tr['C']) if sort == 'C_rate' else float(tr['u_per'])
+            if sort == 'u_per':
+                color_true = cmap_r(norm(bar_val))
+            else:
+                if color == 'gray':
+                    color_true = 'black'
+                else:
+                    color_true = cmap_b(norm(bar_val))
+            out = predict_np(model, config, tr)
+            t = np.arange(tr['T'])
+            y_true = tr['V'].numpy() if hasattr(tr['V'], 'numpy') else np.asarray(tr['V'])
+            ax_inset.plot(t, y_true, '--', color=color_true, lw=2, alpha=1)
+        ax_inset.set_xlim(745, 805)
+        ax_inset.set_ylim(3.548, 3.605)
+        ax_inset.set_xticks([750, 800])
+        #ax_inset.set_yticks([3.6, 3.625])
+        ax_inset.tick_params(axis='both', labelsize=14)
+        mark_inset(ax_v, ax_inset,
+           loc1=2, loc2=4, fc="none", ec="black", lw=1.5, alpha=0.4, ls='--')
     return fig
