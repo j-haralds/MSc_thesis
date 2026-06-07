@@ -7,7 +7,8 @@ def get_SR_inds(RUN_ID):
             'R1': 8,   # JH
             'C1': 7,   # JN
             'k': 7,    # JH
-            's': 6     # JN
+            's': 6,     # JN
+            'Ue':7
         }
     }
 
@@ -17,7 +18,8 @@ def get_SR_inds(RUN_ID):
             'R1': 19,  # JH
             'C1': 24,  # JN
             'k': 22,   # JH
-            's': 27    # JN
+            's': 27,    # JN
+            'Ue':15
         }
     }
 
