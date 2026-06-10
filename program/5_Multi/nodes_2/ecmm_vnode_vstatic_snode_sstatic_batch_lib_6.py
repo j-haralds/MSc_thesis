@@ -791,8 +791,8 @@ def get_C1(model, scalar=True, soc_ref=0.5, I_ref_val=10.0, u_ref_val=-0.6,
            soc=None, I_norm=None, u_exp=None):
     """Return a representative C1 value.
 
-    scalar=True  → a single float at the (soc_ref, I_ref_val, u_ref_val) reference point
-    scalar=False → trajectory-shape numpy array, evaluated at the given (soc, I_norm, u_exp)
+    scalar=True   a single float at the (soc_ref, I_ref_val, u_ref_val) reference point
+    scalar=False  trajectory-shape numpy array, evaluated at the given (soc, I_norm, u_exp)
 
     Note: u_ref_val is a *physical* reference u in [1e-5 m]. It is normalized
     by model.u_ref before being passed to the network. In scalar=False mode,
@@ -2945,13 +2945,13 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     if show_current:                       # was: if pulse:
         fig, ax = plt.subplot_mosaic(
             [['current'], ['voltage']],
-            figsize=(5, 3),
+            figsize=(4.5, 4),
             height_ratios=[0.4, 1.0],
             sharex=True,
         )
         ax_i, ax_v = ax['current'], ax['voltage']
     else:
-        fig, ax_v = plt.subplots(figsize=(5, 3),)
+        fig, ax_v = plt.subplots(figsize=(4.5, 3.3),)
         ax_i = None
 
     I_to_C = 3600.0 / Q0
@@ -2967,6 +2967,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
             # else:
             #     color_pred = 'tab:blue'
             color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
+            #color_pred = 'tab:blue'
 
             out = predict_np(model, config, tr)
             t = np.arange(tr['T'])
@@ -2985,7 +2986,10 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
                 I = out['I']               # length-T: constant in CC, sequence in pulse
                 # ax_i.plot(t, I * I_to_C, color=color_pred, lw=2, alpha=0.9)
                 # When only one traj use color true
-                ax_i.plot(t, I * I_to_C, color=color_true, lw=2, alpha=0.5)
+                ax_i.plot(t, I * I_to_C, color=color_pred if sort == 'C_rate' else 'gray', lw=2, alpha=1)
+                
+                # ax_i.plot(t, I * I_to_C, color='gray', lw=2, alpha=1)
+
 
             # if pulse:
             #     if 'I_seq' not in tr:
@@ -3008,7 +3012,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
 
     handles = [
         plt.Line2D([0], [0], color='black', alpha=0.5, lw=2, linestyle='--', label='High-fidelity'),
-        plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Surrogate')]
+        plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Surrogate model')]
     if fixed:
         handles.append(plt.Line2D([0], [0], color='none', label=tag))
     ax_v.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left', bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
@@ -3025,7 +3029,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         fig.colorbar(sm, ax=cbar_ax, label=bar_name, location='right', pad=0.01)
 
     # ax_v.set_ylim(2.5, 4.3)
-    ax_v.set_xlim(-50, 1300)
+    # ax_v.set_xlim(-50, 1300)
 
     return fig
 
