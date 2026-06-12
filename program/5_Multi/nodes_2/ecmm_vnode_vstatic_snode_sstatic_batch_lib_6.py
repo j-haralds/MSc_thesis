@@ -3014,10 +3014,17 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
         plt.Line2D([0], [0], color='black', alpha=0.5, lw=2, linestyle='--', label='High-fidelity'),
         plt.Line2D([0], [0], color='tab:blue' if sort == 'C_rate' else 'tab:red', lw=2, linestyle='-',  label='Surrogate model')]
     if fixed:
-        handles.append(plt.Line2D([0], [0], color='none', label=tag))
-    ax_v.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left', bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
+        # handles.append(plt.Line2D([0], [0], color='none', label=tag))
+        ax_v.legend(handles=[plt.Line2D([0], [0], color='none', label=tag)], loc='best', bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
+                 frameon=True, handlelength=0, handletextpad=0, fontsize=14)
+
+    # ax_v.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left', bbox_to_anchor=(1.0, 0.55) if sort == 'u_per' else None,
+    #             frameon=True,
+    #             handlelength=1.5, handletextpad=0.5, fontsize=14, ncols=3)
+    
+    fig.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left',
                 frameon=True,
-                handlelength=1.5, handletextpad=0.5, fontsize=14)
+                handlelength=1.5, handletextpad=0.5, fontsize=14, ncols=3, bbox_to_anchor=(0.9, 0.88))
 
     if show_current:
         ax_i.set_ylabel('Cr [1/h]')

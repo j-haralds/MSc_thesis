@@ -639,7 +639,7 @@ from ecmm_vnode_vstatic_snode_sstatic_batch_lib_6 import *
 # plt.show()
 
 
-other_combo_cc = prepare_pulse_data(combo_data[(combo_data['pulse'] == False) & (combo_data['u_par'] == 0)])
+other_combo_cc = prepare_pulse_data(other_combo_data[(other_combo_data['pulse'] == False) & (other_combo_data['u_par'] == 0)])
 # plot_mosaic_predicts_report_data(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V', n_show=3, pulse=False, show_current=False, fixed=False, start=3, bar=False)
 # #plt.savefig(os.path.join(f'presentation_fix_d_cc_V.pdf'), bbox_inches='tight')
 
@@ -680,9 +680,9 @@ plt.show()
 ##### –––––––
 
 # ––– For presentation –––
-T_ref = max(tr['T'] for tr in cc_c25_usweep)        # ~1500; or just set T_ref = 1500
-other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
-short = [tr for tr in other_combo_cc_d0 if tr['T'] <= T_ref]
+# T_ref = max(tr['T'] for tr in cc_c25_usweep)        # ~1500; or just set T_ref = 1500
+# other_combo_cc_d0 = prepare_pulse_data(other_combo_data[(other_combo_data['u_par']==0) & (other_combo_data['pulse'] == False)])
+# short = [tr for tr in other_combo_cc_d0 if tr['T'] <= T_ref]
 
 # plot_mosaic_predicts_report(bat_model_full, config_full, short, sort='C_rate', predict='F', n_show=4, bar=True, pulse=False, fixed=False)
 # plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc_d0, sort='C_rate', predict='F', n_show=3, bar=False, pulse=False, fixed=False)
