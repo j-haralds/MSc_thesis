@@ -34,13 +34,16 @@ from datetime import datetime
 # ════════════════════════════════════════════════════════════
 
 TIMESTAMP   = datetime.now().strftime('%m%d_%H%M')
+PYBAMM_DATA_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'data_pybamm'))
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'data'))
 
 
 # TODO Enable PyBamm generated data. Fill pybamm data files with dummy values for unnecessary columns. Future work: add real/new learned dependencies
 
+DATA_FILE   = os.path.join(PYBAMM_DATA_DIR, 'pybamm_CC.txt')         # Full from hyperelastic material in Comsol
+
 # Choose data file
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')         # Full from hyperelastic material in Comsol
+# DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')         # Full from hyperelastic material in Comsol
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
 COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt')
 #COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
@@ -66,7 +69,7 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE   = 'combo'   # 'pulse', 'CC', 'combo' (combo = both CC and pulse)
+USE_PULSE   = 'CC'   # 'pulse', 'CC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
