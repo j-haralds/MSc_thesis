@@ -56,7 +56,9 @@ def get_ref_values():
     'sdot': 0.0001, 
     'C': 5,
     'd': 30,
+    'Ue': 1
     }
+
     return REF_VALUES
 def get_latex_dict():
     '''LaTeX representations for each variable, used in plots and tables.'''
@@ -81,7 +83,8 @@ def get_units_dict():
         'R1': r'm$\Omega$',
         'C1': r'kF',
         'k':  r'MN/µm',
-        's':  r'm/s'
+        's':  r'm/s',
+        'Ue': r'V'
         }
     
     unit_conversion = {
@@ -89,7 +92,8 @@ def get_units_dict():
         'R1': 1e3,  # from Ohm to mOhm
         'C1': 1e-3,  # from F to kF
         'k':  1e-3, 
-        's':  1e3
+        's':  1e3,
+        'Ue': 1
         }
     
     return units_dict, unit_conversion
@@ -188,7 +192,7 @@ def get_settings(elem):
         op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
     
     if elem == 'Ue':
-        bin_ops = ["+", "*", '-','/']
+        bin_ops = ["+", "*", '-','/','^']
         un_ops = ['sqrt','square', 'cube','exp','log', 'sin', 'cos', 'tan']
         nest_const = {'sin':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
                       'cos':  {'sin': 0, 'cos': 0, 'tan': 0, 'log': 0, 'exp': 0},
@@ -331,6 +335,8 @@ def parity_plot_Ue(model,Y,X,colors = COLORS,data_set = 'test'):
     Y_pred = model.predict(X)
     plt.scatter(Y, Y_pred, color=colors[0],alpha = 0.5)
     plt.plot([Y.min(), Y.max()], [Y.min(), Y.max()], 'k--', lw=2)
+    plt.xlabel(f'Actual $U_{{eq}}$ [V]')
+    plt.ylabel(f'Predicted $U_{{eq}}$ [V]')
 
 # =================================================
 # SAVE MODELS
