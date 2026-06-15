@@ -11,90 +11,6 @@ COLORS = plot_settings.colors()
 from IPython.display import display, Math
 import pandas as pd
 
-# =================================================
-# POST PROCESSING
-# =================================================
-
-def get_SR_inds(RUN_ID):
-    chosen_all_inds = {
-        'SP': {
-            'R0': 8,   # JN
-            'R1': 8,   # JH
-            'C1': 7,   # JN
-            'k': 7,    # JH
-            's': 6,     # JN
-            'Ue':7
-        }
-    }
-
-    best_all_inds = {
-        'SP': {
-            'R0': 19,  # JN
-            'R1': 19,  # JH
-            'C1': 24,  # JN
-            'k': 22,   # JH
-            's': 27,    # JN
-            'Ue':15
-        }
-    }
-
-    return chosen_all_inds[RUN_ID], best_all_inds[RUN_ID]
-
-
-def get_ref_values():
-    '''Reference values for normalization. 
-    For s, C and d, these are the maximum values in the dataset. 
-    For R0, R1, and k, these are arbitrary.
-    Values can be adjusted based on the specific dataset and requirements.'''
-    
-    REF_VALUES = {
-    'R0': 0.01,
-    'R1': 0.01,
-    'C1': 1000,
-    'k':  0.01,
-    's':  0.37266314,
-    'sdot': 0.0001, 
-    'C': 5,
-    'd': 30,
-    }
-    return REF_VALUES
-def get_latex_dict():
-    '''LaTeX representations for each variable, used in plots and tables.'''
-
-    latex_dict ={
-        'R0': r'R_0',
-        'R1': r'R_1',
-        'C1': r'C_1',
-        'k': r'k',
-        's': r'\dot{s}',
-        'Ue': r'U_{eq}'
-    }
-    return latex_dict
-
-
-def get_units_dict():
-    ''''Units for each variable, used in plots and tables. 
-    Conversion factors are applied to convert to resonable units.'''
-    
-    units_dict = {
-        'R0': r'm$\Omega$',
-        'R1': r'm$\Omega$',
-        'C1': r'kF',
-        'k':  r'MN/µm',
-        's':  r'm/s'
-        }
-    
-    unit_conversion = {
-        'R0': 1e3,   # from Ohm to mOhm
-        'R1': 1e3,  # from Ohm to mOhm
-        'C1': 1e-3,  # from F to kF
-        'k':  1e-3, 
-        's':  1e3
-        }
-    
-    return units_dict, unit_conversion
-
-
 # ================================================= 
 # DATA PREPARATION 
 # ================================================= 
@@ -105,6 +21,9 @@ def read_data(file_name):
         sep=',',
         comment="%"
     )
+    # cols = u_par,C,t,V,I,F,u,Ue,eta,trajectory,dV,dF,soc
+    #df.columns = ['u_par','C','t','V','I','F','u','Ue','eta','trajectory','dV','dF','soc']
+    # Sort by time within each batch
     
     return df
 
