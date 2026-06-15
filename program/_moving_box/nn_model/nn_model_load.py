@@ -15,7 +15,7 @@ import importlib
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
 print(FILE_PATH)
-# sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
+sys.path.append(os.path.join(FILE_PATH, '..'))
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
@@ -38,16 +38,17 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 #  CONFIGURATION
 # ════════════════════════════════════════════════════════════
 
-DATA_DIR    = os.path.join(FILE_PATH, '../Multi_data')
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_DC/merged_DC_hyper.txt')
-ALL_DATA =  os.path.join(DATA_DIR, 'merged_combo.txt')
-HALF_COMBO = os.path.join(DATA_DIR, 'combo_half.txt'); OTHER_HALF_COMBO = os.path.join(DATA_DIR, 'combo_other_half.txt')
-PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulses/merged_pulse_hyper.txt')
-FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
-MODEL_DIR   = os.path.join(FILE_PATH, 'models')
-#MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
+DATA_DIR    = os.path.join(FILE_PATH, '../data')
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')
+ALL_DATA    =  os.path.join(DATA_DIR, 'polished_combo/merged_combo.txt')
+HALF_COMBO  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt'); 
+OTHER_HALF_COMBO = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
+PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
+FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
+MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
+
 SAVE_FIGS   = False
-SAVE_MODELS = False
+SAVE_MODELS = False 
 SAVE_DATA   = False
 
 MODEL_NAME= '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt'
@@ -116,9 +117,6 @@ print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)}")
 other_combo_data = pd.read_csv(OTHER_HALF_COMBO, sep=';', comment='%')
 other_combo_trajs = prepare_pulse_data(other_combo_data)
 
-# wombo_combo = []
-# wombo_combo.append(combo_test)
-# wombo_combo.append(other_combo_trajs)
 
 wombo_combo = combo_test + other_combo_trajs
 
@@ -154,11 +152,6 @@ TOTAL_TIME = history.get('time', 0.0)
 SAVE_NAME = (f'_{MODEL_NAME}_')
 print(SAVE_NAME)
 
-# plot_predictions(bat_model, CONFIG, test_trajs, time=False, title='Test: ')
-# if SAVE_FIGS:
-#     plt.savefig(os.path.join(FIGS_DIR, f'ecmm_node_test_{SAVE_NAME}.pdf'), bbox_inches='tight')
-#     print('Saved figure')
-# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES

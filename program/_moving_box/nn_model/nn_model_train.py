@@ -15,7 +15,7 @@ import importlib
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
 print(FILE_PATH)
-# sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
+sys.path.append(os.path.join(FILE_PATH, '..'))
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
@@ -33,7 +33,7 @@ from datetime import datetime
 #  CONFIGURATION
 # ════════════════════════════════════════════════════════════
 
-TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
+TIMESTAMP   = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'data'))
 
 # Choose data file
@@ -48,8 +48,8 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
 
-SAVE_FIGS   = False
-SAVE_MODELS = False 
+SAVE_FIGS     = False
+SAVE_MODELS   = False 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -60,13 +60,13 @@ LR_DYNAMIC  = 1e-3
 
 # Batched-training controls.  Trajectories of any length mix freely — each
 # mini-batch is padded to its own max-T and the loss is masked to ignore
-# padded positions, so DC and pulse data work identically.
+# padded positions, so CC and pulse data work identically.
 BATCH_SIZE  = 4     # mini-batch size
 EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
 # Which trajectories to train on.  All three options run through the same
 # masked-batched training loop — the only difference is which dataset feeds it.
-USE_PULSE   = 'pulse'   # 'pulse', 'DC', 'combo' (combo = both CC and pulse)
+USE_PULSE   = 'combo'   # 'pulse', 'CC', 'combo' (combo = both CC and pulse)
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -90,19 +90,18 @@ CONFIG = {
     # 'static_no_R0' : V = Ue − I·R1                 (algebraic, no R0)
     # 'static'       : V = Ue − I·R0 − I·R1          (algebraic, no U1 dynamics)
     # 'dynamic'      : V = Ue − I·R0 − U1, with U1 integrated by semi-implicit Euler
-    'style_V': 'static_no_R0',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
+    'style_V': 'dynamic',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
 
     # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
     # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
-    'style_F': 'static',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
 
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
 EPOCHS  = 1  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
-NAME_START = f''  # Start of filename, before the style tags and time
 
 
 
@@ -192,7 +191,7 @@ if USE_PULSE == 'pulse':
     print("\nUsing pulse trajectories for training.")
     _train_trajs = pulse_train
     _test_trajs = pulse_test
-elif USE_PULSE == 'DC':
+elif USE_PULSE == 'CC':
     print("\nUsing CC trajectories for training.")
     _train_trajs = train_trajs
     _test_trajs = test_trajs
@@ -267,9 +266,9 @@ constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 # Tag style as e.g. 'V-dynamic_F-static' to make the F branch visible in the filename.
 style_tag = f'V-{CONFIG["style_V"]}_F-{CONFIG["style_F"]}'
 
-SAVE_NAME = (f'{NAME_START}_{USE_PULSE}_{style_tag}'
+SAVE_NAME = (f'{USE_PULSE}_{style_tag}'
              f'_{constr}'
-             f'_{TOTAL_TIME:.2f}min_{N_HIDDEN}h'
+             f'_{TOTAL_TIME:.2f}min'
              f'_{EPOCHS}eps')
 
 print(SAVE_NAME)
@@ -326,69 +325,3 @@ if SAVE_MODELS:
 
     print(f"Saved: {TIMESTAMP}_{SAVE_NAME}.pt")
 
-# %% ══════════════════════════════════════════════════════════
-# PLOT PARAMS
-# ═════════════════════════════════════════════════════════════
-
-plot_param(bat_model, test_trajs, param='R0')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'R0_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='R1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'R1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='C1')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'C1_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='tau')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'tau_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='k')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'k_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='ku')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='s')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f's_{SAVE_NAME}.pdf'), bbox_inches='tight')
-
-plt.show()
-
-
-
-plot_force(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'F_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_swelling(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'su_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plt.show()
-
-# %% ══════════════════════════════════════════════════════════
-# PLOT PREDICTS
-# ═════════════════════════════════════════════════════════════
-
-sort = 'u_per'  # 'C_rate' or 'u_per'
-plot_predicts(bat_model, CONFIG, test_trajs, predict='F', sort=sort)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'F_{sort}_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plt.show()
-
-
-
-
-# %% ══════════════════════════════════════════════════════════
-# ELEMENT SAVER
-# ═════════════════════════════════════════════════════════════
-
-element_data = data_param(bat_model, trajs)
-if SAVE_ELEMENTS:
-    element_data.to_csv(os.path.join('..', 'sr/symbol_data', f'elements_{TIMESTAMP}_{SAVE_NAME}.txt'), index=False)
-    print(f"Saved element data: elements_{TIMESTAMP}_{SAVE_NAME}.txt")
-
-
-
-# %% ══════════════════════════════════════════════════════════
-
-
-# %%

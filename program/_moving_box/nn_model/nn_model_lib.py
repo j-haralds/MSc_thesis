@@ -16,7 +16,6 @@ import time as _time
 
 FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(FILE_PATH, '..', '..'))    # Up two steps
-sys.path.append(os.path.join(FILE_PATH, '../GP_regr'))          # Up one step — for JN_GP / Ue_GP
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
