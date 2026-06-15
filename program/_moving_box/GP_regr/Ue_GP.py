@@ -1,7 +1,7 @@
 """
 Ue_GP.py — fast Ue(SOC) lookup for the battery NODE model.
 
-Wraps JN_GP's Gaussian process with a tabulated cache: the GP is evaluated
+Wraps sklearn's Gaussian process with a tabulated cache: the GP is evaluated
 once on a dense SOC grid, and every subsequent lookup is an np.interp against
 that grid (~150× faster than calling GP.predict directly, ~1 µV error).
 
@@ -14,7 +14,8 @@ soc_to_Ue(soc, return_torch=False) → main entry point; numpy or float32 torch
 
 import numpy as np
 import torch
-import JN_GP
+import pandas as pd
+import sklearn.gaussian_process as gp
 
 
 _GP_MODEL = None
@@ -22,12 +23,50 @@ _GRID     = None
 _VALUES   = None
 
 
+def get_data(file_name):
+    df = pd.read_csv(
+        f"../Multi_data/other/{file_name}.txt",
+        sep=r'\s+',
+        comment="%",
+        header=None
+    )
+
+    df.columns = ['u_par','C','t','E_cell (V)','I_cell (A)','Rx_cell (N)','u_cell (m)','E_ocv_cell (V)','soc_cell (1)']
+    df.columns = ['u_par', 'C', 't', 'V', 'I', 'F', 'u', 'Ue', 'soc']
+
+    # Sort by time within each batch
+    return df
+
+def GP_process():
+    sig = 1
+    l = 0.1
+    alpha = [l, sig]
+    data = get_data('GP_run')
+    # `.values` returns a read-only view in modern pandas/NumPy — copy so we
+    # can safely clip negative SOCs in-place.
+    x_gp = data['soc'].values.copy()
+    y_gp = data['Ue'].values.copy()
+    x_gp[x_gp < 0] = 0
+    kernel_GP = gp.kernels.RBF(length_scale=alpha[0]) * gp.kernels.ConstantKernel(constant_value=alpha[1])
+    gp_model = gp.GaussianProcessRegressor(kernel=kernel_GP, optimizer=None, normalize_y=False)
+    gp_model.fit(x_gp.reshape(-1, 1), y_gp.reshape(-1, 1))
+    return gp_model
+
+
+
+def soc_to_Ue(soc, gp_model, return_torch=False):
+    soc = np.asarray(soc)
+    if return_torch:
+        return torch.from_numpy(gp_model.predict(np.asarray(soc).reshape(-1, 1))).float()
+    else:
+        return gp_model.predict(soc.reshape(-1, 1))
+
 def get_gp():
     """Return the sklearn GP for Ue(SOC)."""
     global _GP_MODEL
     if _GP_MODEL is None:
         print("Loading GP for Ue(SOC) ...")
-        _GP_MODEL = JN_GP.GP_process()
+        _GP_MODEL = GP_process()
     return _GP_MODEL
 
 
