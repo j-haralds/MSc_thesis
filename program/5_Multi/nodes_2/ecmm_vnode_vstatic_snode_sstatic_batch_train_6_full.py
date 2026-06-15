@@ -49,7 +49,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'nodes_figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'models')
 #MODEL_DIR   = os.path.join(FILE_PATH, 'final_models')
 SAVE_FIGS   = False
-SAVE_MODELS = True 
+SAVE_MODELS = False 
 SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
@@ -100,7 +100,7 @@ CONFIG = {
     # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
 }
 
-EPOCHS  = 2500  # Total training epochs
+EPOCHS  = 1  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 #NAME_START = f'{int(split_percentage * 100)}_percent_b{BATCH_SIZE}_integration_softplus' # {split_percentage}_'  # Start of filename, before the style tags and time
 NAME_START = f'b{BATCH_SIZE}_integration_softplus_s_dep' # {split_percentage}_'  # Start of filename, before the style tags and time
@@ -370,12 +370,12 @@ if SAVE_FIGS:
 plot_param(bat_model, test_trajs, param='tau')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f'tau_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='k')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'k_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_param(bat_model, test_trajs, param='ku')
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='k')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'k_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_param(bat_model, test_trajs, param='ku')
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'ku_{SAVE_NAME}.pdf'), bbox_inches='tight')
 plot_param(bat_model, test_trajs, param='s')
 if SAVE_FIGS:
     plt.savefig(os.path.join(FIGS_DIR, f's_{SAVE_NAME}.pdf'), bbox_inches='tight')
@@ -384,13 +384,13 @@ plt.show()
 
 
 
-plot_force(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'F_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plot_swelling(bat_model, test_trajs)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'su_{SAVE_NAME}.pdf'), bbox_inches='tight')
-plt.show()
+# plot_force(bat_model, test_trajs)
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'F_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plot_swelling(bat_model, test_trajs)
+# if SAVE_FIGS:
+#     plt.savefig(os.path.join(FIGS_DIR, f'su_{SAVE_NAME}.pdf'), bbox_inches='tight')
+# plt.show()
 
 # %% ══════════════════════════════════════════════════════════
 # PLOT PREDICTS

@@ -683,90 +683,6 @@ class BatteryECMM(nn.Module):
 
         # # –––––––––––––––––––––––––––––––––
 
-        # dsoc = -I_seq / self.Q0
-        # soc_dummy  = soc0_batch.unsqueeze(1) + torch.cumsum(dsoc, dim=1) - dsoc[:, :1]    # (B, 1) + (B, T) - (B, 1)
-
-        # # Normalize to obtain latent inputs roughly in range [0,1]
-        # I_norm = I_seq / self.I_ref
-        # u_norm = u_batch / self.u_ref           # both negative for compression → u_norm > 0
-        # u_norm_exp  = u_norm.unsqueeze(1).expand(B, T)
-        # u_phys_exp = u_batch.unsqueeze(1).expand(B, T)
-
-        # # Parameters along the trajectory  (B, T)
-        
-
-        # # ── F branch ──
-        # # k is always algebraic (no time integration).
-        # # s is algebraic (style_F='static', sNet) or integrated (style_F='dynamic', sdotNet).
-        # # The _s dispatcher returns a (B, T) tensor in both cases so the
-        # # F = -k·(u - s) computation below is shape-agnostic.
-        # k = self.k_net(soc_dummy, I_norm, u_norm_exp)              # (B, T)
-        # s = self._s(soc_dummy, I_norm, u_norm_exp, B, T)           # (B, T)
-
-        # Fr = - k * (u_phys_exp - s)            # GN/ 1e-5m * 1e-5m
-
-
-
-        # if V_mode == 'static':
-        #     # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
-        #     U1 = I_seq * R1
-        #     V  = Ue - I_seq * R0 - U1
-        # elif V_mode == 'static_no_R0':
-        #     U1 = I_seq * R1
-        #     V  = Ue - U1
-        # elif V_mode == 'dynamic':
-  
-        #     U1_steps = [torch.zeros(B)]
-        #     soc = [torch.ones(B)]
-        #     dt = 1.0
-        #     for n in range(T - 1):
-        #         soc_next = soc[n] + dsoc[:, n] * dt
-        #         soc.append(soc_next)
-
-        #         R1 = self._R1(soc[n], I_norm[:, n], u_norm_exp[:, n])
-        #         C1 = self._C1(soc[n], I_norm[:, n], u_norm_exp[:, n])
-        #         # print(R1.shape, C1.shape, I_seq[:, n].shape, U1_steps[n].shape)
-        #         # Semi-implicit Euler — unconditionally stable
-        #         U1_next = (U1_steps[n] + dt * I_seq[:, n] / C1) / (1.0 + dt / (R1 * C1))
-        #         U1_steps.append(U1_next)
-        #     U1 = torch.stack(U1_steps, dim=1)
-        #     soc = torch.stack(soc, dim=1)
-
-        # # ── V branch: static or dynamic U1 ──
-        # with torch.no_grad():
-        #     Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
-
-        #     R0 = self._R0(soc, I_norm, u_norm_exp, I_seq)
-        #     V  = Ue - I_seq * R0 - U1
-
-        # –––––––––––––––––––––––––––––    
-
-        # Faster than semi-implicit by about 20% ––––
-        # elif V_mode == 'dynamic':
-        #     C1 = self._C1(soc, I_norm, u_norm_exp)
-        #     dt = 1.0
-        #     tau = R1 * C1                                      # (B, T)
-        #     alpha = torch.exp(-dt / tau)                       # decay factor per step
-        #     drive = I_seq * R1                                 # steady-state target per step
-        #     beta  = (1.0 - alpha) * drive                 # the (1-α)·I·R1 term
-        #     U1_steps = [torch.zeros(B)]
-
-        #     alpha_list = alpha.unbind(dim=1)   # tuple of T tensors of shape (B,)
-        #     beta_list  = beta.unbind(dim=1)
-        #     for n in range(T - 1):
-        #         # U1[n+1] = U1[n]·α + I·R1·(1-α)  — EXACT for piecewise-const coefs
-        #         # U1_next = U1_steps[n] * alpha[:, n] + beta[:, n]
-        #         U1_next = U1_steps[n] * alpha_list[n] + beta_list[n]
-        #         U1_steps.append(U1_next)
-        #     U1 = torch.stack(U1_steps, dim=1)
-        #     V = Ue - I_seq * R0 - U1
-        # ––––
-
-        # elif V_mode == 'dynamic':
-        #     C1 = self._C1(soc, I_norm, u_norm_exp)
-        #     U1 = _u1_integrate(I_seq, R1, C1, dt=1.0)
-        #     V  = Ue - I_seq * R0 - U1
-
 
         return V, Fr, soc, U1, R1, s
 
@@ -1081,20 +997,7 @@ def train_model(model, train_trajs, test_trajs,
 
         # Test eval — single batched forward over the pre-padded test set.
         do_eval = (epoch % eval_every == 0) or epoch == 1 or epoch == n_epochs
-        # if do_eval:
-        #     model.eval()
-        #     with torch.no_grad():
-        #         V_pred, F_pred, _, _, _, _ = model(Ite, ute, s0te,
-        #                                            T=T_te_max, V_mode=V_mode)
-        #         # Per-element masked MSE for reporting (matches RMSE per data point).
-        #         test_mse_V = (((V_pred - Vte) ** 2) * Mte).sum().item() / n_valid_te
-        #         test_mse_F = (((F_pred - Fte) ** 2) * Mte).sum().item() / n_valid_te
-        #         test_mse   = test_mse_V + test_mse_F
-        #         test_rmse_V = float(np.sqrt(test_mse_V))
-        #         test_rmse_F = float(np.sqrt(test_mse_F))
-        #     history['test'].append(test_mse)
-        #     history['test_V'].append(test_mse_V); history['test_F'].append(test_mse_F)
-        #     history['test_rmse_V'].append(test_rmse_V); history['test_rmse_F'].append(test_rmse_F)
+
         if do_eval:
             model.eval()
             with torch.no_grad():
@@ -1184,6 +1087,11 @@ def predict_np(model, config, traj, V_mode=None):
 
     return dict(V=V, soc=soc, U1=U1, R1=R1, Fr=Fr, k=k, s=s, C1=C1, R0=R0, I=I_np)
 
+
+
+'''
+Below here: plotting artifacts used in nn_model_train.py and nn_model_load.py. However, many are not used in either file.
+'''
 
 # ══════════════════════════════════════════════════════════
 #  PLOT PREDICTIONS  (one function for both CC and pulse)
@@ -1498,24 +1406,7 @@ def plot_report(model, config, trajs, time=False, title='', n_show=3,
 
 
 def plot_loss(history):
-    # """Plot train/test RMSE curves on a log scale."""
-    # fig, ax = plt.subplots(figsize=(7, 4.2))
-    # epochs = np.arange(1, len(history['train_rmse']) + 1)
 
-    # ax.semilogy(epochs, history['train_rmse_V'],  color=COLORS[0], lw=2,
-    #             label=r'Train $V$  (final {:.4f} V)'.format(history['train_rmse_V'][-1]))
-    # ax.semilogy(epochs, history['train_rmse_Fr'], color=COLORS[1], lw=2,
-    #             label=r'Train $F_r$ (final {:.4f} GN)'.format(history['train_rmse_Fr'][-1]))
-    # ax.semilogy(epochs, history['test_rmse_V'],   color=COLORS[2], lw=2, ls='--',
-    #             label=r'Test $V$  (final {:.4f} V)'.format(history['test_rmse_V'][-1]))
-    # ax.semilogy(epochs, history['test_rmse_F'],   color=COLORS[3], lw=2, ls='--',
-    #             label=r'Test $F_r$  (final {:.4f} GN)'.format(history['test_rmse_F'][-1]))
-
-    # ax.set_xlabel('Epoch')
-    # ax.set_ylabel('RMSE')
-    # ax.grid(True, which='both', ls=':', color='0.8')
-    # ax.legend(loc='lower left')
-    # fig.tight_layout()
 
     fig, ax = plt.subplot_mosaic(
             [

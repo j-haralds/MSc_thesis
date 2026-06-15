@@ -36,11 +36,12 @@ from datetime import datetime
 TIMESTAMP   = datetime.now().strftime('%m%d_%H%M')
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'data'))
 
+
+# TODO Enable PyBamm generated data. Fill pybamm data files with dummy values for unnecessary columns. Future work: add real/new learned dependencies
+
 # Choose data file
-DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt') # Full from hyperelastic material in Comsol
-
+DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')         # Full from hyperelastic material in Comsol
 PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
-
 COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt')
 #COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
 
@@ -50,7 +51,6 @@ MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
 SAVE_FIGS     = False
 SAVE_MODELS   = False 
-SAVE_ELEMENTS = False
 
 Q0          = 17921.57581     # As
 TRAIN_SPLIT = 0.8
