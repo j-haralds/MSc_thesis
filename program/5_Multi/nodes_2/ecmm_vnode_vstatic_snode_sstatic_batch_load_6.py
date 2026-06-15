@@ -544,7 +544,7 @@ MODEL_NAME_FULL = MODEL_NAME#'0510_2034_b4_combo_full_combo_V-dynamic_F-dynamic_
 # MODEL_NAME_LOW = '0510_2034_b4_combo_low_c_d_combo_V-dynamic_F-dynamic_702.38min_16h_2500eps.pt'
 
 # bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
-# bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
 # plot_param(bat_model_dynamic_DC, test_trajs, param='tau')
 # plt.savefig(os.path.join(FIGS_DIR, f'tau_{MODEL_NAME_DYNA}.pdf'), bbox_inches='tight')
 
