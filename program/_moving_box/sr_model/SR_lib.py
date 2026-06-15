@@ -8,8 +8,9 @@ import numpy as np
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
-from IPython.display import display, Math
 import pandas as pd
+import os
+from pathlib import Path
 
 # =================================================
 # POST PROCESSING
@@ -24,6 +25,15 @@ def get_SR_inds(RUN_ID):
             'k': 7,    # JH
             's': 6,     # JN
             'Ue':7
+        },
+        
+        'test': {
+            'R0': 13,  # JN
+            'R1': 8,  # JH
+            'C1': 8,  # JN
+            'k': 11,   # JH
+            's': 6,    # JN
+            'Ue':11
         }
     }
 
@@ -35,6 +45,15 @@ def get_SR_inds(RUN_ID):
             'k': 22,   # JH
             's': 27,    # JN
             'Ue':15
+        },
+
+        'test': {
+            'R0': 13,  # JN
+            'R1': 8,  # JH
+            'C1': 8,  # JN
+            'k': 11,   # JH
+            's': 11,    # JN
+            'Ue':11
         }
     }
 
@@ -97,6 +116,21 @@ def get_units_dict():
         }
     
     return units_dict, unit_conversion
+
+
+def extract_expressions(run_id, elements = ['R0', 'R1', 'C1', 'k', 's', 'Ue']):
+    expressions = {}
+    for elem in elements:
+    
+        results_path = Path(f'saved_sr_models/{run_id}/model_{elem}_{run_id}.csv')
+        if not results_path.exists():
+            raise FileNotFoundError(f"Results file not found: {results_path}")
+        results_df = pd.read_csv(results_path)
+        expr = results_df['sympy_format']# == int(results_df['complexity'].mean())]
+        expressions[elem] = expr
+    
+    return expressions
+
 
 
 # ================================================= 
