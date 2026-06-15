@@ -2966,7 +2966,8 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
             # else:
             #     color_pred = 'tab:blue'
             color_pred = cmap_b(norm(bar_val)) if sort == 'C_rate' else cmap_r(norm(bar_val))
-            #color_pred = 'tab:blue'
+            if n_show == 1:
+                color_pred = 'tab:blue'
 
             out = predict_np(model, config, tr)
             t = np.arange(tr['T'])
@@ -3021,7 +3022,7 @@ def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_ra
     #             frameon=True,
     #             handlelength=1.5, handletextpad=0.5, fontsize=14, ncols=3)
     
-    fig.legend(handles=handles, loc='lower right' if not n_show==1 else 'lower left',
+    fig.legend(handles=handles, loc='lower right',
                 frameon=True,
                 handlelength=1.5, handletextpad=0.5, fontsize=14, ncols=3, bbox_to_anchor=(0.9, 0.88))
 

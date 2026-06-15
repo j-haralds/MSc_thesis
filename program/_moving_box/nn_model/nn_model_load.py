@@ -47,10 +47,6 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
-SAVE_FIGS   = False
-SAVE_MODELS = False 
-SAVE_DATA   = False
-
 Q0          = 17921.57581
 
 
@@ -140,8 +136,6 @@ history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 # ══════════════════════════════════════════════════════════════
 
 plot_loss(history_full)
-# plt.savefig(os.path.join(FIGS_DIR, f'loss_{MODEL_NAME}.pdf'), bbox_inches='tight')
-#print('Saved figure')
 plt.show()
 
 # %% ══════════════════════════════════════════════════════════
@@ -204,77 +198,12 @@ plt.show()
 
 
 # %% ––––––––––––– pulse dynamic o static ––––––––––––––
-# TODO: Data plotter does not work here now, but works above
-plot_mosaic_predicts_report_data(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', n_show=1, start=39, pulse=True, fixed=False, bar=False, color='gray')
-# plt.savefig(os.path.join(f'presentation_HF_pulse_V.pdf'), bbox_inches='tight')
-plot_mosaic_predicts_report_data(bat_model_dynamic_DC, config_dyna, other_combo_cc, sort='C_rate', predict='V', n_show=1, start=39, pulse=True, fixed=False, bar=False, color='gray')
-# plt.savefig(os.path.join(f'presentation_HF_cc_V.pdf'), bbox_inches='tight')
-other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
 
 ## –––– Change colors in plotter ––––
 plot_mosaic_predicts_report(bat_model_dynamic_DC, config_dyna, other_combo_pulse, sort='C_rate', predict='V', 
                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
-# plt.savefig(os.path.join('pred_figs', f'CC_dynamic_pulse_V.pdf'), bbox_inches='tight')
 plt.show()
 
 plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
-# plt.savefig(os.path.join('pred_figs', f'CC_static_pulse_V.pdf'), bbox_inches='tight')
-plt.show()
-
-
-
-# %%
-
-def plot_pulse(model, config, tr, figsize=(5, 3.5)):
-    model.eval()
-    out = predict_np(model, config, tr)
-    t = np.arange(tr['T'])
-
-    y_true = np.asarray(tr['V'])
-    y_pred = out['V']
-    ylabel = r'$V_B$ [V]'
-
-    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
-    ax.plot(t, y_pred, '-',  color='tab:blue', lw=2, label='Surrogate')
-    ax.plot(t, y_true, '--', color='black', lw=2, alpha=0.5, label='High-fidelity')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel(ylabel)
-    ax.set_ylim(2.4, 4.3)
-    # ax.set_xlim(-50, 1050)
-    ax.set_xticks([0, 300, 600, 900])
-    ax.legend(loc='lower left')
-    return fig
-
-def plot_current(model, config, tr, figsize=(5, 1.3), Q0=17921.57581):
-    model.eval()
-    out = predict_np(model, config, tr)
-    t = np.arange(tr['T'])
-    I_to_C = 3600.0 / Q0
-    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
-    ax.plot(t, out['I'] * I_to_C, '-', color='black', lw=2, alpha=0.5)
-    ax.set_ylabel(r'C-rate [1/h]')
-    ax.tick_params(labelbottom=False)   # drop x labels — they belong to the V plot below
-    ax.set_ylim(-0.3, 5.2)
-    ax.set_yticks([0, 2.5, 5])
-    return fig
-
-trajs_sorted = sorted(other_combo_pulse, key=lambda t: t['C'])
-plot_pulse(bat_model_dynamic_DC, config_dyna, trajs_sorted[39])
-# plt.savefig(os.path.join(f'presentation_pulse_predV.pdf'), bbox_inches='tight')
-plt.show()
-
-trajs_sorted = sorted(other_combo_cc, key=lambda t: t['C'])
-plot_pulse(bat_model_dynamic_DC, config_dyna, trajs_sorted[39])
-# plt.savefig(os.path.join(f'presentation_cc_predV.pdf'), bbox_inches='tight')
-plt.show()
-
-trajs_sorted = sorted(other_combo_pulse, key=lambda t: t['C'])
-plot_current(bat_model_dynamic_DC, config_dyna, trajs_sorted[39])
-# plt.savefig(os.path.join(f'presentation_pulse_C.pdf'), bbox_inches='tight')
-plt.show()
-
-trajs_sorted = sorted(other_combo_cc, key=lambda t: t['C'])
-plot_current(bat_model_dynamic_DC, config_dyna, trajs_sorted[39])
-# plt.savefig(os.path.join(f'presentation_cc_C.pdf'), bbox_inches='tight')
 plt.show()
