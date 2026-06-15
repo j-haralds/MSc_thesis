@@ -2750,7 +2750,7 @@ def load_nn_model(model_name, I_ref=None):
         BatteryECMM default (-0.0862).  Pass an explicit value when loading
         older checkpoints that don't carry u_ref.
     """
-    ckpt_file = os.path.join(FILE_PATH, 'models', model_name)
+    ckpt_file = os.path.join(FILE_PATH, 'saved_NN_models', model_name)
     ckpt      = torch.load(ckpt_file, map_location='cpu', weights_only=False)
 
     CONFIG = ckpt['config']
