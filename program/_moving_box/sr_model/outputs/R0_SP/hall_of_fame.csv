@@ -1,0 +1,11 @@
+Complexity,Loss,Equation
+1,0.022280978,"0.8236008"
+3,0.021061784,"sqrt(sqrt(soc))"
+4,0.0149950655,"soc ^ soc"
+5,0.0091505665,"sqrt(cube(soc) + 0.45495126)"
+6,0.006567404,"sqrt(cube(square(soc)) + 0.55418205)"
+11,0.004130278,"sqrt(exp(cube(soc)) * ((0.6518729 ^ C) * 0.6384744))"
+13,0.0040681344,"sqrt(exp(square(cube(soc))) * (square(0.80357677 ^ C) * 0.7199002))"
+15,0.0024353212,"sqrt((exp(square(square(soc))) * 0.66468287) * ((0.42034447 ^ d) ^ C))"
+19,0.0023508791,"sqrt(sqrt(square(square(cube(soc * 1.0214381)) + 0.6683259)) * square((0.6941819 ^ C) ^ d))"
+24,0.0021894684,"square((0.8045939 ^ C) ^ d) * square(sqrt(sqrt(cube(square(soc * cube(exp(d) ^ 0.021779317))) + 0.672876)))"

@@ -271,9 +271,9 @@ def pareto_plot(model, colors = COLORS):
     plt.show()
 
 def post_pareto_plot(elem, run_id, colors = COLORS):
-    print(f'sr_models/model_{elem}_{run_id}.csv')
-    df_model = pd.read_csv(f'sr_models/model_{elem}_{run_id}.csv')
-    best = pd.read_csv(f'sr_models/model_{elem}_best_{run_id}.csv')
+    print(f'saved_sr_models/model_{elem}_{run_id}.csv')
+    df_model = pd.read_csv(f'saved_sr_models/model_{elem}_{run_id}.csv')
+    best = pd.read_csv(f'saved_sr_models/model_{elem}_best_{run_id}.csv')
     best_complexity = float(best.iloc[0, 0])
     best_rows = df_model[np.isclose(df_model['complexity'], best_complexity)]
     best_ind = int(best.iloc[0,0])
@@ -290,9 +290,9 @@ def post_pareto_plot(elem, run_id, colors = COLORS):
     plt.show()
 
 def post_pareto_plot(elem, run_id, colors = COLORS):
-    print(f'sr_models/model_{elem}_{run_id}.csv')
-    df_model = pd.read_csv(f'sr_models/model_{elem}_{run_id}.csv')
-    best = pd.read_csv(f'sr_models/model_{elem}_best_{run_id}.csv')
+    print(f'saved_sr_models/model_{elem}_{run_id}.csv')
+    df_model = pd.read_csv(f'saved_sr_models/model_{elem}_{run_id}.csv')
+    best = pd.read_csv(f'saved_sr_models/model_{elem}_best_{run_id}.csv')
     plt.grid(True, which="both", ls="-", linewidth=0.5)
     plt.plot(df_model['complexity'], df_model['loss'], marker='o', linestyle='-', color=colors[0], label='Models')
     plt.plot(best['complexity'], best['loss'],'o', color=colors[1], label='Best Model')
@@ -336,5 +336,10 @@ def parity_plot_Ue(model,Y,X,colors = COLORS,data_set = 'test'):
 # SAVE MODELS
 # =================================================
 
-def save_expressions(df_model, element):
-    df_model.to_csv(f'sr_models/model_{element}.csv', index=False)
+def save_expressions(df_model, element, run_id):
+    # make directory if it doesn't exist
+    import os
+    if not os.path.exists(f'saved_sr_models/{run_id}'):
+        os.makedirs(f'saved_sr_models/{run_id}')
+    
+    df_model.to_csv(f'saved_sr_models/{run_id}/model_{element}.csv', index=False)
