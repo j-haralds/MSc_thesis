@@ -1,0 +1,7 @@
+16
+26
+0.0014862021
+sqrt(log(sqrt(exp(square(square(soc * soc) + sqrt(0.4619381 ^ C)) - d) + exp(sqrt(square(soc ^ C))))))
+0.6030506227700759
+sqrt(log(sqrt(exp(-d + (soc**4 + sqrt(0.4619381**C))**2) + exp(sqrt(soc**(2*C))))))
+PySRFunction(X=>sqrt(log(sqrt(exp(-d + (soc**4 + sqrt(0.4619381**C))**2) + exp(sqrt(soc**(2*C)))))))

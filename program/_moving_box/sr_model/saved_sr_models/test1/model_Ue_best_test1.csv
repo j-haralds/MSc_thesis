@@ -1,0 +1,7 @@
+15
+29
+0.0005417887
+sin(cube(cube(soc) - cube(soc ^ soc))) + (sqrt(sqrt(sin(cube(cube(soc)))) + sin(sqrt(soc))) - -2.9662158)
+0.21106069998895793
+sqrt(sin(sqrt(soc)) + sqrt(sin(soc**9))) + sin((soc**3 - soc**(3*soc))**3) + 2.9662158
+PySRFunction(X=>sqrt(sin(sqrt(soc)) + sqrt(sin(soc**9))) + sin((soc**3 - soc**(3*soc))**3) + 2.9662158)

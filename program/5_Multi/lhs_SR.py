@@ -14,20 +14,18 @@ N = int(10000)                       # number of sample points (simulations to r
 
 PARAMS = {
     # name        : (lower_bound, upper_bound, decimal_places)
-    # "C_rate": (1.0,  5.0,  1),    # Pulse
     "u_par":  (0.0, 30.0, 3),
-    "C_rate": (0.0,  5.0,  3),     # CC
+    "C_rate": (0.0,  5.0,  3),    
     'SOC': (0.0, 1.0, 3)
 }
 
-SAVE_CSV     = True
-CSV_PATH     = "lhs_samples_2.csv"
+SAVE_CSV     = False
+CSV_PATH     = "SR_samples_2.csv"
 RANDOM_SEED  = None             # set to None for a different draw each run
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-def latin_hypercube_sample(n: int, bounds: list[tuple], decimals: list[int],
-                            seed: int | None = None) -> np.ndarray:
+def latin_hypercube_sample(n, bounds, decimals, seed = None):
     """
     Standard LHS: divide [0,1]^d into n equal strata per dimension,
     place one sample per stratum, then shuffle independently per dimension.
@@ -39,7 +37,7 @@ def latin_hypercube_sample(n: int, bounds: list[tuple], decimals: list[int],
     samples = np.zeros((n, d))
     for j in range(d):
         lo, hi = bounds[j]
-        # one uniform draw per stratum → map to [lo, hi]
+        # one uniform draw per strat map to [lo, hi]
         u         = rng.uniform(cuts[:-1], cuts[1:])   # shape (n,)
         perm      = rng.permutation(n)
         scaled    = lo + u[perm] * (hi - lo)
@@ -64,20 +62,8 @@ raw = latin_hypercube_sample(N, bounds_list, decimals_list, seed=RANDOM_SEED)
 # 1. DataFrame
 df = pd.DataFrame(raw, columns=param_names)
 df.insert(0, "case_id", range(1, N + 1))
-# print("═" * 55)
-# print(f"  LHS samples  (N={N})")
-# print("═" * 55)
-# print(df.to_string(index=False))
-# print()
 
-# 2. COMSOL strings  (one per parameter)
-# print("─── COMSOL value lists (paste into Parameter Value List) ───")
-# for col in param_names:
-#     cs = build_comsol_string(df[col].values)
-#     print(f"\n  {col}:\n  {cs}")
-# print()
-
-# # 3. Optional CSV export
+# 3. Optional CSV export
 if SAVE_CSV:
     df.to_csv(CSV_PATH, index=False)
     print(f"  Samples saved → {CSV_PATH}")

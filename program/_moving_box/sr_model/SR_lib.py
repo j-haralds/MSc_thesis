@@ -17,68 +17,73 @@ from pathlib import Path
 # =================================================
 
 def get_SR_inds(RUN_ID):
-    chosen_all_inds = {
-        'SP': {
-            'R0': 8,   # JN
-            'R1': 8,   # JH
-            'C1': 7,   # JN
-            'k': 7,    # JH
-            's': 6,     # JN
-            'Ue':7
-        },
-        
-        'test': {
-            'R0': 13,  # JN
-            'R1': 8,  # JH
-            'C1': 8,  # JN
-            'k': 11,   # JH
-            's': 6,    # JN
-            'Ue':11
-        }
+    df_best_inds = pd.read_csv("saved_sr_models/best_indices.csv")
+    df_chosen_inds = pd.read_csv("saved_sr_models/chosen_indices.csv")
+
+    if RUN_ID not in df_best_inds['run_id'].values:
+        raise ValueError(f"Run ID {RUN_ID} not found in best_indices.csv. Please add it before proceeding.")
+    row = df_best_inds[df_best_inds['run_id'] == RUN_ID].iloc[0]
+    best_inds = {
+        'R0': int(row['R0']),
+        'R1': int(row['R1']),
+        'C1': int(row['C1']),
+        'k': int(row['k']),
+        'sdot': int(row['sdot']),
+        'Ue': int(row['Ue'])
     }
-
-    best_all_inds = {
-        'SP': {
-            'R0': 19,  # JN
-            'R1': 19,  # JH
-            'C1': 24,  # JN
-            'k': 22,   # JH
-            's': 27,    # JN
-            'Ue':15
-        },
-
-        'test': {
-            'R0': 13,  # JN
-            'R1': 8,  # JH
-            'C1': 8,  # JN
-            'k': 11,   # JH
-            's': 11,    # JN
-            'Ue':11
-        }
+    if RUN_ID not in df_chosen_inds['run_id'].values:
+        raise ValueError(f"Run ID {RUN_ID} not found in chosen_indices.csv. Please add it before proceeding.")
+    row = df_chosen_inds[df_chosen_inds['run_id'] == RUN_ID].iloc[0]
+    chosen_inds = {
+        'R0': int(row['R0']),
+        'R1': int(row['R1']),
+        'C1': int(row['C1']),
+        'k': int(row['k']),
+        'sdot': int(row['sdot']),
+        'Ue': int(row['Ue'])
     }
+    return chosen_inds, best_inds
 
-    return chosen_all_inds[RUN_ID], best_all_inds[RUN_ID]
 
-
-def get_ref_values():
+def get_ref_values(run_id = None):
     '''Reference values for normalization. 
     For s, C and d, these are the maximum values in the dataset. 
     For R0, R1, and k, these are arbitrary.
     Values can be adjusted based on the specific dataset and requirements.'''
     
-    REF_VALUES = {
-    'R0': 0.01,
-    'R1': 0.01,
-    'C1': 1000,
-    'k':  0.01,
-    's':  0.37266314,
-    'sdot': 0.0001, 
-    'C': 5,
-    'd': 30,
-    'Ue': 1
-    }
 
+
+    if run_id is None:
+        REF_VALUES = {
+        'R0': 0.01,
+        'R1': 0.01,
+        'C1': 1000,
+        'k':  0.01,
+        's':  0.37266314,
+        'sdot': 0.0001, 
+        'C': 5,
+        'd': 30,
+        'Ue': 1
+        }
+    else:
+        df_existing = pd.read_csv("saved_sr_models/ref_values.csv")
+        if run_id not in df_existing['run_id'].values:
+            raise ValueError(f"Run ID {run_id} not found in ref_values.csv. Please add it before proceeding.")
+        row = df_existing[df_existing['run_id'] == run_id].iloc[0]
+        REF_VALUES = {
+            'R0': row['R0'],
+            'R1': row['R1'],
+            'C1': row['C1'],
+            'k':  row['k'],
+            's':  row['s'],
+            'sdot': row['sdot'],
+            'C': row['C'],
+            'd': row['d'],
+            'Ue': row['Ue']
+        }
+    
     return REF_VALUES
+
 def get_latex_dict():
     '''LaTeX representations for each variable, used in plots and tables.'''
 
@@ -87,8 +92,9 @@ def get_latex_dict():
         'R1': r'R_1',
         'C1': r'C_1',
         'k': r'k',
-        's': r'\dot{s}',
-        'Ue': r'U_{eq}'
+        'sdot': r'\dot{s}',
+        'Ue': r'U_{eq}',
+        's': r's'
     }
     return latex_dict
 
@@ -101,8 +107,9 @@ def get_units_dict():
         'R0': r'm$\Omega$',
         'R1': r'm$\Omega$',
         'C1': r'kF',
-        'k':  r'MN/µm',
-        's':  r'm/s',
+        'k':  r'MN/$\mu$m',
+        'sdot':  r'$\mu$m/s',
+        's': r'$\mu$m',
         'Ue': r'V'
         }
     
@@ -110,15 +117,16 @@ def get_units_dict():
         'R0': 1e3,   # from Ohm to mOhm
         'R1': 1e3,  # from Ohm to mOhm
         'C1': 1e-3,  # from F to kF
-        'k':  1e-3, 
-        's':  1e3,
+        'k':  1e2, 
+        'sdot':  1e1,
+        's': 1e1,
         'Ue': 1
         }
     
     return units_dict, unit_conversion
 
 
-def extract_expressions(run_id, elements = ['R0', 'R1', 'C1', 'k', 's', 'Ue']):
+def extract_expressions(run_id, elements = ['R0', 'R1', 'C1', 'k', 'sdot', 'Ue']):
     expressions = {}
     for elem in elements:
     
@@ -188,7 +196,7 @@ def get_default_settings():
 def get_var_names(elem):
     if elem in ['R0', 'R1', 'C1','k'] or elem == None:
         return ['C','d','soc']
-    elif elem in ['s']:
+    elif elem in ['sdot']:
         return ['C','d','soc','s']
     elif elem in ['Ue']:
         return ['soc']
@@ -219,7 +227,8 @@ def get_settings(elem):
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
         op_comps = {"+": 1, "*": 1, '-': 1, '/': 1,'^':2, 'sqrt': 1, 'square':1, 'cube': 1,'exp': 1,'log': 2}
-    if elem == 's':
+    
+    if elem == 'sdot':
         un_ops = ['exp', 'log','sqrt','square', 'cube',]
         nest_const = {'exp':  {'exp': 1, 'log': 1},
                       'log':  {'exp': 1, 'log': 1}}
