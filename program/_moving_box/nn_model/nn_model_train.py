@@ -41,7 +41,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
 SAVE_FIGS     = False
-SAVE_MODELS   = False 
+SAVE_MODELS   = True 
 
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 16
@@ -56,6 +56,7 @@ EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 # Choose trajectories to train on. 
 # (Framework/constraints optimized for comsol data with force. Pybamm data is without force data, yet force is predicted)
 HF_MODEL    = 'pybamm'  # 'comsol' or 'pybamm' (both have same inputs and outputs)
+# Change softplus scaling when running pybamm
 
 if HF_MODEL == 'comsol':
     Q0          = 17921.57581     # As
@@ -107,7 +108,7 @@ CONFIG = {
     'HF_model': HF_MODEL,  # 'comsol' or 'pybamm'
 }
 
-EPOCHS  = 100  # Total training epochs
+EPOCHS  = 2500  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 
 
@@ -180,19 +181,6 @@ print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)} "
         f"(T per traj: {combo_trajs[0]['T']})")
 
 
-# %% ─── sanity: PyBaMM Ue GP ───────────────────────────────────
-if HF_MODEL == 'pybamm':
-    tr = trajs[0]
-    soc_d = tr['soc'].numpy()
-    Ue_d  = tr['Ue'].numpy()
-    Ue_gp = Ue_GP_pybamm.soc_to_Ue(soc_d)          # GP at the data's own SOC
-
-    print("Ue range (data):", Ue_d.min(), Ue_d.max())
-    print("Ue range (GP)  :", Ue_gp.min(), Ue_gp.max())
-    print("max |GP - data Ue|:", np.abs(Ue_gp - Ue_d).max())
-    plt.plot(soc_d, Ue_d, label='Data Ue')
-    plt.plot(soc_d, Ue_gp, label='GP Ue', linestyle='dashed')
-
 
 # %% ══════════════════════════════════════════════════════════
 #  BUILD MODEL
@@ -204,21 +192,6 @@ n_params = sum(p.numel() for p in bat_model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 
 
-# %% ─── sanity: Q0 / SOC consistency ───────────────────────────
-tr = train_trajs[0]
-with torch.no_grad():
-    V_m, Fr_m, soc_m, U1_m, R1_m, s_m = bat_model(*_traj_inputs(tr), V_mode=vmode_from_style(CONFIG['style_V']))
-
-soc_m = soc_m.numpy().ravel()
-soc_d = tr['soc'].numpy()
-
-print("data soc endpoints :", soc_d[0], "->", soc_d[-1])     # want ~1 -> ~0
-print("model soc endpoints:", soc_m[0], "->", soc_m[-1])
-print("max |model soc - data soc|:", np.abs(soc_m - soc_d).max())  # want ~0 (<1e-3)
-
-# magnitude check on V at init (R1 is random, so only the scale matters)
-print("V_pred range:", V_m.min().item(), V_m.max().item())
-print("V_data range:", tr['V'].min().item(), tr['V'].max().item())
 # %% ══════════════════════════════════════════════════════════
 #  TRAIN
 # ══════════════════════════════════════════════════════════════
@@ -320,11 +293,11 @@ plt.show()
 # ══════════════════════════════════════════════════════════════
 
 # plot_predictions auto-detects pulse trajectories (they carry 'I_seq');
-plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ',
-                 n_show=min(3, len(pulse_test)), time =True)
-if SAVE_FIGS:
-    plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),
-                bbox_inches='tight')
+plot_predictions(bat_model, CONFIG, pulse_test, title='Pulse test: ', 
+                 n_show=min(3, len(pulse_test)), time =True) if HF_MODEL == 'comsol' else None
+
+if SAVE_FIGS and HF_MODEL == 'comsol':
+    plt.savefig(os.path.join(FIGS_DIR, f'pulse_{SAVE_NAME}.pdf'),bbox_inches='tight')
 plt.show()
 
 # Numeric RMSE summary across the pulse test set

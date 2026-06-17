@@ -29,30 +29,13 @@ import fix_ecm
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
 LIMON_CELL0 = 14.37325  # cell length [1e-5m]
-TRAIN_SPLIT = 0.8
-N_HIDDEN    = 32
-EPOCHS      = 2
 LR          = 1e-3
-PAT         = 400   # # Extremely high pateience to omitt scheduler (epochs with no improvement on test loss before reducing LR)
+PAT         = 400   # High patience to omit scheduler (epochs with no improvement on test loss before reducing LR)
 
 
 # ══════════════════════════════════════════════════════════
 #  Config helpers — read style_V / style_F with backward compat
 # ══════════════════════════════════════════════════════════
-#
-# CONFIG carries two orthogonal style flags:
-#
-#   style_V  ('static' / 'static_no_R0' / 'dynamic' / 'staged')
-#       Controls the V branch — what equation V follows and (for 'staged')
-#       which staged-training schedule to run.  Old checkpoints stored this
-#       under the key 'style' instead of 'style_V'; readers fall back to
-#       'style' if 'style_V' is absent.
-#
-#   style_F  ('static' / 'dynamic')
-#       Controls the F branch — whether s is algebraic (sNet, lib_3 style)
-#       or integrated as a NODE (sdotNet, lib_4 style).  Old checkpoints
-#       didn't have this key at all; readers default to 'dynamic' which
-#       reproduces the previous lib_4 behaviour exactly.
 
 def _style_V(config):
     """Read CONFIG['style_V'], falling back to legacy 'style' for old checkpoints."""
@@ -82,7 +65,9 @@ class R1Net(nn.Module):
     def forward(self, soc, I_norm, u):
         x = torch.stack([soc, I_norm, u], dim=-1)   # (..., 3)
         # scale output to typical R1 range (mOhm·m)
-        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.01  # if softplus = 1, out = 10 [mOhm * m]
+        return nn.functional.softplus(self.net(x)).squeeze(-1) * 0.1 
+                                                             # * 0.1 FOR PYBAMM 
+                                                             # * 0.01 FOR COMSOL. if softplus = 1, out = 10 [mOhm * m]
 
 class R1NetConstrained(nn.Module):
     """(SOC, I, u) → R1 > 0  [Ohm].  One hidden layer, sigmoid+linear constraint."""
@@ -405,9 +390,6 @@ class BatteryECMM(nn.Module):
     """
     def __init__(self, config, Q0=Q0, I_ref=24.7915, u_ref=-4.2976, k=53.0):
         super().__init__()
-        # Ue(SOC) is sourced from the module-level Ue_GP lookup (cached GP) —
-        # no longer a constructor argument. This makes checkpoint loading
-        # self-contained and matches how `sr_ode` consumes the GP from JN_GP.
         self.Q0        = Q0
         self.I_ref     = I_ref
         self.u_ref     = u_ref
@@ -480,7 +462,7 @@ class BatteryECMM(nn.Module):
 
         Note: u_exp is the *normalized* u (u/u_ref) — this matches what the
         networks were trained on. R0_func, however, was fitted to physical
-        u in [1e-5 m], so we de-normalize before calling it.
+        u in [1e-5 m], so de-normalize before calling it.
         """
         m = self.config['R0_mode']
         if m == 'func':
@@ -2799,7 +2781,7 @@ def plot_nrmse_bars(models, trajs_by_set, rmse_scales,
 
 
 def plot_mosaic_predicts_report(model, config, trajs, *, predict='V', sort='C_rate',
-                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, Q0=17921.57581):
+                                n_show=5, pulse=False, show_current=None, fixed=True, start=0, bar=True, Q0=Q0):
     """Two-panel (pulse) or single-panel (CC) prediction-vs-data plot.
 
     True trajectories are dashed (Reds); NN predictions are solid (Blues).

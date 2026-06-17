@@ -1,5 +1,5 @@
 # %% ══════════════════════════════════════════════════════════
-#  BATTERY ECM + EMM NODE — with kdot=NN
+#  BATTERY ECM + EMM LOADING SCRIPT
 # ══════════════════════════════════════════════════════════════
 
 import os
@@ -78,6 +78,8 @@ print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 
 trajs = prepare_data(data)
 print(trajs[0].keys())
+
+TRAIN_SPLIT = 0.8
 split = int(len(trajs) * TRAIN_SPLIT)
 train_trajs, test_trajs = trajs[:split], trajs[split:]
 print(f"  Train: {len(train_trajs)} | Test: {len(test_trajs)}")

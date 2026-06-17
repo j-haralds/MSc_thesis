@@ -4,32 +4,6 @@ import matplotlib.pyplot as plt
 import sklearn.gaussian_process as gp
 import scipy.stats as stats
 
-# def simulate_DC(I0):
-#     model = pybamm.lithium_ion.DFN(options={
-#         "SEI": "none",
-#         "lithium plating": "none",
-#         "particle mechanics": "none",
-#     }
-# )
-#     param = model.default_parameter_values
-#     def my_DC_current(I0=I0):
-#         return pybamm.Scalar(I0)
-
-#     param.process_model(model)
-#     geometry = model.default_geometry
-#     param.process_geometry(geometry)
-#     param['Nominal cell capacity [A.h]'] =  pybamm.Scalar(1.0)
-#     param['Current function [A]'] = my_DC_current
-
-#     mesh = pybamm.Mesh(geometry, model.default_submesh_types, model.default_var_pts)
-#     disc = pybamm.Discretisation(mesh, model.default_spatial_methods)
-#     disc.process_model(model)
-#     t_eval = np.linspace(0,3600 ,1000)
-
-#     solver = pybamm.IDAKLUSolver(atol=1e-7, rtol=1e-5)
-#     solution = solver.solve(model, t_eval)
-
-#     return solution,model,param
 
 def simulate_CC(I0, T, T_horizon, get_Ue=False):
     model = pybamm.lithium_ion.DFN(options={
@@ -59,10 +33,9 @@ def simulate_CC(I0, T, T_horizon, get_Ue=False):
     param['Positive electrode double-layer capacity [F.m-2]'] = pybamm.Scalar(0.0)  
 
     # ---
-    #param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
 
     if get_Ue:
-        V_min = 0.0
+        V_min = 3.105   # From parameter list
         param['Lower voltage cut-off [V]'] = pybamm.Scalar(V_min)
         experiment = pybamm.Experiment([f"Discharge at C/30 until {V_min} V"])
         sim = pybamm.Simulation(model, parameter_values=param, experiment=experiment)
