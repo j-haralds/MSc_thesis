@@ -599,8 +599,12 @@ class BatteryECMM(nn.Module):
         with torch.no_grad():
             if self.config.get('HF_model', 'comsol') == 'comsol':       # Fall back to 'comsol' if 'HF_model' is absent
                 Ue = Ue_GP_comsol.soc_to_Ue(soc, return_torch=True)
+                print('Here')
+                plt.plot(soc.numpy().flatten(), Ue.numpy().flatten())
             elif self.config.get('HF_model', 'comsol') == 'pybamm':
                 Ue = Ue_GP_pybamm.soc_to_Ue(soc, return_torch=True)
+                print('Here Pybamm')
+                plt.plot(soc.numpy().flatten(), Ue.numpy().flatten())
 
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
@@ -2657,7 +2661,7 @@ def load_nn_model(model_name, I_ref=None):
     I_ref = ckpt.get('I_ref', 24.7915)    # Use persisted I_ref if model saved it, else default
     u_ref = ckpt.get('u_ref', -4.2976)       # Use persisted u_ref if model saved it, else default
     Q0_ckpt = ckpt.get('Q0', 17921.57581)             # Use persisted Q0 if model saved it, else default
-    print(f"Using I_ref = {I_ref} and 'u_ref' = {u_ref} for model parameters")
+    print(f"Using Q0_ckpt = {Q0_ckpt}, I_ref = {I_ref} and u_ref = {u_ref} for model parameters")
 
     model = BatteryECMM(CONFIG, Q0=Q0_ckpt, I_ref=I_ref, u_ref=u_ref)
     model.load_state_dict(ckpt['model'])

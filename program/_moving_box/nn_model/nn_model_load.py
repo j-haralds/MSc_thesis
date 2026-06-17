@@ -39,6 +39,7 @@ TIMESTAMP = datetime.now().strftime('%m%d_%H%M')
 # ════════════════════════════════════════════════════════════
 
 DATA_DIR    = os.path.join(FILE_PATH, '../data')
+PYBAMM_DATA_DIR = os.path.join(FILE_PATH, '../data_pybamm')
 DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')
 ALL_DATA    =  os.path.join(DATA_DIR, 'polished_combo/merged_combo.txt')
 HALF_COMBO  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt'); 
@@ -114,8 +115,8 @@ wombo_combo = combo_test + other_combo_trajs
 
 # %% ══════════════════════════════════════════════════════════
 #  LOAD MODEL  (no Ue argument — GP loaded internally by lib)
-# ══════════════════════════════════════════════════════════════
-
+# ═════════════════════════════════════════════════════════════
+ 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
 bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT)
 history_stat, config_stat, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
@@ -128,10 +129,14 @@ MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconst
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL)
 history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
+MODEL_NAME_PYBAMM = '0617_1107_pybamm_CC_V-dynamic_F-static_unconstr_12.13min_100eps.pt'
+bat_model_pybamm, ckpt_pybamm = load_nn_model(MODEL_NAME_PYBAMM)
+history_pybamm, config_pybamm, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_pybamm)
+
 
 # %% ══════════════════════════════════════════════════════════
 #  LOSS CURVES
-# ══════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════
 
 plot_loss(history_full)
 plt.show()
@@ -141,6 +146,7 @@ plt.show()
 # ═════════════════════════════════════════════════════════════
 
 other_combo_pulse = prepare_pulse_data(other_combo_data[other_combo_data['pulse'] == True])
+other_combo_cc = prepare_pulse_data(other_combo_data[(other_combo_data['pulse'] == False) & (other_combo_data['u_par'] == 0)])
 
 # # new generation data c_rate 2.5
 crate_usweep_cc = pd.read_csv(os.path.join(DATA_DIR, 'polished_CC/crate2.5_usweep.txt'), sep=';', comment='%')
@@ -151,10 +157,10 @@ pulse_c25_usweep = prepare_pulse_data(crate_usweep_pulse)
 
 
 
-plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V',
-                              n_show=4, pulse=True, fixed=False, start=18)
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_pulse, sort='C_rate', predict='V', n_show=4, pulse=True, fixed=False, start=18)
 
-other_combo_cc = prepare_pulse_data(other_combo_data[(other_combo_data['pulse'] == False) & (other_combo_data['u_par'] == 0)])
+plot_mosaic_predicts_report(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V', n_show=4, pulse=False, fixed=False, start=1)
+
 plot_mosaic_predicts_report_data(bat_model_full, config_full, other_combo_cc, sort='C_rate', predict='V', n_show=3, pulse=False, show_current=False, fixed=False, start=3, bar=False)
 
 plot_mosaic_predicts_report_data(bat_model_full, config_full, cc_c25_usweep, sort='u_per', predict='V', n_show=3, bar=False, pulse=False, show_current=False, fixed=False, start=2)
@@ -204,4 +210,15 @@ plt.show()
 
 plot_mosaic_predicts_report(bat_model_static_DC, config_stat, other_combo_pulse, sort='C_rate', predict='V', 
                             n_show=1, start=39, pulse=True, fixed=False, bar=False)
+plt.show()
+
+
+
+# %% ══════════════════════════════════════════════════════════
+#  PYBAMM MODEL TEST
+# ═════════════════════════════════════════════════════════════
+
+pybamm_cc = prepare_data(pd.read_csv(os.path.join(PYBAMM_DATA_DIR, 'CC/pybamm_CC.txt'), sep=';', comment='%'))
+
+plot_mosaic_predicts_report(bat_model_pybamm, config_pybamm, pybamm_cc, sort='C_rate', predict='V', n_show=4, pulse=False, fixed=False, start=1)
 plt.show()

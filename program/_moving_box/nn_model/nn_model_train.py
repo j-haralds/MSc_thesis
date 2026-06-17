@@ -36,8 +36,6 @@ from datetime import datetime
 TIMESTAMP   = datetime.now().strftime('%m%d_%H%M')
 PYBAMM_DATA_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'data_pybamm'))
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'data'))
-
-
 FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
@@ -50,12 +48,11 @@ LR_STATIC   = 1e-3
 LR_DYNAMIC  = 1e-3
 
 # Batched-training controls.  Trajectories of any length mix freely — each
-# mini-batch is padded to its own max-T and the loss is masked to ignore
-# padded positions, so CC and pulse data work identically.
+# mini-batch is padded to its own max-T and the loss is masked to ignore padded positions.
 BATCH_SIZE  = 4     # mini-batch size
 EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
-# Which trajectories to train on. 
+# Choose trajectories to train on. 
 # (Framework/constraints optimized for comsol data with force. Pybamm data is without force data, yet force is predicted)
 HF_MODEL    = 'pybamm'  # 'comsol' or 'pybamm' (both have same inputs and outputs)
 
@@ -67,7 +64,7 @@ if HF_MODEL == 'comsol':
     #COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
 elif HF_MODEL == 'pybamm':
     Q0          = 3600.0           # As, nominal capacity for 1 A.h cell, defined in sim_PyBaMM.py
-    DATA_FILE   = os.path.join(PYBAMM_DATA_DIR, 'CC/pybamm_CC.txt')         # Full from hyperelastic material in Comsol
+    DATA_FILE   = os.path.join(PYBAMM_DATA_DIR, 'CC/pybamm_CC.txt')        
     # PULSE_FILE  = os.path.join(PYBAMM_DATA_DIR, 'pybamm_pulse.txt')
     # COMBO_FILE  = os.path.join(PYBAMM_DATA_DIR, 'pybamm_combo.txt')
     PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
@@ -76,28 +73,30 @@ elif HF_MODEL == 'pybamm':
 USE_PULSE   = 'CC'   # 'pulse', 'CC', 'combo' (combo = both CC and pulse)
 
 
+# Configure networks, constraints
 CONFIG = {
     'R1_mode': 'net',   # 'net'
     'C1_mode': 'net',   # 'net'
-    'R0_mode': 'net',           # 'func', 'net', 'param', 'net_no_soc'
+    'R0_mode': 'net',   # 'func', 'net', 'param', 'net_no_soc'
     'n_hidden': N_HIDDEN,
+
+    # 'false' constraints uses softplus * magnitude value.
+    # 'true' constraints uses sigmoid between min and max values.
     'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
-    'C1_constrained': 'false', 'C1_min': 5000.0, 'C1_max': 14000.0, # 30000.0,  # F
-    'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,    # Ohm
-    # OBS: k increased for for low u? F_min/u_min ~ 0.002/0.009 = 0.22
-    'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,    # [≤ 0.04]  GN/1e-5m
+    'C1_constrained': 'false', 'C1_min': 5000.0, 'C1_max': 14000.0,  # F
+    'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,     # Ohm
+    'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,          # [≤ 0.04]  GN/1e-5m
     # ── F-branch swelling constraints — split per style_F mode ──
     # style_F='static'  uses  s_constrained / s_min / s_max     — bounds on s itself        [1e-5 m]
     # style_F='dynamic' uses  sdot_constrained / sdot_min / sdot_max — bounds on ds/dt  [1e-5 m / s]
-    # Backward compat: if the sdot_* keys are absent, sdotNet falls back to the s_* keys
-    # (so old checkpoints which only had s_* keys still load and behave identically).
+    # Backward compatable: if the sdot_* keys are absent, sdotNet falls back to the s_* keys
     's_constrained':    'false', 's_min':    0.0, 's_max':    0.005*100,   # static sNet  [1e-5 m]
     'sdot_constrained': 'false', 'sdot_min': 0.0, 'sdot_max': 0.001,   # dynamic sdotNet [1e-5 m / s]
 
     # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' ──
     # 'static_no_R0' : V = Ue − I·R1,                (algebraic, no R0)
     # 'dynamic'      : V = Ue − I·R0 − U1,           with U1 integrated by semi-implicit Euler
-    'style_V': 'dynamic',  # 'static_no_R0', 'dynamic', 'back_in_black' (Full black box model)
+    'style_V': 'static',  # 'static_no_R0', 'dynamic', 'back_in_black' (Full black box model)
 
     # ── style_F (F branch): 'static' (algebraic sNet) | 'dynamic' ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
