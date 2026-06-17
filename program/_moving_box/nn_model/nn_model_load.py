@@ -129,7 +129,7 @@ MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconst
 bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL)
 history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
-MODEL_NAME_PYBAMM = '0617_1107_pybamm_CC_V-dynamic_F-static_unconstr_12.13min_100eps.pt'
+MODEL_NAME_PYBAMM = '0617_1234_pybamm_CC_V-static_F-static_unconstr_0.82min_1000eps.pt'
 bat_model_pybamm, ckpt_pybamm = load_nn_model(MODEL_NAME_PYBAMM)
 history_pybamm, config_pybamm, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_pybamm)
 

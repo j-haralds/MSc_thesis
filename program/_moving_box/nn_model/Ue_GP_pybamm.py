@@ -5,7 +5,6 @@ Wraps sklearn's Gaussian process with a tabulated cache: the GP is evaluated
 once on a dense SOC grid, and every subsequent lookup is an np.interp against
 that grid (~150x faster than calling GP.predict directly, ~1 uV error).
 
-Public API
 ----------
 get_gp()                          -> raw sklearn GP model (slow path, for compat)
 warm_cache(n_grid, soc_lo, soc_hi) -> pre-build the lookup grid (auto-fires on first use)

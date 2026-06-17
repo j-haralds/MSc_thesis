@@ -16,6 +16,7 @@ FILE_PATH = os.path.dirname(os.path.realpath(__file__))
 # FILE_PATH = os.getcwd()
 print(FILE_PATH)
 sys.path.append(os.path.join(FILE_PATH, '..'))
+from nn_model_lib import _traj_inputs
 import plot_settings
 plot_settings.apply()
 COLORS = plot_settings.colors()
@@ -40,7 +41,7 @@ FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
 SAVE_FIGS     = False
-SAVE_MODELS   = True 
+SAVE_MODELS   = False 
 
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 16
@@ -82,10 +83,10 @@ CONFIG = {
 
     # 'false' constraints uses softplus * magnitude value.
     # 'true' constraints uses sigmoid between min and max values.
-    'R1_constrained': 'false', 'R1_min': 0.005, 'R1_max': 0.25,      # Ohm
+    'R1_constrained': 'false', 'R1_min': 0.005,  'R1_max': 0.25,      # Ohm
     'C1_constrained': 'false', 'C1_min': 5000.0, 'C1_max': 14000.0,  # F
-    'R0_constrained': 'false', 'R0_min': 0.007, 'R0_max': 0.015,     # Ohm
-    'k_constrained': 'false', 'k_min': 0.02, 'k_max': 0.04,          # [≤ 0.04]  GN/1e-5m
+    'R0_constrained': 'false', 'R0_min': 0.007,  'R0_max': 0.015,     # Ohm
+    'k_constrained':  'false', 'k_min':  0.02,   'k_max':  0.04,          # [≤ 0.04]  GN/1e-5m
     # ── F-branch swelling constraints — split per style_F mode ──
     # style_F='static'  uses  s_constrained / s_min / s_max     — bounds on s itself        [1e-5 m]
     # style_F='dynamic' uses  sdot_constrained / sdot_min / sdot_max — bounds on ds/dt  [1e-5 m / s]
@@ -96,7 +97,7 @@ CONFIG = {
     # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' ──
     # 'static_no_R0' : V = Ue − I·R1,                (algebraic, no R0)
     # 'dynamic'      : V = Ue − I·R0 − U1,           with U1 integrated by semi-implicit Euler
-    'style_V': 'static',  # 'static_no_R0', 'dynamic', 'back_in_black' (Full black box model)
+    'style_V': 'static_no_R0',  # 'static_no_R0', 'dynamic', 'back_in_black' (Full black box model)
 
     # ── style_F (F branch): 'static' (algebraic sNet) | 'dynamic' ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
@@ -179,6 +180,20 @@ print(f"  Combo train: {len(combo_train)} | Combo test: {len(combo_test)} "
         f"(T per traj: {combo_trajs[0]['T']})")
 
 
+# %% ─── sanity: PyBaMM Ue GP ───────────────────────────────────
+if HF_MODEL == 'pybamm':
+    tr = trajs[0]
+    soc_d = tr['soc'].numpy()
+    Ue_d  = tr['Ue'].numpy()
+    Ue_gp = Ue_GP_pybamm.soc_to_Ue(soc_d)          # GP at the data's own SOC
+
+    print("Ue range (data):", Ue_d.min(), Ue_d.max())
+    print("Ue range (GP)  :", Ue_gp.min(), Ue_gp.max())
+    print("max |GP - data Ue|:", np.abs(Ue_gp - Ue_d).max())
+    plt.plot(soc_d, Ue_d, label='Data Ue')
+    plt.plot(soc_d, Ue_gp, label='GP Ue', linestyle='dashed')
+
+
 # %% ══════════════════════════════════════════════════════════
 #  BUILD MODEL
 # ══════════════════════════════════════════════════════════════
@@ -188,6 +203,22 @@ bat_model = BatteryECMM(CONFIG, Q0=Q0, I_ref=I_MAX, u_ref=U_MIN)
 n_params = sum(p.numel() for p in bat_model.parameters())
 print(f"  Model: {n_params} parameters, {N_HIDDEN} hidden neurons")
 
+
+# %% ─── sanity: Q0 / SOC consistency ───────────────────────────
+tr = train_trajs[0]
+with torch.no_grad():
+    V_m, Fr_m, soc_m, U1_m, R1_m, s_m = bat_model(*_traj_inputs(tr), V_mode=vmode_from_style(CONFIG['style_V']))
+
+soc_m = soc_m.numpy().ravel()
+soc_d = tr['soc'].numpy()
+
+print("data soc endpoints :", soc_d[0], "->", soc_d[-1])     # want ~1 -> ~0
+print("model soc endpoints:", soc_m[0], "->", soc_m[-1])
+print("max |model soc - data soc|:", np.abs(soc_m - soc_d).max())  # want ~0 (<1e-3)
+
+# magnitude check on V at init (R1 is random, so only the scale matters)
+print("V_pred range:", V_m.min().item(), V_m.max().item())
+print("V_data range:", tr['V'].min().item(), tr['V'].max().item())
 # %% ══════════════════════════════════════════════════════════
 #  TRAIN
 # ══════════════════════════════════════════════════════════════
