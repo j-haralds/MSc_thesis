@@ -309,7 +309,7 @@ def pareto_plot(model, colors = COLORS):
     best = model.get_best()
     plt.grid(True, which="both", ls="-", linewidth=0.5)
     plt.plot(df_model['complexity'], df_model['loss'], marker='o', linestyle='-', color=colors[0], label='Models')
-    plt.plot(best['complexity'], best['loss'],'o', color=colors[1], label='Best Model')
+    plt.plot(best['complexity'], best['loss'],'o', color=colors[1], label='Preferred Model')
     plt.xlabel('Complexity')
     plt.ylabel('Loss')
     plt.yscale('log')
