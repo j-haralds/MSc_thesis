@@ -47,8 +47,6 @@ PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
 FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
-Q0          = 17921.57581
-
 
 
 # %% ══════════════════════════════════════════════════════════
@@ -119,15 +117,15 @@ wombo_combo = combo_test + other_combo_trajs
 # ══════════════════════════════════════════════════════════════
 
 MODEL_NAME_STAT = '0508_1444_snode_DC_V-static_no_R0_F-static_netR0_R0c_R1c_C1c_2.97min_16h_650eps_0stat_0dyneps.pt'
-bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT, I_ref=I_MAX)
+bat_model_static_DC, ckpt_stat = load_nn_model(MODEL_NAME_STAT)
 history_stat, config_stat, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_stat)
 
 MODEL_NAME_DYNA = '0508_2228_DC_DC_V-dynamic_F-dynamic_436.43min_16h_650eps.pt'
-bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA, I_ref=I_MAX)
+bat_model_dynamic_DC, ckpt_dyna = load_nn_model(MODEL_NAME_DYNA)
 history_dyna, config_dyna, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_dyna)
 
 MODEL_NAME_FULL = '0515_0840_b4_combo_softplus_combo_V-dynamic_F-dynamic_unconstr_700.40min_16h_2500eps.pt'
-bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL, I_ref=I_MAX)
+bat_model_full, ckpt_full = load_nn_model(MODEL_NAME_FULL)
 history_full, config_full, N_HIDDEN, EPOCHS = load_checkpoint(ckpt_full)
 
 

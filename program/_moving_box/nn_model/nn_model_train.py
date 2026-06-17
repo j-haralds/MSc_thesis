@@ -38,24 +38,12 @@ PYBAMM_DATA_DIR = os.path.abspath(os.path.join(FILE_PATH, '..', 'data_pybamm'))
 DATA_DIR    = os.path.abspath(os.path.join(FILE_PATH, '..', 'data'))
 
 
-# TODO Enable PyBamm generated data. Fill pybamm data files with dummy values for unnecessary columns. Future work: add real/new learned dependencies
-
-DATA_FILE   = os.path.join(PYBAMM_DATA_DIR, 'pybamm_CC.txt')         # Full from hyperelastic material in Comsol
-
-# Choose data file
-# DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')         # Full from hyperelastic material in Comsol
-PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
-COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt')
-#COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
-
 FIGS_DIR    = os.path.join(FILE_PATH, 'figs')
 MODEL_DIR   = os.path.join(FILE_PATH, 'saved_NN_models')
 
-
 SAVE_FIGS     = False
-SAVE_MODELS   = False 
+SAVE_MODELS   = True 
 
-Q0          = 17921.57581     # As
 TRAIN_SPLIT = 0.8
 N_HIDDEN    = 16
 LR_STATIC   = 1e-3
@@ -67,9 +55,26 @@ LR_DYNAMIC  = 1e-3
 BATCH_SIZE  = 4     # mini-batch size
 EVAL_EVERY  = 1      # epochs between test-set evals; raise for cheaper eval
 
-# Which trajectories to train on.  All three options run through the same
-# masked-batched training loop — the only difference is which dataset feeds it.
+# Which trajectories to train on. 
+# (Framework/constraints optimized for comsol data with force. Pybamm data is without force data, yet force is predicted)
+HF_MODEL    = 'pybamm'  # 'comsol' or 'pybamm' (both have same inputs and outputs)
+
+if HF_MODEL == 'comsol':
+    Q0          = 17921.57581     # As
+    DATA_FILE   = os.path.join(DATA_DIR, 'polished_CC/merged_CC_hyper.txt')         # Full from hyperelastic material in Comsol
+    PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
+    COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt')
+    #COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_other_half.txt')
+elif HF_MODEL == 'pybamm':
+    Q0          = 3600.0           # As, nominal capacity for 1 A.h cell, defined in sim_PyBaMM.py
+    DATA_FILE   = os.path.join(PYBAMM_DATA_DIR, 'CC/pybamm_CC.txt')         # Full from hyperelastic material in Comsol
+    # PULSE_FILE  = os.path.join(PYBAMM_DATA_DIR, 'pybamm_pulse.txt')
+    # COMBO_FILE  = os.path.join(PYBAMM_DATA_DIR, 'pybamm_combo.txt')
+    PULSE_FILE  = os.path.join(DATA_DIR, 'polished_pulse/merged_pulse_hyper.txt')
+    COMBO_FILE  = os.path.join(DATA_DIR, 'polished_combo/combo_half.txt')
+
 USE_PULSE   = 'CC'   # 'pulse', 'CC', 'combo' (combo = both CC and pulse)
+
 
 CONFIG = {
     'R1_mode': 'net',   # 'net'
@@ -90,20 +95,19 @@ CONFIG = {
     'sdot_constrained': 'false', 'sdot_min': 0.0, 'sdot_max': 0.001,   # dynamic sdotNet [1e-5 m / s]
 
     # ── style_V (V branch): 'static_no_R0' | 'static' | 'dynamic' ──
-    # 'static_no_R0' : V = Ue − I·R1                 (algebraic, no R0)
-    # 'static'       : V = Ue − I·R0 − I·R1          (algebraic, no U1 dynamics)
-    # 'dynamic'      : V = Ue − I·R0 − U1, with U1 integrated by semi-implicit Euler
-    'style_V': 'dynamic',  # 'static_no_R0', 'static', 'dynamic', 'back_in_black' (Full black box model)
+    # 'static_no_R0' : V = Ue − I·R1,                (algebraic, no R0)
+    # 'dynamic'      : V = Ue − I·R0 − U1,           with U1 integrated by semi-implicit Euler
+    'style_V': 'dynamic',  # 'static_no_R0', 'dynamic', 'back_in_black' (Full black box model)
 
-    # ── style_F (F branch): 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE) ──
+    # ── style_F (F branch): 'static' (algebraic sNet) | 'dynamic' ──
     # 'static':  s = sNet(soc, I_norm)              — no time integration, F is fully algebraic
-    # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0 (the snode lib_4 default)
-    'style_F': 'dynamic',  # 'static' (lib_3 algebraic sNet) | 'dynamic' (lib_4 sdotNet NODE)
+    # 'dynamic': ds/dt = sdotNet(s, soc, I_norm, u) — Euler-rolled from s(0)=0
+    'style_F': 'static',  # 'static', 'dynamic'
 
-    # 'freeze_static_no_R0': ('R0_net', 'C1_net'),  # mainly for 'static_no_R0' style
+    'HF_model': HF_MODEL,  # 'comsol' or 'pybamm'
 }
 
-EPOCHS  = 1  # Total training epochs
+EPOCHS  = 100  # Total training epochs
 split_percentage = 1 # Out of 100% of the training data, how much to use (for quick tests)
 
 
@@ -121,15 +125,14 @@ I_MAX = data['I'].max()
 U_MIN = abs(data['u'].min())
 L_CELL = 14.37325   #-(data['u'] / (data['u_par']/100))[0]
 F_max = data['F'].min()
-# F_upar = data['F'][data['u_par'] == 26.5].values
-# F_diff = F_upar[-1] - F_upar[0]
-# print(F_diff)
 V_max = data['V'].max()
+
+if HF_MODEL == 'pybamm':
+    U_MIN = 1   # Avoid divide by zero
+    F_max = 1
+
 print(f'Cell lengths: {L_CELL:.5f} 1e-5m | I max: {I_MAX:.4f} A | u min: {U_MIN:.4f} 1e-5m'
       f'\nF max: {F_max:.4f} GN | k max: {F_max/(0-U_MIN)}|')
-
-# Ue(SOC) is now provided by the module-level GP (loaded lazily inside the
-# library from JN_GP) — no Ue_interp construction needed here anymore.
 
 print(f"  {len(data)} pts, {data['trajectory'].nunique()} trajectories")
 
@@ -269,7 +272,7 @@ constr = '_'.join(constr_tags) if constr_tags else 'unconstr'
 # Tag style as e.g. 'V-dynamic_F-static' to make the F branch visible in the filename.
 style_tag = f'V-{CONFIG["style_V"]}_F-{CONFIG["style_F"]}'
 
-SAVE_NAME = (f'{USE_PULSE}_{style_tag}'
+SAVE_NAME = (f'{HF_MODEL}_{USE_PULSE}_{style_tag}'
              f'_{constr}'
              f'_{TOTAL_TIME:.2f}min'
              f'_{EPOCHS}eps')
@@ -321,6 +324,7 @@ if SAVE_MODELS:
         'history': history,
         'I_ref': float(I_MAX),
         'u_ref': float(U_MIN),
+        'Q0': float(Q0),
         'N_HIDDEN': N_HIDDEN,
         'EPOCHS': EPOCHS,
         'USE_PULSE': USE_PULSE,

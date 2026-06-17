@@ -31,7 +31,7 @@ import scipy.stats as stats
 
 #     return solution,model,param
 
-def simulate_CC(I0, T, T_horizon):
+def simulate_CC(I0, T, T_horizon, get_Ue=False):
     model = pybamm.lithium_ion.DFN(options={
         "SEI": "none",
         "lithium plating": "none",
@@ -46,10 +46,8 @@ def simulate_CC(I0, T, T_horizon):
     
     param['Current function [A]'] = my_CC_current
 
-    # param = pybamm.ParameterValues("Chen2020_composite")
-
-    # for key in param.items():
-    #     print(key)
+    # Use low to establish OCV
+    # param['Lower voltage cut-off [V]'] = pybamm.Scalar(2.5)
 
     param['SEI kinetic rate constant [m.s-1]'] = pybamm.Scalar(0.0)
     param['SEI reaction exchange current density [A.m-2]'] = pybamm.Scalar(0.0)
@@ -63,12 +61,20 @@ def simulate_CC(I0, T, T_horizon):
     # ---
     #param['Contact resistance [Ohm]'] = pybamm.Scalar(0.0)
 
-    sim = pybamm.Simulation(model, parameter_values=param)
+    if get_Ue:
+        V_min = 0.0
+        param['Lower voltage cut-off [V]'] = pybamm.Scalar(V_min)
+        experiment = pybamm.Experiment([f"Discharge at C/30 until {V_min} V"])
+        sim = pybamm.Simulation(model, parameter_values=param, experiment=experiment)
+
+    else:
+        sim = pybamm.Simulation(model, parameter_values=param)
 
     t_eval = np.linspace(0, T_horizon, T)
-    solution = sim.solve(t_eval)
+    solution = sim.solve(t_eval, initial_soc=1.0)
 
     return solution, model, param
+
 
 
 def GP_process(alpha, X,y,X_test):

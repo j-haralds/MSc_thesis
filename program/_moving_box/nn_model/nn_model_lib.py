@@ -23,7 +23,8 @@ COLORS = plot_settings.colors()
 # Ue(SOC) lookup — see Ue_GP.py for caching / tabulation details.
 # Tabulate the GP on a dense SOC grid once at startup, use np.interp for lookups. 
 # GP-quality values with interpolant speed.
-import Ue_GP
+import _moving_box.nn_model.Ue_GP_comsol as Ue_GP_comsol
+import _moving_box.nn_model.Ue_GP_pybamm as Ue_GP_pybamm
 import fix_ecm
 
 Q0          = 17921.57581   # cell capacity [Coulombs]
@@ -32,7 +33,7 @@ TRAIN_SPLIT = 0.8
 N_HIDDEN    = 32
 EPOCHS      = 2
 LR          = 1e-3
-PAT         = 400   # # Extrmely high pateience to omitt scheduler (epochs with no improvement on test loss before reducing LR)
+PAT         = 400   # # Extremely high pateience to omitt scheduler (epochs with no improvement on test loss before reducing LR)
 
 
 # ══════════════════════════════════════════════════════════
@@ -596,7 +597,10 @@ class BatteryECMM(nn.Module):
 
         # ── V branch: static or dynamic U1 ──
         with torch.no_grad():
-            Ue = Ue_GP.soc_to_Ue(soc, return_torch=True)
+            if self.config.get('HF_model', 'comsol') == 'comsol':       # Fall back to 'comsol' if 'HF_model' is absent
+                Ue = Ue_GP_comsol.soc_to_Ue(soc, return_torch=True)
+            elif self.config.get('HF_model', 'comsol') == 'pybamm':
+                Ue = Ue_GP_pybamm.soc_to_Ue(soc, return_torch=True)
 
         if V_mode == 'static':
             # Steady-state of the RC: U1 = I · R1.  C1 is *not* used.
@@ -2179,7 +2183,11 @@ def plot_predicts_report(model, config, trajs, predict='V', sort='C_rate',
 
             if predict == 'V':
                 y_true = tr['V'].numpy(); y_pred = out['V']
-                Ue = Ue_GP.soc_to_Ue(soc_np)
+                if config.get('HF_model', 'comsol') == 'comsol':
+                    Ue = Ue_GP_comsol.soc_to_Ue(soc_np)
+                elif config.get('HF_model', 'comsol') == 'pybamm':
+                    Ue = Ue_GP_pybamm.soc_to_Ue(soc_np)
+
                 ylabel = r'$V$ [V]'
                 ax.plot(x, Ue, ':', color='black', lw=1.5)
             elif predict == 'F':
@@ -2648,9 +2656,10 @@ def load_nn_model(model_name, I_ref=None):
 
     I_ref = ckpt.get('I_ref', 24.7915)    # Use persisted I_ref if model saved it, else default
     u_ref = ckpt.get('u_ref', -4.2976)       # Use persisted u_ref if model saved it, else default
+    Q0_ckpt = ckpt.get('Q0', 17921.57581)             # Use persisted Q0 if model saved it, else default
     print(f"Using I_ref = {I_ref} and 'u_ref' = {u_ref} for model parameters")
 
-    model = BatteryECMM(CONFIG, I_ref=I_ref, u_ref=u_ref)
+    model = BatteryECMM(CONFIG, Q0=Q0_ckpt, I_ref=I_ref, u_ref=u_ref)
     model.load_state_dict(ckpt['model'])
     model.eval()
 
@@ -2680,7 +2689,8 @@ def rmse_fix(trajs, rmse_scales):
         else:        
             I = tr['I_seq'].numpy()
         V_true = tr['V'].numpy()
-        out = Ue_GP.soc_to_Ue(tr['soc']) -fix_ecm.parameter_estimation_curvefit(tr, DC=False, I=I).flatten()
+        # This uses only Ue from COMSOL
+        out = Ue_GP_comsol.soc_to_Ue(tr['soc']) - fix_ecm.parameter_estimation_curvefit(tr, DC=False, I=I).flatten()
         rmse_V[i]=(float(np.sqrt(np.mean((out -V_true)**2))))
     return np.array(rmse_V) / rmse_scales['V']
 
